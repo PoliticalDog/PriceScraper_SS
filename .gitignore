@@ -1,0 +1,62 @@
+# ── Entorno virtual ───────────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Variables de entorno ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ── Datalake completo (imágenes + JSONs procesados — pueden pesar varios GB) ──
+data/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ── Pytest ────────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+
+# ── Sistema operativo ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── PySpark temporales ────────────────────────────────────────────────────────
+derby.log
+metastore_db/
+spark-warehouse/
+
+# ── Playwright (caché de navegadores descargados) ────────────────────────────
+.playwright/
+playwright-report/
+
+# ── EasyOCR (modelos descargados automáticamente — se regeneran) ──────────────
+.EasyOCR/
+
+# -- Docxx (archivos temporales) ───────────────────────────────────────────────────
+*.docx
