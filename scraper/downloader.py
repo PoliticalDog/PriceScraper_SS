@@ -1,14 +1,9 @@
-# downloader.py - Metodos de descraga y almacenamiento de imágenes de folletos
+# Guarda cada página como imagen en data/raw/{fuente}/{tienda}/{folleto_id}/pagina_{n}.webp
 
 import asyncio
 import aiohttp
 import logging
 from pathlib import Path
-
-"""
-Módulo de descarga y almacenamiento de imágenes de folletos.
-Guarda cada página como imagen en data/raw/{fuente}/{tienda}/{folleto_id}/pagina_{n}.webp
-"""
 
 #inicia loger
 logger = logging.getLogger(__name__)
@@ -17,8 +12,7 @@ logger = logging.getLogger(__name__)
 DATA_RAW = Path(__file__).parent.parent / "data" / "raw"
 
 # Clase downloader que descarga las imagenmes de forma asincrona
-class Downloader:
-   
+class Downloader: 
     # Headers para simular navegador real al descargar del CDN
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
@@ -47,17 +41,11 @@ class Downloader:
     # Descarga todas las páginas de un folleto.
     async def descargar_paginas(
         self,
-        urls_paginas: list[str],
-        fuente: str,
-        tienda: str,
-        folleto_id: str,
+        urls_paginas: list[str],    # Lista de URLs de las páginas del folleto.
+        fuente: str,                # tiendeo o ofertomat
+        tienda: str,                # Nombre de la tienda (para organizar carpetas)
+        folleto_id: str,            # ID único del folleto (para organizar carpetas)
     ) -> list[Path]:
-        """
-            urls_paginas: Lista de URLs de imágenes (una por página).
-            fuente: Nombre de la fuente ('tiendeo' o 'ofertomat').
-            tienda: Nombre de la tienda (para organizar carpetas).
-            folleto_id: ID único del folleto.
-        """
         
         # Lista de rutas locales de las imágenes descargadas.
         ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
@@ -74,12 +62,14 @@ class Downloader:
         rutas_exitosas = [r for r in resultados if isinstance(r, Path)]
         errores = len(resultados) - len(rutas_exitosas)
 
+        # logeo errores al descragar
         if errores:
             logger.warning(f"[Downloader] {errores} páginas fallaron en folleto {folleto_id}")
 
         logger.info(f"[Downloader] {len(rutas_exitosas)}/{len(urls_paginas)} páginas descargadas → {ruta_destino}")
         return sorted(rutas_exitosas)
 
+    # Descarga una sola página respetando el semáforo de concurrencia.
     async def _descargar_una(
         self,
         session: aiohttp.ClientSession,
@@ -88,19 +78,17 @@ class Downloader:
         ruta_destino: Path,
         num_pagina: int,
     ) -> Path:
-        """
-        Descarga una imagen individual respetando el semáforo de concurrencia.
-        Si el archivo ya existe, no lo vuelve a descargar (idempotente).
-        """
+        
         # Determinar extensión del archivo
         extension = "webp" if "webp" in url else "jpg"
         ruta_archivo = ruta_destino / f"pagina_{num_pagina:03d}.{extension}"
 
-        # Skip si ya existe (útil para reinicios del scraper)
+        # Si el archivo ya existe, no lo vuelve a descargar
         if ruta_archivo.exists():
             logger.debug(f"Ya existe: {ruta_archivo.name}, saltando.")
             return ruta_archivo
-
+        
+        # Descargar la página respetando el semáforo para limitar concurrencia
         async with semaforo:
             try:
                 timeout = aiohttp.ClientTimeout(total=self.timeout)
@@ -113,7 +101,8 @@ class Downloader:
             except Exception as e:
                 logger.error(f"Error descargando página {num_pagina} ({url}): {e}")
                 raise
-
+    
+    # Descarga solo la imagen de portada (preview) de un folleto
     async def descargar_preview(
         self,
         url_preview: str,
@@ -121,10 +110,7 @@ class Downloader:
         tienda: str,
         folleto_id: str,
     ) -> Path | None:
-        """
-        Descarga solo la imagen de portada (preview) de un folleto.
-        Útil para mostrar en el dashboard sin descargar todo el folleto.
-        """
+        
         ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
         ruta_archivo = ruta_destino / "preview.webp"
 

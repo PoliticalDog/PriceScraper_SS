@@ -1,20 +1,20 @@
-# 🛒 PriceScraper
+# PriceScraper
 
 Sistema de extracción, procesamiento e inteligencia de precios de folletos digitales de supermercados mexicanos.
 
 **Fuentes:** Tiendeo.com.mx · Ofertomat.mx  
-**Stack:** Python · Playwright · OpenCV · EasyOCR · spaCy · PostgreSQL · Django · PySpark
+**Stack:** Python · Playwright · OpenCV · EasyOCR · spaCy · SQLite · PostgreSQL · Django · PySpark
 
 ---
 
-## ⚙️ Requisitos previos
+## Requisitos previos
 
 - Python 3.10 o superior
 - Git
 
 ---
 
-## 🚀 Configuración en máquina nueva
+## Configuracion en maquina nueva
 
 ### 1. Clonar el repositorio
 
@@ -63,24 +63,42 @@ python -m spacy download es_core_news_sm
 mkdir -p data/raw data/processed logs
 ```
 
-> **Nota:** La carpeta `data/` no está en el repositorio (ver `.gitignore`).  
-> Si cambias de máquina, copia la carpeta `data/` manualmente desde USB o disco externo.
+### 7. Restaurar datos desde USB
+
+Las siguientes carpetas y archivos NO están en el repositorio (ver `.gitignore`) y deben copiarse manualmente desde USB o disco externo:
+
+| Elemento | Descripcion |
+|---|---|
+| `data/` | Datalake completo: imagenes descargadas, JSONs procesados. Puede pesar varios GB. |
+| `.env` | Variables de entorno: credenciales, rutas, configuracion local. |
+| `logs/` | Opcional. Historial de ejecuciones anteriores. Se regenera al correr el pipeline. |
+
+> Los archivos `.docx` de propuesta/documentacion tambien conviene respaldarlos en USB ya que estan ignorados por git.
 
 ---
 
-## ▶️ Ejecución del pipeline
+## Ejecucion del pipeline
 
-Cada módulo tiene su propio script interactivo con menú:
+Cada modulo tiene su propio script de prueba con menu interactivo:
 
 ```bash
 # 1. Scraping — descargar folletos de Tiendeo
 python probar_scraper.py
 
-# 2. Visión — preprocesar imágenes y extraer texto (OCR)
+# 2. Vision — preprocesar imagenes y extraer texto (OCR)
 python probar_vision.py
 
 # 3. NLP — clasificar bloques de texto en producto/precio/promo
 python probar_nlp.py
+
+# 4. ETL — transformar y cargar datos estructurados
+python probar_etl.py
+```
+
+Para inspeccionar la base de datos SQLite generada:
+
+```bash
+python view_sqllite.py
 ```
 
 ---
@@ -91,7 +109,7 @@ python probar_nlp.py
 PriceScraper_SS/
 ├── scraper/
 │   ├── metodos_scraper.py   # Clase base Playwright
-│   ├── downloader.py        # Descarga de imágenes
+│   ├── downloader.py        # Descarga de imagenes
 │   ├── registro.py          # Control de folletos procesados
 │   └── sources/
 │       ├── tiendeo.py       # Adaptador Tiendeo.com.mx
@@ -101,21 +119,26 @@ PriceScraper_SS/
 │   └── ocr_engine.py        # EasyOCR + Tesseract
 ├── nlp/
 │   └── regex_extractor.py   # Extractor de entidades
-├── data/                    # ← NO incluido en git (ver .gitignore)
-│   ├── raw/                 # Imágenes descargadas
-│   └── processed/           # Imágenes procesadas + JSONs OCR/NLP
-├── logs/                    # ← NO incluido en git
+├── etl/
+│   └── ...                  # Transformacion y carga de datos estructurados
+├── api/                     # Endpoints del sistema
+├── data/                    # <- NO incluido en git (ver .gitignore)
+│   ├── raw/                 # Imagenes descargadas
+│   └── processed/           # Imagenes procesadas + JSONs OCR/NLP
+├── logs/                    # <- NO incluido en git
 ├── probar_scraper.py
 ├── probar_vision.py
 ├── probar_nlp.py
+├── probar_etl.py
+├── view_sqllite.py          # Visor de base de datos SQLite
 ├── requirements.txt
 └── NOTAS_PROYECTO.md        # Contexto del proyecto para retomar desarrollo
 ```
 
 ---
 
-## 📋 Notas
+## Notas
 
-- La primera ejecución de `probar_vision.py` descarga los modelos de EasyOCR automáticamente (~500 MB). Las siguientes ejecuciones son instantáneas.
+- La primera ejecucion de `probar_vision.py` descarga los modelos de EasyOCR automaticamente (~500 MB). Las siguientes ejecuciones son instantaneas.
 - El scraper corre en modo `headless=True` por defecto (sin ventana visible). Cambia a `headless=False` en `probar_scraper.py` para ver el navegador durante el scraping.
-- Consulta `NOTAS_PROYECTO.md` para el estado actual del desarrollo, pendientes y decisiones técnicas.
+- Consulta `NOTAS_PROYECTO.md` para el estado actual del desarrollo, pendientes y decisiones tecnicas.

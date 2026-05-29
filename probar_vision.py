@@ -1,4 +1,4 @@
-#Orquestador de procesamiento de visión: preprocesamiento (OpenCV) + OCR
+#Orquestador de procesamiento de visión -->  preprocesamiento (OpenCV) + OCR
 
 import sys
 import logging
@@ -8,6 +8,8 @@ import numpy as np
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from vision.preprocessor import obtener_preprocesador
+from vision.preprocessor import Preprocessor
+from vision.ocr_engine   import OCREngine
 
 PERFIL_DEFAULT = "suave"
 
@@ -29,9 +31,7 @@ logger = logging.getLogger("vision")
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from vision.preprocessor import Preprocessor
-from vision.ocr_engine   import OCREngine
-
+# ------------------------- Rutas -------------------------
 DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 
@@ -49,7 +49,7 @@ def menu_principal() -> int:
     except ValueError:
         return -1
 
-
+# Perfil de preprocesamiento
 def menu_perfil() -> str:
     print("\n" + "─" * 55)
     print("   Perfil de preprocesamiento:")
@@ -63,7 +63,7 @@ def menu_perfil() -> str:
     except (ValueError, IndexError):
         return "suave"
 
-
+# selección de carpeta para modo prueba
 def menu_carpeta() -> Path | None:
     carpetas = sorted([
         p for p in DATA_RAW.rglob("*")
@@ -79,6 +79,7 @@ def menu_carpeta() -> Path | None:
     print(f"   {'#':>3}  {'RUTA':<45}  {'PÁG':>4}  {'ESTADO'}")
     print("─" * 55)
 
+    # Listar carpetas con número, ruta relativa, cantidad de páginas y estado de procesamiento
     for i, carpeta in enumerate(carpetas, 1):
         n = len(list(carpeta.glob("pagina_*.webp")))
         ruta_rel = carpeta.relative_to(DATA_RAW)
@@ -97,6 +98,7 @@ def menu_carpeta() -> Path | None:
 
 # ------------------------- Procesamiento -------------------------
 
+# Procesa una carpeta de folleto: preprocesa cada página, extrae texto con OCR y guarda resultados en JSON
 def procesar_carpeta(
     carpeta_raw: Path,
     preprocessor: Preprocessor,
@@ -109,15 +111,18 @@ def procesar_carpeta(
     carpeta_proc = DATA_PROCESSED / ruta_rel
     ruta_json    = carpeta_proc / "ocr_resultado.json"
 
+    # Si ya existe el JSON y no se fuerza, se salta el procesamiento
     if ruta_json.exists() and not forzar:
         logger.info(f"[Vision] ⏭️  Ya procesado: {ruta_rel}")
         return None
-
+    
+    # Listar páginas (imágenes) en la carpeta
     paginas = sorted(carpeta_raw.glob("pagina_*.webp"))
     if not paginas:
         logger.warning(f"[Vision] Sin páginas en {carpeta_raw}")
         return None
 
+    # Crear carpeta de procesamiento si no existe
     carpeta_proc.mkdir(parents=True, exist_ok=True)
     logger.info(f"\n[Vision] Procesando: {ruta_rel} ({len(paginas)} páginas)")
 
@@ -127,6 +132,7 @@ def procesar_carpeta(
         preprocessor.guardar_comparacion(paginas[0], ruta_comp)
         logger.info(f"[Vision] 🖼️  Comparación: {ruta_comp}")
 
+    # Estructura de resultado para el folleto
     resultado_folleto = {
         "fuente":        ruta_rel.parts[0] if len(ruta_rel.parts) > 0 else "",
         "tienda":        ruta_rel.parts[1] if len(ruta_rel.parts) > 1 else "",
@@ -138,24 +144,26 @@ def procesar_carpeta(
     total_bloques   = 0
     confianzas_prom = []
 
+    # Procesar cada página: preprocesar, OCR y guardar resultados
     for ruta_pagina in paginas:
         ruta_pagina_proc = carpeta_proc / ruta_pagina.name
 
         # ------------------------- Preprocesar con OpenCV -------------------------
         preprocessor.procesar_y_guardar(ruta_pagina, ruta_pagina_proc)
 
-        # ── Leer imagen procesada como ndarray para EasyOCR ───────
+        # --------- Leer imagen procesada como ndarray para EasyOCR ---------
         # IMPORTANTE: extraer_texto() espera np.ndarray, no Path
         # procesar_y_guardar() retorna Path → hay que leer con cv2
         imagen_np = cv2.imread(str(ruta_pagina_proc))
 
         if imagen_np is None:
-            logger.error(f"[Vision] No se pudo leer: {ruta_pagina_proc}")
+            logger.error(f"[Vision] 🛑 No se pudo leer: {ruta_pagina_proc}")
             continue
 
         # ------------------------- OCR -------------------------
         resultados_ocr = ocr.extraer_texto(imagen_np)
 
+        # Calcular confianza promedio de la página
         conf_prom = (
             sum(r.confianza for r in resultados_ocr) / len(resultados_ocr)
             if resultados_ocr else 0.0
@@ -182,6 +190,7 @@ def procesar_carpeta(
             ]
         })
 
+    # Calcular confianza global del folleto como promedio de las páginas
     conf_global = (
         sum(confianzas_prom) / len(confianzas_prom) if confianzas_prom else 0
     )
@@ -198,6 +207,7 @@ def procesar_carpeta(
 
 
 # ------------------------- Modos -------------------------
+# Solo una capreta --> prueba
 def modo_prueba(ocr: OCREngine):
     carpeta = menu_carpeta()
     if not carpeta:
@@ -215,6 +225,7 @@ def modo_prueba(ocr: OCREngine):
         guardar_comparacion=True,
     )
 
+    # Mostrar resumen de resultados en consola
     if resultado:
         print(f"\n{'─'*55}")
         print(f"  Folleto:         {resultado['tienda']} / {resultado['folleto_id']}")
@@ -236,7 +247,7 @@ def modo_prueba(ocr: OCREngine):
             elif nombre_perfil == "normal":
                 print("     Sugerencia: intenta con 'suave'")
 
-
+# Todo data/raw/ --> batch
 def modo_batch(ocr: OCREngine):
     carpetas = sorted([
         p for p in DATA_RAW.rglob("*")
@@ -287,6 +298,7 @@ def modo_batch(ocr: OCREngine):
 
 # ------------------------- Main -------------------------
 
+# Disparador principal del programa
 def main():
     logger.info("=" * 55)
     logger.info("PriceScraper — Módulo de Visión")

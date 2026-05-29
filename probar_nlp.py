@@ -48,7 +48,7 @@ DATA_PROCESSED = Path("data/processed")
 
 def menu_principal() -> int:
     print("\n" + "═" * 55)
-    print("   PriceScraper MX — Módulo NLP (Regex)")
+    print("   PriceScraper — Módulo NLP (Regex)")
     print("═" * 55)
     print("   1 → Procesar carpeta específica  (modo prueba)")
     print("   2 → Procesar todo data/processed/ (modo batch)")
@@ -159,40 +159,67 @@ def procesar_carpeta(
             extractor.imprimir_resultado(r)
 
     # ── Calcular métricas globales ────────────────────────────────
-    total_prod  = sum(len(r.productos) for r in resultados_paginas)
-    total_prec  = sum(len(r.precios)   for r in resultados_paginas)
-    total_promo = sum(len(r.promos)    for r in resultados_paginas)
+    total_prod     = sum(len(r.productos) for r in resultados_paginas)
+    total_prec     = sum(len(r.precios)   for r in resultados_paginas)
+    total_promo    = sum(len(r.promos)    for r in resultados_paginas)
+    # Extraer PRECIO_ANTERIOR y FINANCIERO del pool de descartes
+    total_prec_ant = sum(
+        sum(1 for e in r.descartes if e.tipo == "PRECIO_ANTERIOR")
+        for r in resultados_paginas
+    )
+    total_financiero = sum(
+        sum(1 for e in r.descartes if e.tipo == "FINANCIERO")
+        for r in resultados_paginas
+    )
     total_desc  = sum(len(r.descartes) for r in resultados_paginas)
     total       = total_prod + total_prec + total_promo + total_desc
     tasa_util   = (total_prod + total_prec + total_promo) / total if total > 0 else 0
 
     # ── Construir JSON de salida ──────────────────────────────────
     resultado = {
-        "fuente":      ocr_data.get("fuente", ""),
-        "tienda":      ocr_data.get("tienda", ""),
-        "folleto_id":  ocr_data.get("folleto_id", ""),
+        "fuente":        ocr_data.get("fuente", ""),
+        "tienda":        ocr_data.get("tienda", ""),
+        "folleto_id":    ocr_data.get("folleto_id", ""),
         "total_paginas": len(resultados_paginas),
         "resumen": {
-            "total_productos":  total_prod,
-            "total_precios":    total_prec,
-            "total_promos":     total_promo,
-            "total_descartes":  total_desc,
-            "tasa_util":        round(tasa_util, 3),
+            "total_productos":        total_prod,
+            "total_precios":          total_prec,
+            "total_precios_anterior": total_prec_ant,
+            "total_financiero":       total_financiero,
+            "total_promos":           total_promo,
+            "total_descartes":        total_desc,
+            "tasa_util":              round(tasa_util, 3),
         },
         "paginas": []
     }
 
     for r in resultados_paginas:
+        # Separar descartes por tipo para el JSON
+        precios_ant  = [e for e in r.descartes if e.tipo == "PRECIO_ANTERIOR"]
+        financieros  = [e for e in r.descartes if e.tipo == "FINANCIERO"]
+        descartes_puros = [e for e in r.descartes
+                           if e.tipo not in ("PRECIO_ANTERIOR", "FINANCIERO")]
+
         resultado["paginas"].append({
             "pagina":    r.imagen,
             "productos": [
-                {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
+                {"texto": e.texto_norm, "confianza": e.confianza,
+                 "bbox": e.bbox, "categoria": e.categoria}
                 for e in r.productos
             ],
             "precios": [
                 {"texto": e.texto_norm, "valor": e.valor,
                  "confianza": e.confianza, "bbox": e.bbox}
                 for e in r.precios
+            ],
+            "precios_anteriores": [
+                {"texto": e.texto_norm, "valor": e.valor,
+                 "confianza": e.confianza, "bbox": e.bbox}
+                for e in precios_ant
+            ],
+            "financiero": [
+                {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
+                for e in financieros
             ],
             "promos": [
                 {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
@@ -234,11 +261,13 @@ def modo_prueba(extractor: RegexExtractor):
         print(f"  Folleto:     {resultado['tienda']} / {resultado['folleto_id']}")
         print(f"  Páginas:     {resultado['total_paginas']}")
         print(f"{'─'*55}")
-        print(f"  🏷️  Productos:   {r['total_productos']}")
-        print(f"  💰 Precios:     {r['total_precios']}")
-        print(f"  🎯 Promociones: {r['total_promos']}")
-        print(f"  🗑️  Descartes:   {r['total_descartes']}")
-        print(f"  ✅ Tasa útil:   {r['tasa_util']:.0%}")
+        print(f"  🏷️  Productos:          {r['total_productos']}")
+        print(f"  💰 Precios actuales:   {r['total_precios']}")
+        print(f"  🔖 Precios anteriores: {r['total_precios_anterior']}")
+        print(f"  🏦 Financiero:         {r['total_financiero']}")
+        print(f"  🎯 Promociones:        {r['total_promos']}")
+        print(f"  🗑️  Descartes:          {r['total_descartes']}")
+        print(f"  ✅ Tasa útil:          {r['tasa_util']:.0%}")
         print(f"{'─'*55}")
 
         if r["tasa_util"] < 0.30:
@@ -271,21 +300,25 @@ def modo_batch(extractor: RegexExtractor):
     if input("  ¿Continuar? (s/n): ").strip().lower() != "s":
         return
 
-    procesados    = 0
-    total_prod    = 0
-    total_prec    = 0
-    total_promo   = 0
-    errores       = 0
+    procesados       = 0
+    total_prod       = 0
+    total_prec       = 0
+    total_prec_ant   = 0
+    total_financiero = 0
+    total_promo      = 0
+    errores          = 0
 
     for i, carpeta in enumerate(pendientes, 1):
         logger.info(f"\n[NLP] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_PROCESSED)}")
         try:
             r = procesar_carpeta(carpeta, extractor, forzar=False)
             if r:
-                procesados  += 1
-                total_prod  += r["resumen"]["total_productos"]
-                total_prec  += r["resumen"]["total_precios"]
-                total_promo += r["resumen"]["total_promos"]
+                procesados       += 1
+                total_prod       += r["resumen"]["total_productos"]
+                total_prec       += r["resumen"]["total_precios"]
+                total_prec_ant   += r["resumen"]["total_precios_anterior"]
+                total_financiero += r["resumen"]["total_financiero"]
+                total_promo      += r["resumen"]["total_promos"]
         except Exception as e:
             logger.error(f"[NLP] Error en {carpeta}: {e}")
             errores += 1
@@ -294,9 +327,11 @@ def modo_batch(extractor: RegexExtractor):
     logger.info(f"✅ Batch NLP completado")
     logger.info(f"   Folletos procesados: {procesados}")
     logger.info(f"   Errores:             {errores}")
-    logger.info(f"   Total productos:     {total_prod}")
-    logger.info(f"   Total precios:       {total_prec}")
-    logger.info(f"   Total promociones:   {total_promo}")
+    logger.info(f"   Total productos:          {total_prod}")
+    logger.info(f"   Total precios actuales:   {total_prec}")
+    logger.info(f"   Total precios anteriores: {total_prec_ant}")
+    logger.info(f"   Total financiero:         {total_financiero}")
+    logger.info(f"   Total promociones:        {total_promo}")
     logger.info(f"   Próximo paso: ETL → asociar producto+precio por bbox → PostgreSQL")
     logger.info("=" * 55)
 

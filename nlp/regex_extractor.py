@@ -1,51 +1,50 @@
-"""
-regex_extractor.py
-Extractor de entidades basado en Regex.
-Toma los bloques de texto del OCR y clasifica cada uno como:
-  PRECIO     → $1,568.00 / $30.50
-  PROMO      → 2x$35 / 30% OFF / TE REGALAMOS $30 por cada $100
-  PRODUCTO   → LAMPARA TRIPIE / Leche Lala 1L
-  DESCARTE   → ruido OCR, caracteres sueltos, texto irrelevante
-"""
+# Modulo para extraer y clasificar entidades de texto OCR usando expresiones regulares.
+# Toma los bloques de texto del OCR y los clasifica en 4 categorías: PRECIO, PROMO, PRODUCTO, DESCARTE
 
 import re
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+from .catalogo_productos import buscar_categoria
 
+# inicializar logger para este módulo
 logger = logging.getLogger(__name__)
 
 
-# ─── Modelos de datos ─────────────────────────────────────────────────────────
+# --------------- Modelos de datos ---------------
 
+# Entidad clasificada extraída del texto OCR
 @dataclass
 class EntidadExtraida:
-    """Representa una entidad clasificada extraída del texto OCR."""
-    tipo:       str          # PRECIO | PROMO | PRODUCTO | DESCARTE
-    texto_raw:  str          # Texto original del OCR
-    texto_norm: str          # Texto normalizado/limpio
-    valor:      Optional[float] = None   # Valor numérico si aplica (precios)
+
+    tipo:       str                     # PRECIO | PROMO | PRODUCTO | DESCARTE
+    texto_raw:  str                     # Texto original del OCR
+    texto_norm: str                     # Texto normalizado/limpio
+    valor:      Optional[float] = None  # Valor numérico si aplica (precios)
     confianza:  float = 0.0             # Confianza del OCR heredada
     bbox:       dict = field(default_factory=dict)
+    categoria:  str = ""                # Categoría del catálogo (solo PRODUCTO)
 
+    # Representación legible para debugging
     def __str__(self):
         val = f" → ${self.valor:,.2f}" if self.valor else ""
         return f"[{self.tipo}] '{self.texto_norm}'{val}"
 
-
+# Resultado agrupado por página del folleto
 @dataclass
 class ResultadoPagina:
-    """Agrupa todas las entidades extraídas de una página del folleto."""
     imagen:    str
-    productos: list[EntidadExtraida] = field(default_factory=list)
+    productos: list[EntidadExtraida] = field(default_factory=list) # field construye una nueva lista vacía de forma segura para cada instancia
     precios:   list[EntidadExtraida] = field(default_factory=list)
     promos:    list[EntidadExtraida] = field(default_factory=list)
     descartes: list[EntidadExtraida] = field(default_factory=list)
 
+    # Contar el total de entidades clasificadas --> debuggin
     @property
     def total_entidades(self):
         return len(self.productos) + len(self.precios) + len(self.promos)
 
+    # Resumen legible para logging
     def resumen(self) -> str:
         return (f"Página: {self.imagen} | "
                 f"Productos: {len(self.productos)} | "
@@ -54,22 +53,21 @@ class ResultadoPagina:
                 f"Descartes: {len(self.descartes)}")
 
 
-# ─── Extractor principal ──────────────────────────────────────────────────────
+# --------------- Extractor principal ---------------
 
+# La clase RegexExtractor aplica las reglas de clasificación a cada bloque de texto OCR
 class RegexExtractor:
     """
-    Clasifica bloques de texto OCR usando patrones Regex.
-
-    Estrategia:
+    Fluojo de clasificación:
       1. Limpiar texto OCR (corregir errores comunes del OCR)
       2. Intentar clasificar como PRECIO
       3. Intentar clasificar como PROMO
-      4. Si pasa filtros mínimos → PRODUCTO
-      5. Si no → DESCARTE
+      4. Si pasa filtros mínimos --> PRODUCTO
+      5. Si no --> DESCARTE
     """
 
-    # ── Patrones de PRECIO ────────────────────────────────────────────────────
-    # Captura: $18.50 / $1,568.00 / $2,498 / 18.50 MXN
+    # --------------- Patrones de PRECIO ---------------
+    # Captura --> $18.50 / $1,568.00 / $2,498 / 18.50 MXN
     PATRON_PRECIO = re.compile(
         r"""
         (?:^\$|(?<!\w)\$)           # $ al inicio o precedido de no-palabra
@@ -78,10 +76,9 @@ class RegexExtractor:
         (?:[,\.]\d{2})?)           # centavos opcionales
         (?:\s*(?:MXN|pesos?))?     # moneda opcional
         """,
-        re.VERBOSE | re.IGNORECASE
-    )
+        re.VERBOSE | re.IGNORECASE) # permite comentarios y espacios en el regex + ignora mayúsculas
 
-    # ── Patrones de PROMOCIÓN ─────────────────────────────────────────────────
+    # --------------- Patrones de PROMOCIÓN ---------------
     PATRONES_PROMO = [
         # 2x$35 / 3x$100 / 2x1
         re.compile(r"\d+\s*[xX×]\s*(?:\$\s*)?\d+", re.IGNORECASE),
@@ -98,7 +95,7 @@ class RegexExtractor:
         re.compile(r"\b(?:hasta|descuento\s+de)\s+\d+\s*%", re.IGNORECASE),
     ]
 
-    # ── Patrones de DESCARTE ──────────────────────────────────────────────────
+    # --------------- Patrones de DESCARTE ---------------
     PATRONES_DESCARTE = [
         # Solo 1-2 caracteres
         re.compile(r"^.{1,2}$"),
@@ -115,9 +112,13 @@ class RegexExtractor:
         # Nombres de marcas/logos en pie de página
         re.compile(r"^(?:lacomer|fresko|walmart|soriana|chedraui)(?:\.com(?:\.mx)?)?$",
                    re.IGNORECASE),
+        # Metadata de tallas suelta — no es nombre de producto
+        re.compile(r"^tallas?:\s*[A-Za-z0-9]{2,}", re.IGNORECASE),
+        # Especificaciones técnicas sueltas
+        re.compile(r"^\d+\s*(?:gb|mb|ghz|mhz|watts?|w\b|mpx|pulgadas)", re.IGNORECASE),
     ]
 
-    # ── Palabras clave de productos ───────────────────────────────────────────
+    # --------------- Palabras clave de productos ---------------
     # Si el texto contiene estas palabras, probablemente es un producto
     KEYWORDS_PRODUCTO = re.compile(
         r"\b(?:lampara|l[aá]mpara|gabinete|carro|carrito|pintura|sellador|"
@@ -129,36 +130,32 @@ class RegexExtractor:
         re.IGNORECASE
     )
 
-    # ── Correcciones comunes de OCR ───────────────────────────────────────────
-    # EasyOCR confunde ciertos caracteres en folletos con diseño elaborado
+    # --------------- Correcciones comunes de OCR ---------------
+    # corecciones caracteres para mejorar la calidad del texto antes de clasificar 
     CORRECCIONES_OCR = [
-        (re.compile(r"@"),           "o"),    # @ → o (confusión muy común)
-        (re.compile(r"(?<!\w)0(?=\d{2,})"), "o"),  # 0 al inicio de palabra → o
-        (re.compile(r"\$\s+"),       "$"),    # $ separado del número
+        (re.compile(r"@"),           "o"),          # @ → o (confusión muy común)
+        (re.compile(r"(?<!\w)0(?=\d{2,})"), "o"),   # 0 al inicio de palabra → o
+        (re.compile(r"\$\s+"),       "$"),          # $ separado del número
         (re.compile(r"(\d),(\d{3})(?!\d)"), r"\1,\2"),  # normalizar miles
-        (re.compile(r"(\d)\.(\d{3})(?!\d)"), r"\1,\2"),  # punto de miles → coma
-        (re.compile(r"\s{2,}"),      " "),    # espacios múltiples
-        (re.compile(r"[|¡!]{2,}"),   ""),     # signos repetidos (ruido)
+        (re.compile(r"(\d)\.(\d{3})(?!\d)"), r"\1,\2"), # punto de miles → coma
+        (re.compile(r"\s{2,}"),      " "),          # espacios múltiples
+        (re.compile(r"[|¡!]{2,}"),   ""),           # signos repetidos (ruido)
     ]
 
-    # ── Umbral mínimo de confianza OCR para considerar un bloque ─────────────
+    # --------------- Umbral mínimo de confianza OCR para considerar un bloque ---------------
     CONFIANZA_MINIMA = 0.15
 
+    # Constructor de confianza
     def __init__(self, confianza_minima: float = None):
         self.confianza_minima = confianza_minima or self.CONFIANZA_MINIMA
 
-    # ─── Método principal ─────────────────────────────────────────────────────
+    # --------------- Método principal ---------------
 
+    # Procesa una página completa del folleto (OCR) y clasifica cada bloque
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
-        """
-        Procesa todos los bloques OCR de una página y clasifica cada uno.
-
-        Args:
-            datos_pagina: Dict con keys 'imagen' y 'bloques' (output del OCREngine).
-
-        Returns:
-            ResultadoPagina con entidades clasificadas.
-        """
+        # datos_pagina: Dict con keys 'imagen' y 'bloques' (output del OCREngine).
+        
+        # Cada bloque tiene 'texto', 'confianza', y opcionalmente 'bbox' (coordenadas).
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
 
         for bloque in datos_pagina["bloques"]:
@@ -189,6 +186,7 @@ class RegexExtractor:
             else:
                 resultado.descartes.append(entidad)
 
+        # ResultadoPagina con entidades clasificadas
         return resultado
 
     def procesar_json_ocr(self, datos_ocr: list[dict]) -> list[ResultadoPagina]:
@@ -208,7 +206,7 @@ class RegexExtractor:
             logger.info(r.resumen())
         return resultados
 
-    # ─── Clasificador ─────────────────────────────────────────────────────────
+    # --------------- Clasificador ---------------
 
     def _clasificar(
         self,
@@ -236,16 +234,23 @@ class RegexExtractor:
             return EntidadExtraida("PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 4. ¿Tiene indicios de ser producto?
+        # 4. ¿Es producto confirmado por catálogo?
+        en_catalogo, categoria = buscar_categoria(texto)
+        if en_catalogo:
+            return EntidadExtraida("PRODUCTO", texto_raw, texto,
+                                   confianza=confianza, bbox=bbox,
+                                   categoria=categoria)
+
+        # 5. ¿Tiene indicios de ser producto por heurísticas?
         if self._es_probable_producto(texto):
             return EntidadExtraida("PRODUCTO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 5. Por defecto → descarte (texto sin clasificar)
+        # 6. Por defecto → descarte
         return EntidadExtraida("DESCARTE", texto_raw, texto,
                                confianza=confianza, bbox=bbox)
 
-    # ─── Reglas individuales ──────────────────────────────────────────────────
+    # --------------- Reglas individuales ---------------
 
     def _limpiar_texto(self, texto: str) -> str:
         """Aplica correcciones comunes de errores de OCR."""
@@ -320,7 +325,7 @@ class RegexExtractor:
 
         return False
 
-    # ─── Utilidades ───────────────────────────────────────────────────────────
+    # --------------- Utilidades ---------------
 
     def imprimir_resultado(self, resultado: ResultadoPagina):
         """Imprime el resultado clasificado de forma legible."""
@@ -331,7 +336,8 @@ class RegexExtractor:
         if resultado.productos:
             print(f"\n  🏷️  PRODUCTOS ({len(resultado.productos)}):")
             for e in resultado.productos:
-                print(f"      {e.texto_norm[:55]:<55} [{e.confianza:.0%}]")
+                cat = f" [{e.categoria}]" if e.categoria else ""
+                print(f"      {e.texto_norm[:50]:<50} [{e.confianza:.0%}]{cat}")
 
         if resultado.precios:
             print(f"\n  💰 PRECIOS ({len(resultado.precios)}):")
