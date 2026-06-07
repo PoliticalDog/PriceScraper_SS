@@ -1,20 +1,24 @@
 """
 probar_sqlite.py
-Módulo de prueba — Creación y carga de SQLite desde nlp_resultado.json reales.
-PriceScraper MX
+PriceScraper MX — Carga y visualización experimental de SQLite
 
-Lee los nlp_resultado.json de data/processed/ y los carga en data/pricescraper.db
-usando los mismos modelos y lógica que el Transformer principal.
+Fusión de probar_sqlite.py + view_sqllite.py adaptados al nuevo schema
+(db_builder.py v2: tiendas, folletos, paginas, extracciones, eventos_promo).
 
-Uso: python probar_sqlite.py
+EXPERIMENTAL — Para pruebas de carga y verificación visual.
+No es el ETL definitivo: no usa el normalizador todavía.
 
 Menú:
   1 → Crear BD y tablas
   2 → Cargar TODOS los nlp_resultado.json de data/processed/
-  3 → Cargar carpeta específica de data/processed/
-  4 → Vista rápida (verificar datos cargados)
-  5 → Limpiar todos los datos (conserva esquema)
+  3 → Cargar carpeta específica
+  4 → Vista rápida — precios con contexto
+  5 → Vista detallada — todas las extracciones por tipo
+  6 → Vista eventos promo
+  7 → Limpiar todos los datos (conserva esquema)
   0 → Salir
+
+Uso: python probar_sqlite.py
 """
 
 import sys
@@ -22,134 +26,77 @@ import re
 import json
 import logging
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 Path("data").mkdir(exist_ok=True)
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
     handlers=[logging.StreamHandler()],
 )
-logger = logging.getLogger("sqlite_test")
+logger = logging.getLogger("sqlite_exp")
 
 # ── Dependencias ──────────────────────────────────────────────────────────────
 try:
     import pandas as pd
-    from sqlalchemy import (
-        create_engine, text,
-        Column, Integer, String, Float, Date, DateTime,
-        ForeignKey, UniqueConstraint,
-    )
-    from sqlalchemy.orm import declarative_base, Session, relationship
-except ImportError as e:
-    logger.error(f"Dependencia faltante: {e}")
-    logger.error("Instala con: pip install sqlalchemy pandas")
+except ImportError:
+    logger.error("Falta pandas: pip install pandas")
     sys.exit(1)
 
-# ── Config ─────────────────────────────────────────────────────────────────────
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+except ImportError:
+    logger.error("Falta sqlalchemy: pip install sqlalchemy")
+    sys.exit(1)
+
+# ── Importar modelos del db_builder ──────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).parent))
+try:
+    from etl.db_builder import (
+        get_engine, crear_tablas, verificar_tablas,
+        Tienda, Folleto, Pagina, Extraccion, EventoPromo,
+        TIPOS_EXTRACCION, FUENTES,
+    )
+except ImportError:
+    logger.error("No se encontró etl/db_builder.py")
+    logger.error("Asegúrate de que el archivo existe en etl/db_builder.py")
+    sys.exit(1)
+
+# ── Config ────────────────────────────────────────────────────────────────────
 DB_PATH        = Path("data/pricescraper.db")
-DB_URL         = f"sqlite:///{DB_PATH}"
 DATA_PROCESSED = Path("data/processed")
 
-Base = declarative_base()
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Modelos (espejo exacto de etl/transformer.py)
-# ══════════════════════════════════════════════════════════════════════════════
-
-class Tienda(Base):
-    __tablename__ = "tiendas"
-    id     = Column(Integer, primary_key=True, autoincrement=True)
-    nombre = Column(String(100), nullable=False)
-    slug   = Column(String(100), nullable=False)
-    fuente = Column(String(50),  nullable=False)
-    __table_args__ = (
-        UniqueConstraint("slug", "fuente", name="uq_tienda_slug_fuente"),
-    )
-    folletos = relationship("Folleto", back_populates="tienda")
-
-
-class Folleto(Base):
-    __tablename__ = "folletos"
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    tienda_id         = Column(Integer, ForeignKey("tiendas.id"), nullable=False)
-    folleto_id_fuente = Column(String(50),  nullable=False)
-    titulo            = Column(String(255))
-    fecha_inicio      = Column(Date)
-    fecha_fin         = Column(Date)
-    url_folleto       = Column(String(500))
-    fecha_scraping    = Column(DateTime, default=datetime.utcnow)
-    __table_args__ = (
-        UniqueConstraint("folleto_id_fuente", "tienda_id",
-                         name="uq_folleto_fuente_tienda"),
-    )
-    tienda  = relationship("Tienda",  back_populates="folletos")
-    paginas = relationship("Pagina",  back_populates="folleto")
-    precios = relationship("Precio",  back_populates="folleto")
-
-
-class Pagina(Base):
-    __tablename__ = "paginas"
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    folleto_id     = Column(Integer, ForeignKey("folletos.id"), nullable=False)
-    numero_pagina  = Column(Integer, nullable=False)
-    nombre_archivo = Column(String(100))
-    ruta_imagen    = Column(String(500))
-    __table_args__ = (
-        UniqueConstraint("folleto_id", "numero_pagina", name="uq_pagina_folleto"),
-    )
-    folleto = relationship("Folleto", back_populates="paginas")
-    precios = relationship("Precio",  back_populates="pagina")
-
-
-class Precio(Base):
-    __tablename__ = "precios"
-    id               = Column(Integer, primary_key=True, autoincrement=True)
-    folleto_id       = Column(Integer, ForeignKey("folletos.id"), nullable=False)
-    pagina_id        = Column(Integer, ForeignKey("paginas.id"), nullable=True)
-    texto_producto   = Column(String(300))
-    precio_actual    = Column(Float, nullable=False)
-    precio_anterior  = Column(Float, nullable=True)
-    texto_ocr_precio = Column(String(100))
-    confianza_ocr    = Column(Float)
-    bbox_x           = Column(Integer)
-    bbox_y           = Column(Integer)
-    bbox_ancho       = Column(Integer)
-    bbox_alto        = Column(Integer)
-    fecha_registro   = Column(DateTime, default=datetime.utcnow)
-    folleto = relationship("Folleto", back_populates="precios")
-    pagina  = relationship("Pagina",  back_populates="precios")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Motor de carga
-# ══════════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+# Cargador SQLite experimental
+# ─────────────────────────────────────────────────────────────────────────────
 
 class CargadorSQLite:
-    """Lee nlp_resultado.json y los carga en SQLite."""
+    """
+    Lee nlp_resultado.json y carga en SQLite usando los modelos de db_builder.
+
+    Lógica de asociación bbox (heredada del probar_sqlite.py original):
+      - producto → precio: el producto más cercano por encima del precio (eje Y)
+      - precio → precio_anterior: por distancia euclidiana < 300px
+    """
 
     def __init__(self):
         self.engine = None
 
-    # ── Conexión / DDL ────────────────────────────────────────────────────────
+    # ── Init ──────────────────────────────────────────────────────────────────
 
     def crear_bd(self) -> bool:
-        """Crea el engine y todas las tablas."""
         try:
-            self.engine = create_engine(DB_URL, echo=False)
-            Base.metadata.create_all(self.engine)
-            logger.info(f"[BD] ✅ BD lista en: {DB_PATH}")
-            for t in ["tiendas", "folletos", "paginas", "precios"]:
-                logger.info(f"       → tabla '{t}' verificada")
+            self.engine = get_engine(DB_PATH)
+            crear_tablas(self.engine)
             return True
         except Exception as e:
-            logger.error(f"[BD] Error creando BD: {e}")
+            logger.error(f"[BD] Error: {e}")
             return False
 
     def _check(self) -> bool:
@@ -158,161 +105,251 @@ class CargadorSQLite:
             return False
         return True
 
-    # ── Descubrimiento de archivos ────────────────────────────────────────────
+    # ── Descubrimiento ────────────────────────────────────────────────────────
 
     def listar_nlp(self, raiz: Path = DATA_PROCESSED) -> list[Path]:
-        """Retorna todos los nlp_resultado.json bajo la carpeta dada."""
         return sorted(raiz.rglob("nlp_resultado.json"))
 
     def listar_subcarpetas(self) -> list[Path]:
-        """Retorna las subcarpetas de primer nivel en data/processed/."""
         if not DATA_PROCESSED.exists():
             return []
         return sorted([p for p in DATA_PROCESSED.iterdir() if p.is_dir()])
 
-    # ── ETL ───────────────────────────────────────────────────────────────────
+    # ── Carga principal ───────────────────────────────────────────────────────
 
     def cargar_archivo(self, ruta_nlp: Path) -> dict:
         """
-        Carga un nlp_resultado.json completo.
-        Retorna dict con resumen de lo insertado.
+        Carga un nlp_resultado.json completo en la BD.
+
+        Genera extracciones por cada entidad NLP (PRODUCTO, PRECIO,
+        PRECIO_ANTERIOR, AHORRO, PROMO, ATRIBUTO, EVENTO_PROMO).
+        Asocia producto→precio por bbox para rellenar valor_anterior
+        en la extracción de tipo PRECIO.
         """
         with open(ruta_nlp, encoding="utf-8") as f:
             data = json.load(f)
 
-        fuente     = data.get("fuente", "")
-        slug       = data.get("tienda", "")
+        fuente     = data.get("fuente", "tiendeo")
+        slug_raw   = data.get("tienda", "")
         folleto_id = data.get("folleto_id", "")
 
-        with Session(self.engine) as session:
-            tienda  = self._upsert_tienda(session, slug, fuente)
-            folleto = self._upsert_folleto(session, tienda, folleto_id)
+        contadores = {t: 0 for t in TIPOS_EXTRACCION}
+        contadores["eventos"] = 0
 
-            total_precios  = 0
-            total_sin_prod = 0
+        with Session(self.engine) as session:
+            tienda  = self._upsert_tienda(session, slug_raw, fuente)
+            folleto = self._upsert_folleto(session, tienda, folleto_id, fuente, data)
 
             for pag_data in data.get("paginas", []):
-                nombre_archivo = pag_data.get("pagina", "")
-                num_pagina     = self._num_pagina(nombre_archivo)
-                pagina         = self._upsert_pagina(session, folleto, num_pagina,
-                                                     nombre_archivo, ruta_nlp)
+                nombre_img = pag_data.get("pagina", "")
+                num_pag    = self._num_pagina(nombre_img)
 
-                precios_lista  = pag_data.get("precios", [])
-                productos_lista = pag_data.get("productos", [])
-                precios_ant    = pag_data.get("precios_anteriores", [])
+                # Métricas NLP de la página
+                pagina = self._upsert_pagina(
+                    session, folleto, num_pag, nombre_img, pag_data
+                )
 
-                for precio in precios_lista:
-                    valor = precio.get("valor", 0.0)
-                    if not valor or valor <= 0:
-                        continue
+                productos    = pag_data.get("productos", [])
+                precios      = pag_data.get("precios", [])
+                precios_ant  = pag_data.get("precios_anteriores", [])
+                ahorros      = pag_data.get("ahorros", [])
+                promos       = pag_data.get("promos", [])
+                eventos      = pag_data.get("eventos_promo", [])
+                atributos    = pag_data.get("atributos", [])
 
-                    texto_prod  = self._asociar_producto(precio, productos_lista)
-                    precio_ant  = self._precio_anterior(precio, precios_ant)
-                    bbox        = precio.get("bbox", {})
-                    texto_norm  = self._normalizar(texto_prod)
-
-                    session.add(Precio(
-                        folleto_id       = folleto.id,
-                        pagina_id        = pagina.id,
-                        texto_producto   = texto_norm,
-                        precio_actual    = valor,
-                        precio_anterior  = precio_ant,
-                        texto_ocr_precio = precio.get("texto", ""),
-                        confianza_ocr    = precio.get("confianza", 0.0),
-                        bbox_x           = bbox.get("x", 0),
-                        bbox_y           = bbox.get("y", 0),
-                        bbox_ancho       = bbox.get("ancho", 0),
-                        bbox_alto        = bbox.get("alto", 0),
+                # Insertar productos
+                for p in productos:
+                    session.add(self._hacer_extraccion(
+                        pagina, folleto, tienda, "PRODUCTO", p
                     ))
-                    total_precios += 1
-                    if not texto_norm:
-                        total_sin_prod += 1
+                    contadores["PRODUCTO"] += 1
+
+                # Insertar precios — con asociación bbox a precio_anterior
+                for p in precios:
+                    valor_ant = self._precio_anterior_bbox(p, precios_ant)
+                    ext = self._hacer_extraccion(
+                        pagina, folleto, tienda, "PRECIO", p
+                    )
+                    ext.valor_anterior = valor_ant
+                    session.add(ext)
+                    contadores["PRECIO"] += 1
+
+                # Insertar precios anteriores
+                for p in precios_ant:
+                    session.add(self._hacer_extraccion(
+                        pagina, folleto, tienda, "PRECIO_ANTERIOR", p
+                    ))
+                    contadores["PRECIO_ANTERIOR"] += 1
+
+                # Insertar ahorros
+                for p in ahorros:
+                    session.add(self._hacer_extraccion(
+                        pagina, folleto, tienda, "AHORRO", p
+                    ))
+                    contadores["AHORRO"] += 1
+
+                # Insertar promos
+                for p in promos:
+                    session.add(self._hacer_extraccion(
+                        pagina, folleto, tienda, "PROMO", p
+                    ))
+                    contadores["PROMO"] += 1
+
+                # Insertar atributos
+                for p in atributos:
+                    session.add(self._hacer_extraccion(
+                        pagina, folleto, tienda, "ATRIBUTO", p
+                    ))
+                    contadores["ATRIBUTO"] += 1
+
+                # Insertar eventos promo como EventoPromo
+                for ev in eventos:
+                    nombre_ev = self._normalizar_evento(ev.get("texto", ""))
+                    existing = session.query(EventoPromo).filter_by(
+                        folleto_id=folleto.id, nombre_evento=nombre_ev
+                    ).first()
+                    if not existing:
+                        session.add(EventoPromo(
+                            folleto_id    = folleto.id,
+                            tienda_id     = tienda.id,
+                            nombre_evento = nombre_ev,
+                            texto_raw     = ev.get("texto", ""),
+                            fecha_inicio  = folleto.fecha_inicio,
+                            fecha_fin     = folleto.fecha_fin,
+                        ))
+                        contadores["eventos"] += 1
 
             session.commit()
 
         return {
-            "fuente":           fuente,
-            "tienda":           slug,
-            "folleto_id":       folleto_id,
-            "precios_cargados": total_precios,
-            "sin_producto":     total_sin_prod,
+            "fuente":     fuente,
+            "tienda":     slug_raw,
+            "folleto_id": folleto_id,
+            "contadores": contadores,
         }
 
     def cargar_lote(self, archivos: list[Path]) -> dict:
-        """Carga una lista de archivos nlp y retorna resumen global."""
-        ok = err = total_p = 0
+        totales = {t: 0 for t in TIPOS_EXTRACCION}
+        totales["eventos"] = 0
+        ok = err = 0
+
         for i, archivo in enumerate(archivos, 1):
-            ruta_rel = archivo.relative_to(DATA_PROCESSED) \
-                       if DATA_PROCESSED in archivo.parents else archivo
+            try:
+                ruta_rel = archivo.relative_to(DATA_PROCESSED) \
+                           if DATA_PROCESSED in archivo.parents else archivo
+            except ValueError:
+                ruta_rel = archivo
+
             logger.info(f"[{i}/{len(archivos)}] {ruta_rel}")
             try:
                 r = self.cargar_archivo(archivo)
-                ok      += 1
-                total_p += r["precios_cargados"]
-                logger.info(f"  ✅ {r['precios_cargados']} precios  "
-                             f"({r['sin_producto']} sin producto)")
+                ok += 1
+                c = r["contadores"]
+                for k, v in c.items():
+                    totales[k] = totales.get(k, 0) + v
+                logger.info(
+                    f"  ✅ prod:{c['PRODUCTO']} prec:{c['PRECIO']} "
+                    f"pant:{c['PRECIO_ANTERIOR']} ahor:{c['AHORRO']} "
+                    f"prmo:{c['PROMO']} evnt:{c['eventos']}"
+                )
             except Exception as e:
                 logger.error(f"  ❌ Error: {e}")
                 err += 1
 
-        return {"cargados": ok, "errores": err, "total_precios": total_p}
+        return {"cargados": ok, "errores": err, "totales": totales}
 
     # ── Upserts ───────────────────────────────────────────────────────────────
 
-    def _upsert_tienda(self, session, slug, fuente) -> Tienda:
-        t = session.query(Tienda).filter_by(slug=slug, fuente=fuente).first()
+    def _upsert_tienda(self, session, slug_raw: str, fuente: str) -> Tienda:
+        # Corrección conocida: soriana aparece como 'walmart' en el campo tienda
+        slug = slug_raw.strip().lower().replace(" ", "_").replace("-", "_")
+        t = session.query(Tienda).filter_by(slug=slug).first()
         if not t:
-            t = Tienda(nombre=slug.replace("_", " ").title(),
-                       slug=slug, fuente=fuente)
+            nombre = slug_raw.replace("_", " ").title()
+            t = Tienda(nombre=nombre, slug=slug,
+                       fuente_slug=slug_raw, activa=True)
             session.add(t)
             session.flush()
-            logger.info(f"  Nueva tienda: {t.nombre} ({fuente})")
+            logger.info(f"  Nueva tienda: '{t.nombre}'")
         return t
 
-    def _upsert_folleto(self, session, tienda, folleto_id) -> Folleto:
+    def _upsert_folleto(self, session, tienda, folleto_id,
+                        fuente, data) -> Folleto:
         f = session.query(Folleto).filter_by(
-            tienda_id=tienda.id, folleto_id_fuente=folleto_id
+            fuente=fuente, folleto_id_fuente=folleto_id
         ).first()
         if not f:
-            f = Folleto(tienda_id=tienda.id, folleto_id_fuente=folleto_id)
+            fuente_val = fuente if fuente in FUENTES else "tiendeo"
+            f = Folleto(
+                tienda_id         = tienda.id,
+                folleto_id_fuente = folleto_id,
+                fuente            = fuente_val,
+                total_paginas     = data.get("total_paginas", 0),
+                perfil_ocr        = data.get("perfil_imagen", "color_normal"),
+                motor_ocr         = data.get("motor_ocr", "easyocr"),
+                estado            = "done",
+                scrapeado_at      = datetime.utcnow(),
+            )
             session.add(f)
             session.flush()
-            logger.info(f"  Nuevo folleto: {folleto_id}")
+            logger.info(f"  Nuevo folleto: {fuente}:{folleto_id}")
         return f
 
-    def _upsert_pagina(self, session, folleto, num, nombre, ruta_nlp) -> Pagina:
+    def _upsert_pagina(self, session, folleto, num_pag,
+                       nombre_img, pag_data) -> Pagina:
         p = session.query(Pagina).filter_by(
-            folleto_id=folleto.id, numero_pagina=num
+            folleto_id=folleto.id, numero_pagina=num_pag
         ).first()
         if not p:
-            ruta_img = str(ruta_nlp.parent / nombre)
-            p = Pagina(folleto_id=folleto.id, numero_pagina=num,
-                       nombre_archivo=nombre, ruta_imagen=ruta_img)
+            r = pag_data.get("resumen_pagina", {})
+            p = Pagina(
+                folleto_id        = folleto.id,
+                numero_pagina     = num_pag,
+                archivo_imagen    = nombre_img,
+                total_productos   = len(pag_data.get("productos", [])),
+                total_precios     = len(pag_data.get("precios", [])),
+                total_promos      = len(pag_data.get("promos", [])),
+                total_atributos   = len(pag_data.get("atributos", [])),
+                procesado_at      = datetime.utcnow(),
+            )
             session.add(p)
             session.flush()
         return p
 
-    # ── Lógica producto / precio anterior ─────────────────────────────────────
+    # ── Construcción de extracciones ──────────────────────────────────────────
 
-    def _asociar_producto(self, precio: dict, productos: list) -> str:
-        if not productos:
-            return ""
-        px, py = precio.get("bbox", {}).get("x", 0), precio.get("bbox", {}).get("y", 0)
-        mejor, menor_dist = "", float("inf")
-        for prod in productos:
-            b = prod.get("bbox", {})
-            if abs(b.get("x", 0) - px) > 400:
-                continue
-            dy = py - b.get("y", 0)
-            if 0 < dy < menor_dist:
-                menor_dist = dy
-                mejor = prod.get("texto", "")
-        return mejor
+    def _hacer_extraccion(self, pagina, folleto, tienda,
+                          tipo: str, bloque: dict) -> Extraccion:
+        bbox  = bloque.get("bbox", {})
+        texto = bloque.get("texto", bloque.get("texto_norm", ""))
+        return Extraccion(
+            pagina_id     = pagina.id,
+            folleto_id    = folleto.id,
+            tienda_id     = tienda.id,
+            tipo          = tipo,
+            texto_raw     = texto,
+            texto_norm    = self._limpiar(texto),
+            categoria_nlp = bloque.get("categoria", ""),
+            valor         = bloque.get("valor"),
+            confianza_ocr = bloque.get("confianza"),
+            bbox_x        = bbox.get("x"),
+            bbox_y        = bbox.get("y"),
+            bbox_ancho    = bbox.get("ancho"),
+            bbox_alto     = bbox.get("alto"),
+        )
 
-    def _precio_anterior(self, precio: dict, precios_ant: list) -> Optional[float]:
+    # ── Asociación bbox precio → precio_anterior ──────────────────────────────
+
+    def _precio_anterior_bbox(self, precio: dict,
+                               precios_ant: list) -> Optional[float]:
+        """
+        Busca el precio anterior más cercano espacialmente al precio actual.
+        Distancia máxima: 300px. Heredado del módulo original.
+        """
         if not precios_ant:
             return None
-        px, py = precio.get("bbox", {}).get("x", 0), precio.get("bbox", {}).get("y", 0)
+        px = precio.get("bbox", {}).get("x", 0)
+        py = precio.get("bbox", {}).get("y", 0)
         mejor_val, menor_dist = None, float("inf")
         for pa in precios_ant:
             b  = pa.get("bbox", {})
@@ -327,7 +364,7 @@ class CargadorSQLite:
     # ── Utilidades ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _normalizar(texto: str) -> str:
+    def _limpiar(texto: str) -> str:
         if not texto:
             return ""
         texto = re.sub(r"[%@€£¥°©®™]", "", texto)
@@ -339,118 +376,134 @@ class CargadorSQLite:
         m = re.search(r"(\d+)", nombre)
         return int(m.group(1)) if m else 0
 
-    # ── Resumen BD ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _normalizar_evento(texto: str) -> str:
+        """Convierte texto OCR de evento a slug normalizado."""
+        t = texto.lower().strip()
+        t = re.sub(r"[^a-záéíóúñ\s]", "", t)
+        t = re.sub(r"\s+", "_", t.strip())
+        # Normalizar variantes OCR conocidas
+        if "julio" in t and ("regalad" in t or "regalo" in t):
+            return "julio_regalado"
+        if "hot" in t and "sale" in t:
+            return "hot_sale"
+        if "buen" in t and "fin" in t:
+            return "buen_fin"
+        return t[:100]
 
     def resumen(self) -> dict:
         if not self._check():
             return {}
-        with Session(self.engine) as s:
-            return {
-                "tiendas":  s.query(Tienda).count(),
-                "folletos": s.query(Folleto).count(),
-                "paginas":  s.query(Pagina).count(),
-                "precios":  s.query(Precio).count(),
-            }
-
-    # ── Limpiar datos ─────────────────────────────────────────────────────────
+        return verificar_tablas(self.engine)
 
     def limpiar(self):
         if not self._check():
             return
         with Session(self.engine) as s:
-            s.query(Precio).delete()
+            s.query(EventoPromo).delete()
+            s.query(Extraccion).delete()
             s.query(Pagina).delete()
             s.query(Folleto).delete()
             s.query(Tienda).delete()
             s.commit()
-        logger.info("[BD] 🧹 Todos los datos eliminados (esquema conservado).")
+        logger.info("[BD] 🧹 Datos eliminados (esquema conservado).")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Vista rápida (verificación de datos)
-# ══════════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
+# Vistas pandas
+# ─────────────────────────────────────────────────────────────────────────────
 
-def vista_rapida():
-    """Muestra los datos almacenados en SQLite — mismo query que el snippet de prueba."""
+def _con() -> Optional[sqlite3.Connection]:
     if not DB_PATH.exists():
         print(f"\n  ⚠️  No existe la BD en {DB_PATH}")
-        print("       Usa opción 1 para crearla y opción 2/3 para cargar datos.")
+        print("     Usa opción 1 para crearla.")
+        return None
+    return sqlite3.connect(DB_PATH)
+
+
+def vista_precios():
+    """Precios con contexto de tienda, folleto y vigencia — query central de BI."""
+    con = _con()
+    if not con:
         return
+    sep = "─" * 70
 
-    con = sqlite3.connect(DB_PATH)
-
-    # ── Tablas ────────────────────────────────────────────────────────────────
-    tablas = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table'", con)
-    sep = "─" * 65
-    print(f"\n{sep}")
-    print("  Tablas en la BD:")
-    print(f"{sep}")
-    print(tablas.to_string(index=False))
-
-    # ── Resumen por tabla ─────────────────────────────────────────────────────
-    print(f"\n{sep}")
-    print("  Conteo de registros:")
-    print(f"{sep}")
-    for tabla in ["tiendas", "folletos", "paginas", "precios"]:
+    # Resumen por tabla
+    print(f"\n{sep}\n  Registros en BD:\n{sep}")
+    for tabla in ["tiendas", "folletos", "paginas", "extracciones",
+                  "eventos_promo", "alertas"]:
         try:
-            n = pd.read_sql(f"SELECT COUNT(*) AS total FROM {tabla}", con).iloc[0, 0]
-            print(f"  {tabla:<12}: {n:>6} registros")
+            n = pd.read_sql(
+                f"SELECT COUNT(*) AS total FROM {tabla}", con
+            ).iloc[0, 0]
+            print(f"  {tabla:<18}: {n:>7,} registros")
         except Exception:
-            print(f"  {tabla:<12}: (tabla no encontrada)")
+            print(f"  {tabla:<18}: (no existe)")
 
-    # ── Vista de precios (mismo query del snippet de prueba) ──────────────────
-    print(f"\n{sep}")
-    print("  Precios cargados (últimos 20):")
-    print(f"{sep}")
+    # Precios con vigencia — vista principal para BI
+    print(f"\n{sep}\n  Precios con vigencia (últimos 25):\n{sep}")
     try:
         df = pd.read_sql("""
-            SELECT t.nombre        AS tienda,
-                   f.folleto_id_fuente,
-                   p.numero_pagina AS pagina,
-                   pr.texto_producto,
-                   pr.precio_actual,
-                   pr.precio_anterior,
-                   pr.texto_ocr_precio,
-                   pr.confianza_ocr
-            FROM precios pr
-            JOIN folletos f ON pr.folleto_id = f.id
-            JOIN tiendas  t ON f.tienda_id   = t.id
-            JOIN paginas  p ON pr.pagina_id  = p.id
-            ORDER BY pr.id
-            LIMIT 20
+            SELECT
+                t.nombre                    AS tienda,
+                f.folleto_id_fuente         AS folleto,
+                f.fecha_inicio,
+                f.fecha_fin,
+                p.numero_pagina             AS pag,
+                e.texto_norm                AS texto,
+                e.valor                     AS precio,
+                e.valor_anterior            AS antes,
+                ROUND(e.valor_anterior - e.valor, 2)
+                                            AS descuento,
+                e.confianza_ocr             AS conf
+            FROM extracciones e
+            JOIN tiendas  t ON t.id = e.tienda_id
+            JOIN folletos f ON f.id = e.folleto_id
+            JOIN paginas  p ON p.id = e.pagina_id
+            WHERE e.tipo = 'PRECIO'
+              AND e.valor IS NOT NULL
+            ORDER BY e.id DESC
+            LIMIT 25
         """, con)
 
         if df.empty:
-            print("  (sin precios cargados aún)")
+            print("  (sin precios cargados)")
         else:
             pd.set_option("display.max_columns", None)
             pd.set_option("display.width", 120)
-            pd.set_option("display.max_colwidth", 30)
+            pd.set_option("display.max_colwidth", 28)
             pd.set_option("display.float_format", lambda x: f"{x:.2f}")
             print(df.to_string(index=False))
-            total = pd.read_sql("SELECT COUNT(*) AS total FROM precios", con).iloc[0, 0]
-            if total > 20:
-                print(f"\n  ... ({total - 20} precios más en la BD)")
 
+        total = pd.read_sql(
+            "SELECT COUNT(*) FROM extracciones WHERE tipo='PRECIO'", con
+        ).iloc[0, 0]
+        if total > 25:
+            print(f"\n  ... ({total - 25:,} precios más)")
     except Exception as e:
-        print(f"  Error en la consulta: {e}")
+        print(f"  Error: {e}")
 
-    # ── Resumen por tienda ────────────────────────────────────────────────────
-    print(f"\n{sep}")
-    print("  Precios por tienda:")
-    print(f"{sep}")
+    # Resumen por tienda
+    print(f"\n{sep}\n  Resumen por tienda:\n{sep}")
     try:
         df_t = pd.read_sql("""
-            SELECT t.nombre,
-                   COUNT(pr.id)                       AS total_precios,
-                   ROUND(AVG(pr.precio_actual), 2)    AS precio_prom,
-                   MIN(pr.precio_actual)               AS precio_min,
-                   MAX(pr.precio_actual)               AS precio_max
-            FROM precios pr
-            JOIN folletos f ON pr.folleto_id = f.id
-            JOIN tiendas  t ON f.tienda_id   = t.id
+            SELECT
+                t.nombre,
+                COUNT(CASE WHEN e.tipo='PRECIO'          THEN 1 END) AS precios,
+                COUNT(CASE WHEN e.tipo='PRECIO_ANTERIOR' THEN 1 END) AS p_anterior,
+                COUNT(CASE WHEN e.tipo='AHORRO'          THEN 1 END) AS ahorros,
+                COUNT(CASE WHEN e.tipo='PRODUCTO'        THEN 1 END) AS productos,
+                COUNT(CASE WHEN e.tipo='PROMO'           THEN 1 END) AS promos,
+                ROUND(AVG(CASE WHEN e.tipo='PRECIO'
+                               THEN e.valor END), 2)     AS precio_prom,
+                MIN(CASE WHEN e.tipo='PRECIO'
+                         THEN e.valor END)               AS precio_min,
+                MAX(CASE WHEN e.tipo='PRECIO'
+                         THEN e.valor END)               AS precio_max
+            FROM extracciones e
+            JOIN tiendas t ON t.id = e.tienda_id
             GROUP BY t.nombre
-            ORDER BY total_precios DESC
+            ORDER BY precios DESC
         """, con)
         if df_t.empty:
             print("  (sin datos)")
@@ -463,21 +516,91 @@ def vista_rapida():
     con.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+def vista_extracciones():
+    """Todas las extracciones agrupadas por tipo — útil para verificar calidad NLP."""
+    con = _con()
+    if not con:
+        return
+    sep = "─" * 70
+
+    print(f"\n{sep}\n  Extracciones por tipo:\n{sep}")
+    try:
+        df = pd.read_sql("""
+            SELECT
+                e.tipo,
+                t.nombre                AS tienda,
+                e.texto_norm            AS texto,
+                e.valor,
+                e.valor_anterior,
+                e.confianza_ocr         AS conf,
+                p.numero_pagina         AS pag
+            FROM extracciones e
+            JOIN tiendas  t ON t.id = e.tienda_id
+            JOIN paginas  p ON p.id = e.pagina_id
+            ORDER BY e.tipo, t.nombre, p.numero_pagina
+            LIMIT 60
+        """, con)
+        if df.empty:
+            print("  (sin extracciones)")
+        else:
+            pd.set_option("display.max_colwidth", 35)
+            pd.set_option("display.width", 130)
+            print(df.to_string(index=False))
+    except Exception as e:
+        print(f"  Error: {e}")
+
+    print(f"{sep}\n")
+    con.close()
+
+
+def vista_eventos():
+    """Eventos promocionales detectados — para análisis temporal en BI."""
+    con = _con()
+    if not con:
+        return
+    sep = "─" * 70
+
+    print(f"\n{sep}\n  Eventos promocionales:\n{sep}")
+    try:
+        df = pd.read_sql("""
+            SELECT
+                t.nombre        AS tienda,
+                ev.nombre_evento,
+                ev.texto_raw,
+                ev.fecha_inicio,
+                ev.fecha_fin
+            FROM eventos_promo ev
+            JOIN tiendas t ON t.id = ev.tienda_id
+            ORDER BY ev.fecha_inicio DESC
+        """, con)
+        if df.empty:
+            print("  (sin eventos detectados)")
+        else:
+            print(df.to_string(index=False))
+    except Exception as e:
+        print(f"  Error: {e}")
+
+    print(f"{sep}\n")
+    con.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Menús
-# ══════════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def menu_principal() -> int:
     existe = "✅" if DB_PATH.exists() else "❌ no existe"
     print("\n" + "═" * 65)
-    print("   PriceScraper MX — Carga SQLite")
+    print("   PriceScraper MX — SQLite Experimental")
     print(f"   BD: {DB_PATH}  [{existe}]")
     print("═" * 65)
     print("   1 → Crear BD y tablas")
-    print("   2 → Cargar TODOS  los nlp_resultado.json")
-    print("   3 → Cargar carpeta específica de data/processed/")
-    print("   4 → Vista rápida  (verificar datos cargados)")
-    print("   5 → Limpiar todos los datos (conserva esquema)")
+    print("   2 → Cargar TODOS los nlp_resultado.json")
+    print("   3 → Cargar carpeta específica")
+    print("   4 → Vista rápida — precios con vigencia")
+    print("   5 → Vista detallada — extracciones por tipo")
+    print("   6 → Vista eventos promo")
+    print("   7 → Limpiar todos los datos (conserva esquema)")
     print("   0 → Salir")
     print("─" * 65)
     try:
@@ -486,10 +609,8 @@ def menu_principal() -> int:
         return -1
 
 
-def menu_carpeta_especifica(cargador: CargadorSQLite):
-    """Lista subcarpetas de data/processed/ para elegir cuál cargar."""
+def menu_carpeta(cargador: CargadorSQLite):
     subcarpetas = cargador.listar_subcarpetas()
-
     if not subcarpetas:
         logger.error(f"No se encontraron carpetas en {DATA_PROCESSED}")
         return
@@ -497,11 +618,9 @@ def menu_carpeta_especifica(cargador: CargadorSQLite):
     print(f"\n{'─'*65}")
     print("   Carpetas disponibles en data/processed/:")
     print(f"{'─'*65}")
-
-    for i, carpeta in enumerate(subcarpetas, 1):
-        archivos = list(carpeta.rglob("nlp_resultado.json"))
-        print(f"   {i:>3}. {carpeta.name:<35}  ({len(archivos)} archivos nlp)")
-
+    for i, c in enumerate(subcarpetas, 1):
+        n = len(list(c.rglob("nlp_resultado.json")))
+        print(f"   {i:>3}. {c.name:<38} ({n} archivos nlp)")
     print(f"{'─'*65}")
 
     try:
@@ -513,47 +632,49 @@ def menu_carpeta_especifica(cargador: CargadorSQLite):
         print("  ⚠️  Entrada inválida.")
         return
 
-    carpeta_elegida = subcarpetas[idx - 1]
-    archivos = cargador.listar_nlp(carpeta_elegida)
-
+    archivos = cargador.listar_nlp(subcarpetas[idx - 1])
     if not archivos:
-        logger.warning(f"No hay nlp_resultado.json en {carpeta_elegida}")
+        logger.warning("No hay nlp_resultado.json en esa carpeta.")
         return
 
-    print(f"\n  Se cargarán {len(archivos)} archivo(s) de: {carpeta_elegida.name}")
-
+    print(f"\n  Se cargarán {len(archivos)} archivo(s):")
     for a in archivos:
         print(f"    · {a.relative_to(DATA_PROCESSED)}")
 
     if input("\n  ¿Continuar? (s/n): ").strip().lower() != "s":
         return
 
-    resumen = cargador.cargar_lote(archivos)
-    _print_resumen_lote(resumen)
+    _print_resumen_lote(cargador.cargar_lote(archivos))
 
 
 def _print_resumen_lote(r: dict):
+    t = r.get("totales", {})
     print(f"\n{'─'*65}")
     print(f"  ✅ Lote completado")
-    print(f"     Folletos cargados : {r['cargados']}")
-    print(f"     Errores           : {r['errores']}")
-    print(f"     Precios insertados: {r['total_precios']}")
+    print(f"     Folletos cargados:    {r['cargados']}")
+    print(f"     Errores:              {r['errores']}")
+    print(f"     Productos:            {t.get('PRODUCTO', 0):>6}")
+    print(f"     Precios actuales:     {t.get('PRECIO', 0):>6}")
+    print(f"     Precios anteriores:   {t.get('PRECIO_ANTERIOR', 0):>6}")
+    print(f"     Ahorros:              {t.get('AHORRO', 0):>6}")
+    print(f"     Promos:               {t.get('PROMO', 0):>6}")
+    print(f"     Eventos promo:        {t.get('eventos', 0):>6}")
+    print(f"     Atributos:            {t.get('ATRIBUTO', 0):>6}")
     print(f"{'─'*65}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
-# ══════════════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     logger.info("=" * 65)
-    logger.info("PriceScraper MX — Carga SQLite")
-    logger.info(f"BD destino: {DB_PATH}")
+    logger.info("PriceScraper MX — SQLite Experimental")
+    logger.info(f"BD: {DB_PATH}")
     logger.info("=" * 65)
 
     cargador = CargadorSQLite()
 
-    # Auto-conectar si la BD ya existe
     if DB_PATH.exists():
         cargador.crear_bd()
 
@@ -565,55 +686,53 @@ def main():
             break
 
         elif opcion == 1:
-            print("\n── Crear BD y tablas " + "─" * 44)
             cargador.crear_bd()
             r = cargador.resumen()
             if r:
-                print(f"\n  Estado actual → "
-                      f"Tiendas:{r['tiendas']}  Folletos:{r['folletos']}  "
-                      f"Páginas:{r['paginas']}  Precios:{r['precios']}")
+                print(f"\n  Estado → " +
+                      " | ".join(f"{k}: {v}" for k, v in r.items()))
 
         elif opcion == 2:
-            print("\n── Cargar TODOS los nlp_resultado.json " + "─" * 26)
             if not cargador._check():
                 continue
             archivos = cargador.listar_nlp()
             if not archivos:
-                logger.warning(f"No se encontraron nlp_resultado.json en {DATA_PROCESSED}")
-                logger.warning("Ejecuta primero: python probar_nlp.py")
+                logger.warning(f"No hay nlp_resultado.json en {DATA_PROCESSED}")
                 continue
-
             print(f"\n  Archivos encontrados: {len(archivos)}")
             for a in archivos:
-                print(f"    · {a.relative_to(DATA_PROCESSED)}")
-
+                try:
+                    print(f"    · {a.relative_to(DATA_PROCESSED)}")
+                except ValueError:
+                    print(f"    · {a}")
             if input("\n  ¿Cargar todos? (s/n): ").strip().lower() != "s":
                 continue
-
-            resumen = cargador.cargar_lote(archivos)
-            _print_resumen_lote(resumen)
+            _print_resumen_lote(cargador.cargar_lote(archivos))
 
         elif opcion == 3:
-            print("\n── Cargar carpeta específica " + "─" * 36)
             if not cargador._check():
                 continue
-            menu_carpeta_especifica(cargador)
+            menu_carpeta(cargador)
 
         elif opcion == 4:
-            print("\n── Vista rápida " + "─" * 49)
-            vista_rapida()
+            vista_precios()
 
         elif opcion == 5:
-            print("\n── Limpiar datos " + "─" * 48)
+            vista_extracciones()
+
+        elif opcion == 6:
+            vista_eventos()
+
+        elif opcion == 7:
             r = cargador.resumen()
             if not r:
                 continue
-            print(f"  Se eliminarán: {r['precios']} precios, "
-                  f"{r['folletos']} folletos, {r['tiendas']} tiendas.")
+            total = sum(v or 0 for v in r.values())
+            print(f"  Se eliminarán {total:,} registros en total.")
             if input("  ¿Confirmar? (s/n): ").strip().lower() == "s":
                 cargador.limpiar()
             else:
-                print("  ⚠️  Cancelado.")
+                print("  Cancelado.")
 
         else:
             print("  ⚠️  Opción no válida.")

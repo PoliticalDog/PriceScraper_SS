@@ -150,6 +150,19 @@ class RegexExtractor:
         re.VERBOSE
     )
 
+    # ERROR #18 — "DE $5,490 A $X" (soriana rebajas)
+    # El primer precio es el anterior, el segundo es el actual.
+    # Se detecta ANTES del PATRON_PRECIO normal para no extraer solo el primer número.
+    PATRON_DE_A = re.compile(
+        r"""
+        ^DE\s+          # literal "DE " al inicio
+        \$?\s*
+        ([\d,\.]+)      # precio anterior
+        \s+A\b          # "A" como separador
+        """,
+        re.VERBOSE | re.IGNORECASE
+    )
+
     # --------------- PROMOCIONES ---------------
     PATRONES_PROMO = [
         re.compile(r"\d+\s*[xX×]\s*(?:\$\s*)?\d+", re.IGNORECASE),
@@ -162,6 +175,9 @@ class RegexExtractor:
         re.compile(r"mitad\s+de\s+precio", re.IGNORECASE),
         re.compile(r"segunda?\s+a\s+mitad", re.IGNORECASE),
         re.compile(r"compra\s+(?:uno|una)\s+y\s+ll[eé]vate", re.IGNORECASE),
+        # ERROR #17 — "1x$33.90 3x$67.80 Ahorras $X" (soriana paquetes)
+        # Detecta el patrón Nx$Y repetido — es mecánica de paquete, no precio simple
+        re.compile(r"\d+\s*[xX×]\s*[\$5s]\s*\d+[\.,]\d+\s+\d+\s*[xX×]", re.IGNORECASE),
     ]
 
     # --------------- EVENTOS PROMOCIONALES ---------------
@@ -292,6 +308,8 @@ class RegexExtractor:
             r"en\s+tienda|en\s+linea|en\s+l[ií]nea|"       # solos sin contexto
             r"enlinea|enl[ií]nea|"                          # fusiones OCR costco
             r"s[oó]loenlinea|s[oó]loen\s+tienda|s[oó]loen\s+l[ií]nea|"
+            r"s[oó]lo\s+enlinea|s[oó]lo\s+en\s+l[ií]nea|"  # con espacio: "SÓLO ENLINEA"
+            r"s[oó]lqen\s+l[ií]nea|s[oó]lqen\s+linea|"     # ERROR #19: Q→O por OCR
             r"h[ií]per|"
             r"rebajado|"
             r"sale|"
@@ -450,13 +468,27 @@ class RegexExtractor:
             return EntidadExtraida("DESCARTE", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 2. Precio anterior ("Antes: $X")
+        # 1b. Condiciones de compra — descartar antes de extraer precios
+        # "Válido en compras mayores a $238", "En compras desde $500"
+        if re.search(
+            r"\b(?:en\s+compras?|compras?\s+mayores?\s+a|v[aá]\w*\s+en\s+compras?)\b",
+            texto, re.IGNORECASE
+        ):
+            return EntidadExtraida("DESCARTE", texto_raw, texto,
+                                   confianza=confianza, bbox=bbox)
+
+        # 2. Precio anterior ("Antes: $X" / "DE $X A")
         valor_ant = self._extraer_precio_anterior(texto)
         if valor_ant is not None:
             return EntidadExtraida("PRECIO_ANTERIOR", texto_raw, texto,
                                    valor=valor_ant, confianza=confianza, bbox=bbox)
 
-        # 3. Ahorro ("Ahorras $X")
+        # 3. Ahorro ("Ahorras $X") — verificar ANTES que no sea paquete Nx$Y
+        # Si el texto contiene patrón de paquete (1x$33 3x$67), va como PROMO
+        if self._es_promo(texto):
+            return EntidadExtraida("PROMO", texto_raw, texto,
+                                   confianza=confianza, bbox=bbox)
+
         valor_ahorro = self._extraer_ahorro(texto)
         if valor_ahorro is not None:
             return EntidadExtraida("AHORRO", texto_raw, texto,
@@ -473,24 +505,19 @@ class RegexExtractor:
             return EntidadExtraida("PRECIO", texto_raw, texto,
                                    valor=precio_valor, confianza=confianza, bbox=bbox)
 
-        # 6. Promoción (2x1, 30% OFF, compra uno y llévate…)
-        if self._es_promo(texto):
-            return EntidadExtraida("PROMO", texto_raw, texto,
-                                   confianza=confianza, bbox=bbox)
-
-        # 7. Catálogo → PRODUCTO o ATRIBUTO
+        # 6. Catálogo → PRODUCTO o ATRIBUTO
         en_catalogo, categoria, es_atributo = buscar_categoria(texto)
         if en_catalogo:
             tipo = "ATRIBUTO" if es_atributo else "PRODUCTO"
             return EntidadExtraida(tipo, texto_raw, texto,
                                    confianza=confianza, bbox=bbox, categoria=categoria)
 
-        # 8. Heurística de producto
+        # 7. Heurística de producto
         if self._es_probable_producto(texto):
             return EntidadExtraida("PRODUCTO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 9. Por defecto
+        # 8. Por defecto
         return EntidadExtraida("DESCARTE", texto_raw, texto,
                                confianza=confianza, bbox=bbox)
 
@@ -513,10 +540,25 @@ class RegexExtractor:
         return False
 
     def _extraer_precio_anterior(self, texto: str) -> Optional[float]:
+        # Patrón estándar: "Antes: $X", "Antos; $X", "precio anterior $X"
         match = self.PATRON_PRECIO_ANTERIOR.search(texto)
-        if not match:
-            return None
-        return self._parsear_numero(match.group(1))
+        if match:
+            return self._parsear_numero(match.group(1))
+        # ERROR #18 — "DE $5,4900 A $3,990": el precio anterior es el primero
+        # OCR fusiona el punto decimal: "$5,490.00" → "$5,4900"
+        # Corrección: si hay coma de miles + 4 dígitos, los últimos 2 son centavos
+        m_de_a = self.PATRON_DE_A.match(texto)
+        if m_de_a:
+            num_str = m_de_a.group(1)
+            # Corregir fusión OCR: "$5,490.00" → OCR lee "$5,4900"
+            # coma + más de 3 dígitos → los últimos 2 son centavos
+            num_str = re.sub(
+                r"(\d+),(\d{4,})$",
+                lambda m: m.group(1) + "," + m.group(2)[:-2] + "." + m.group(2)[-2:],
+                num_str
+            )
+            return self._parsear_numero(num_str)
+        return None
 
     def _extraer_ahorro(self, texto: str) -> Optional[float]:
         match = self.PATRON_AHORRO.search(texto)
@@ -529,9 +571,12 @@ class RegexExtractor:
         if re.match(r"^\s*(?:ahorr[ao]s?|antes|antos|precio\s+anterior)", texto,
                     re.IGNORECASE):
             return None
-        # Ignorar condiciones de compra ("En compras desde $500")
-        if re.match(r"^\s*(?:en\s+compras?|en\s+toda|válido\s+en)", texto,
-                    re.IGNORECASE):
+        # Ignorar condiciones de compra ("En compras desde $500", "válido en compras mayores a $238")
+        if re.search(
+            r"(?:^|\b)(?:en\s+compras?|en\s+toda|v[aá][\"'o]?\w*\s+en|"
+            r"compras?\s+mayores?\s+a)",
+            texto, re.IGNORECASE
+        ):
             return None
         # Precio con $ OCR corrupto (s/8 + dígitos): fresko y similares
         m_ocr = self.PATRON_PRECIO_OCR_CORRUPTO.match(texto)
