@@ -159,17 +159,17 @@ def procesar_carpeta(
             extractor.imprimir_resultado(r)
 
     # ── Calcular métricas globales ────────────────────────────────
-    total_prod     = sum(len(r.productos)  for r in resultados_paginas)
-    total_prec     = sum(len(r.precios)    for r in resultados_paginas)
-    total_promo    = sum(len(r.promos)     for r in resultados_paginas)
-    total_attr     = sum(len(r.atributos)  for r in resultados_paginas)
-    # PRECIO_ANTERIOR y FINANCIERO no se generan aún como tipos independientes
-    # — reservados para iteraciones futuras del extractor
-    total_prec_ant   = 0
-    total_financiero = 0
-    total_desc  = sum(len(r.descartes) for r in resultados_paginas)
-    # La tasa útil incluye atributos — son información rescatada del descarte
-    total_util  = total_prod + total_prec + total_promo + total_attr
+    total_prod       = sum(len(r.productos)          for r in resultados_paginas)
+    total_prec       = sum(len(r.precios)            for r in resultados_paginas)
+    total_prec_ant   = sum(len(r.precios_anteriores) for r in resultados_paginas)
+    total_ahorros    = sum(len(r.ahorros)            for r in resultados_paginas)
+    total_promo      = sum(len(r.promos)             for r in resultados_paginas)
+    total_eventos    = sum(len(r.eventos_promo)      for r in resultados_paginas)
+    total_attr       = sum(len(r.atributos)          for r in resultados_paginas)
+    total_financiero = 0  # reservado
+    total_desc       = sum(len(r.descartes)          for r in resultados_paginas)
+    # Tasa útil: todo lo que no es descarte (incluye ahorros y eventos como info valiosa)
+    total_util  = total_prod + total_prec + total_prec_ant + total_ahorros + total_promo + total_eventos + total_attr
     total       = total_util + total_desc
     tasa_util   = total_util / total if total > 0 else 0
 
@@ -183,8 +183,10 @@ def procesar_carpeta(
             "total_productos":        total_prod,
             "total_precios":          total_prec,
             "total_precios_anterior": total_prec_ant,
+            "total_ahorros":          total_ahorros,
             "total_financiero":       total_financiero,
             "total_promos":           total_promo,
+            "total_eventos_promo":    total_eventos,
             "total_atributos":        total_attr,
             "total_descartes":        total_desc,
             "tasa_util":              round(tasa_util, 3),
@@ -193,12 +195,6 @@ def procesar_carpeta(
     }
 
     for r in resultados_paginas:
-        # Separar descartes por tipo para el JSON
-        precios_ant  = [e for e in r.descartes if e.tipo == "PRECIO_ANTERIOR"]
-        financieros  = [e for e in r.descartes if e.tipo == "FINANCIERO"]
-        descartes_puros = [e for e in r.descartes
-                           if e.tipo not in ("PRECIO_ANTERIOR", "FINANCIERO")]
-
         resultado["paginas"].append({
             "pagina":    r.imagen,
             "productos": [
@@ -214,15 +210,21 @@ def procesar_carpeta(
             "precios_anteriores": [
                 {"texto": e.texto_norm, "valor": e.valor,
                  "confianza": e.confianza, "bbox": e.bbox}
-                for e in precios_ant
+                for e in r.precios_anteriores
             ],
-            "financiero": [
-                {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
-                for e in financieros
+            "ahorros": [
+                {"texto": e.texto_norm, "valor": e.valor,
+                 "confianza": e.confianza, "bbox": e.bbox}
+                for e in r.ahorros
             ],
+            "financiero": [],  # reservado
             "promos": [
                 {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
                 for e in r.promos
+            ],
+            "eventos_promo": [
+                {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
+                for e in r.eventos_promo
             ],
             "atributos": [
                 {"texto": e.texto_norm, "confianza": e.confianza,
@@ -267,9 +269,11 @@ def modo_prueba(extractor: RegexExtractor):
         print(f"{'─'*55}")
         print(f"  🏷️  Productos:          {r['total_productos']}")
         print(f"  💰 Precios actuales:   {r['total_precios']}")
-        print(f"  🔖 Precios anteriores: {r['total_precios_anterior']}")
+        print(f"  📉 Precios anteriores: {r['total_precios_anterior']}")
+        print(f"  💸 Ahorros:            {r['total_ahorros']}")
         print(f"  🏦 Financiero:         {r['total_financiero']}")
         print(f"  🎯 Promociones:        {r['total_promos']}")
+        print(f"  📅 Eventos promo:      {r['total_eventos_promo']}")
         print(f"  🔧 Atributos:          {r['total_atributos']}")
         print(f"  🗑️  Descartes:          {r['total_descartes']}")
         print(f"  ✅ Tasa útil:          {r['tasa_util']:.0%}")

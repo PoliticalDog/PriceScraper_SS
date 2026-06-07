@@ -1,5 +1,15 @@
 # Modulo para extraer y clasificar entidades de texto OCR usando expresiones regulares.
-# Toma los bloques de texto del OCR y los clasifica en 4 categorías: PRECIO, PROMO, PRODUCTO, DESCARTE
+# Toma los bloques de texto del OCR y los clasifica en categorías:
+# PRECIO, PRECIO_ANTERIOR, AHORRO, PROMO, EVENTO_PROMO, PRODUCTO, ATRIBUTO, DESCARTE
+#
+# v3 — Cambios respecto a v2:
+#   - PRECIO_ANTERIOR: detecta "Antes: $X", "Antos; $X", "precio anterior $X"
+#   - AHORRO: detecta "Ahorras $X", "Ahorra $X", "Ahorras 5X" (OCR $ → 5)
+#   - EVENTO_PROMO: detecta campañas como "Julio Regalado", "Hot Sale", "Precio Bajo"
+#   - PATRON_PRECIO ampliado: prefijos DESDE/A sólo/desde:/a solo: + sufijo C/U
+#   - Corrección OCR: 'o' entre dígitos con coma → '0' ($16,o00 → $16,000)
+#   - PATRONES_DESCARTE ampliados: slogans cross-tienda, palabras sueltas de folleto
+#   - Marcas-logo de envase descartadas (Golden Hills, etc.)
 
 import re
 import logging
@@ -7,132 +17,210 @@ from dataclasses import dataclass, field
 from typing import Optional
 from .catalogo_productos import buscar_categoria
 
-# inicializar logger para este módulo
 logger = logging.getLogger(__name__)
 
 
 # --------------- Modelos de datos ---------------
 
-# Entidad clasificada extraída del texto OCR
 @dataclass
 class EntidadExtraida:
-
-    tipo:       str                     # PRECIO | PROMO | PRODUCTO | DESCARTE
-    texto_raw:  str                     # Texto original del OCR
-    texto_norm: str                     # Texto normalizado/limpio
-    valor:      Optional[float] = None  # Valor numérico si aplica (precios)
-    confianza:  float = 0.0             # Confianza del OCR heredada
+    tipo:       str                     # PRECIO | PRECIO_ANTERIOR | AHORRO | PROMO |
+                                        # EVENTO_PROMO | PRODUCTO | ATRIBUTO | DESCARTE
+    texto_raw:  str
+    texto_norm: str
+    valor:      Optional[float] = None  # Valor numérico (precios, ahorros)
+    confianza:  float = 0.0
     bbox:       dict = field(default_factory=dict)
-    categoria:  str = ""                # Categoría del catálogo (solo PRODUCTO)
+    categoria:  str = ""                # Categoría del catálogo (PRODUCTO/ATRIBUTO)
 
-    # Representación legible para debugging
     def __str__(self):
         val = f" → ${self.valor:,.2f}" if self.valor else ""
         return f"[{self.tipo}] '{self.texto_norm}'{val}"
 
-# Resultado agrupado por página del folleto
+
 @dataclass
 class ResultadoPagina:
-    imagen:     str
-    productos:  list[EntidadExtraida] = field(default_factory=list)
-    precios:    list[EntidadExtraida] = field(default_factory=list)
-    promos:     list[EntidadExtraida] = field(default_factory=list)
-    atributos:  list[EntidadExtraida] = field(default_factory=list)  # v2: características técnicas
-    descartes:  list[EntidadExtraida] = field(default_factory=list)
+    imagen:           str
+    productos:        list[EntidadExtraida] = field(default_factory=list)
+    precios:          list[EntidadExtraida] = field(default_factory=list)
+    precios_anteriores: list[EntidadExtraida] = field(default_factory=list)
+    ahorros:          list[EntidadExtraida] = field(default_factory=list)
+    promos:           list[EntidadExtraida] = field(default_factory=list)
+    eventos_promo:    list[EntidadExtraida] = field(default_factory=list)
+    atributos:        list[EntidadExtraida] = field(default_factory=list)
+    descartes:        list[EntidadExtraida] = field(default_factory=list)
 
-    # Contar el total de entidades útiles
     @property
     def total_entidades(self):
-        return len(self.productos) + len(self.precios) + len(self.promos) + len(self.atributos)
+        return (len(self.productos) + len(self.precios) + len(self.precios_anteriores) +
+                len(self.ahorros) + len(self.promos) + len(self.eventos_promo) +
+                len(self.atributos))
 
-    # Resumen legible para logging
     def resumen(self) -> str:
         return (f"Página: {self.imagen} | "
-                f"Productos: {len(self.productos)} | "
-                f"Precios: {len(self.precios)} | "
-                f"Promos: {len(self.promos)} | "
-                f"Atributos: {len(self.atributos)} | "
-                f"Descartes: {len(self.descartes)}")
+                f"Prod:{len(self.productos)} Prec:{len(self.precios)} "
+                f"PrecAnt:{len(self.precios_anteriores)} Ahorro:{len(self.ahorros)} "
+                f"Promo:{len(self.promos)} Evento:{len(self.eventos_promo)} "
+                f"Attr:{len(self.atributos)} Desc:{len(self.descartes)}")
 
 
 # --------------- Extractor principal ---------------
 
-# La clase RegexExtractor aplica las reglas de clasificación a cada bloque de texto OCR
 class RegexExtractor:
     """
-    Fluojo de clasificación:
-      1. Limpiar texto OCR (corregir errores comunes del OCR)
-      2. Intentar clasificar como PRECIO
-      3. Intentar clasificar como PROMO
-      4. Si pasa filtros mínimos --> PRODUCTO
-      5. Si no --> DESCARTE
+    Flujo de clasificación (orden de prioridad):
+      1. Limpiar texto OCR
+      2. ¿Es descarte?          → DESCARTE
+      3. ¿Es precio anterior?   → PRECIO_ANTERIOR
+      4. ¿Es ahorro?            → AHORRO
+      5. ¿Es evento promo?      → EVENTO_PROMO
+      6. ¿Es precio?            → PRECIO
+      7. ¿Es promoción?         → PROMO
+      8. ¿En catálogo?          → PRODUCTO o ATRIBUTO
+      9. ¿Heurística producto?  → PRODUCTO
+     10. Por defecto            → DESCARTE
     """
 
-    # --------------- Patrones de PRECIO ---------------
-    # Captura: $18.50 / $1,568.00 / $2,498 / $10,999 / $10.999 / Antes:$699 / $359c
-    #
-    # Mejoras v2:
-    #   - Acepta punto como separador de miles ($10.999 -> 10999)
-    #   - Acepta sufijos OCR pegados ($359c, $999e, $249u) — se ignoran
-    #   - Acepta prefijo "Antes:" para precios anteriores
-    #   - Captura números de 4-6 dígitos sin separador ($10999)
+    # --------------- PRECIO ANTERIOR ---------------
+    # "Antes: $699" / "Antos; $3495" / "precio anterior $1,200" / "'Antes:$2495"
+    PATRON_PRECIO_ANTERIOR = re.compile(
+        r"""
+        (?:antes\s*[;:,.]?\s*|antos\s*[;:,.]?\s*|precio\s+anterior\s*:?\s*)
+        \$?\s*
+        (
+            \d{4,6}
+            |
+            \d{1,3}(?:[,\.]\d{3})*
+            (?:[,\.]\d{1,2})?
+        )
+        [a-zA-Z/_]*
+        """,
+        re.VERBOSE | re.IGNORECASE
+    )
+
+    # --------------- AHORRO ---------------
+    # "Ahorras $32.90" / "Ahorra $49.90" / "Ahorras 5755.00" (OCR $ → 5)
+    PATRON_AHORRO = re.compile(
+        r"""
+        \bahorr[ao]s?\b\s*
+        [\$5]?\s*       # $ o '5' (confusión OCR frecuente)
+        (
+            \d{1,3}(?:[,\.]\d{3})*
+            (?:[,\.]\d{1,2})?
+            |
+            \d{2,6}
+        )
+        """,
+        re.VERBOSE | re.IGNORECASE
+    )
+
+    # --------------- PRECIO ---------------
+    # v3: añade prefijos DESDE/A sólo/desde:/a solo: y sufijo C/U
+    # Captura: $18.50 / $1,568 / $2,498 / $10,999 / $10.999 / $359c
+    # También: DESDE $69.90 / A sólo $149.00 / $99.90 C/U
     PATRON_PRECIO = re.compile(
         r"""
-        (?:antes\s*:?\s*|precio\s+anterior\s*:?\s*)?  # prefijo opcional
-        (?:^\$|(?<!\w)\$)               # $ al inicio o precedido de no-palabra
+        (?:desde\s*\.{0,3}\s*|a\s+s[oó]lo\s*:?\s*|desde\s*:\s*|a\s+solo\s*:?\s*)?
+        (?:^\$|(?<!\w)\$)
         \s*
         (
-            \d{4,6}                     # PRIMERO: 4-6 dígitos sin separador ($10999)
+            \d{4,6}
             |
-            \d{1,3}(?:[,\.]\d{3})*      # número con separadores de miles
-            (?:[,\.]\d{1,2})?           # centavos opcionales
+            \d{1,3}(?:[,\.]\d{3})*
+            (?:[,\.]\d{1,2})?
         )
-        [a-zA-Z/_]*                     # sufijos OCR: c, e, u, / etc. (se ignoran)
-        (?:\s*(?:MXN|pesos?))?          # moneda opcional
+        [a-zA-Z/_]*             # sufijos OCR: c, e, u, c/u etc.
+        (?:\s*(?:c/u|c\.u\.))? # sufijo C/U explícito
+        (?:\s*(?:MXN|pesos?))?
         """,
-        re.VERBOSE | re.IGNORECASE)
+        re.VERBOSE | re.IGNORECASE
+    )
 
-    # --------------- Patrones de PROMOCIÓN ---------------
+    # Precio con $ OCR corrupto (fresko): s/8/S + 4-6 dígitos (últimos 2 = centavos)
+    # s9989 → $99.89 | 82990 → $29.90 | s15790 → $157.90
+    PATRON_PRECIO_OCR_CORRUPTO = re.compile(
+        r"""
+        ^               # bloque completo
+        [s8S]           # $ leído como s, 8 o S
+        (\d{2,4})       # dígitos enteros
+        (\d{2})         # siempre 2 dígitos = centavos
+        [*.]?           # sufijo ocasional
+        $
+        """,
+        re.VERBOSE
+    )
+
+    # --------------- PROMOCIONES ---------------
     PATRONES_PROMO = [
-        # 2x$35 / 3x$100 / 2x1
         re.compile(r"\d+\s*[xX×]\s*(?:\$\s*)?\d+", re.IGNORECASE),
-        # 30% OFF / 20% descuento / 50% de descuento
         re.compile(r"\d+\s*%\s*(?:off|desc(?:uento)?|de\s+desc)?", re.IGNORECASE),
-        # $30 por cada $100 / $20 por cada $200
         re.compile(r"\$\s*\d+\s*por\s*cada\s*\$\s*\d+", re.IGNORECASE),
-        # TE REGALAMOS / LLEVA X PAGA Y / GRATIS
-        re.compile(r"\b(?:te\s+regalamos|lleva|paga|gratis|bonificaci[oó]n)\b",
-                   re.IGNORECASE),
-        # Precio ya con la promoción / Precio con descuento
+        re.compile(r"\b(?:te\s+regalamos|lleva|paga|gratis|bonificaci[oó]n)\b", re.IGNORECASE),
         re.compile(r"precio\s+(?:ya\s+)?con\s+(?:la\s+)?promo", re.IGNORECASE),
-        # HASTA X% / DESCUENTO DE X%
         re.compile(r"\b(?:hasta|descuento\s+de)\s+\d+\s*%", re.IGNORECASE),
+        # "compra uno y llévate el segundo a mitad de precio"
+        re.compile(r"mitad\s+de\s+precio", re.IGNORECASE),
+        re.compile(r"segunda?\s+a\s+mitad", re.IGNORECASE),
+        re.compile(r"compra\s+(?:uno|una)\s+y\s+ll[eé]vate", re.IGNORECASE),
     ]
 
-    # --------------- Patrones de DESCARTE ---------------
+    # --------------- EVENTOS PROMOCIONALES ---------------
+    # Campañas, eventos comerciales y etiquetas de oferta que NO son mecánica de precio.
+    # Se guardan como metadata de campaña — útiles para análisis temporal en BI.
+    PATRONES_EVENTO_PROMO = re.compile(
+        r"""
+        \b(?:
+            # Campañas mexicanas conocidas
+            julio\s+regalado | hot\s+sale | buen\s+fin | el\s+buen\s+fin |
+            cyber\s+monday | black\s+friday | navidad | temporada\s+navide[ñn]a |
+            dia\s+de\s+las\s+madres | dia\s+del\s+ni[ñn]o | dia\s+de\s+reyes |
+            regreso\s+a\s+clases | back\s+to\s+school | temporada\s+escolar |
+            semana\s+santa | dia\s+de\s+muertos |
+
+            # Etiquetas de oferta de tienda (sueltas, no como parte de frase larga)
+            precio\s+bajo | precios?\s+bajos | precio\s+especial |
+            oferta\s+especial | super\s+oferta | mega\s+oferta |
+            oferta\s+de\s+temporada | liquidaci[oó]n |
+            descuento\s+exclusivo | descuentos?\s+exclusivos |
+
+            # Fusiones OCR de campañas
+            julioregalado | julioregaladoe | julio\s*regalado[a-z]{0,3}
+        )\b
+        """,
+        re.VERBOSE | re.IGNORECASE
+    )
+
+    # --------------- DESCARTE ---------------
     PATRONES_DESCARTE = [
-        # Solo 1-2 caracteres
+        # 1-2 caracteres
         re.compile(r"^.{1,2}$"),
-        # Solo caracteres especiales o símbolos
+        # Solo símbolos
         re.compile(r"^[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\$]+$"),
-        # URLs y dominios web
-        re.compile(r"(?:www\.|\.com|\.mx|\.org)", re.IGNORECASE),
-        # Fechas de vigencia (importante para el pipeline pero no son productos)
+        # URLs
+        re.compile(r"(?:www\.|\.(com|mx|org))", re.IGNORECASE),
+        # Fechas de vigencia
         re.compile(r"vigencia|vencimiento|v[aá]lido|del\s+\d+\s+de", re.IGNORECASE),
-        # Texto de pie de página
-        re.compile(r"hasta\s+agotar|sujeto\s+a|en\s+tiendas\s+que", re.IGNORECASE),
-        # Fragmentos con demasiados caracteres especiales (ruido OCR)
+        # Pie de página legal
+        re.compile(
+            r"hasta\s+agotar|sujeto\s+a|en\s+tiendas\s+que|aplica\s+[uú]nicamente|"
+            r"t[eé]rminos\s+y\s+condiciones|consulta\s+t[eé]rminos",
+            re.IGNORECASE
+        ),
+        # Demasiados caracteres especiales
         re.compile(r"[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\$\.,\-%]{3,}"),
-        # Nombres de marcas/logos en pie de página
-        re.compile(r"^(?:lacomer|fresko|walmart|soriana|chedraui)(?:\.com(?:\.mx)?)?$",
-                   re.IGNORECASE),
-        # Metadata de tallas suelta — no es nombre de producto
-        re.compile(r"^tallas?:\s*[A-Za-z0-9]{2,}", re.IGNORECASE),
-        # Especificaciones técnicas sueltas sin contexto de producto
+        # Marcas de tienda solas (pie de página)
+        re.compile(
+            r"^(?:lacomer|fresko|walmart|soriana|chedraui|costco|heb|oxxo|"
+            r"bodega\s+aurrera|s-mart|subogeda|tiendas?\s+neto|waldos?|"
+            r"zorro|alsuper|merco|tiendas?\s+3b)(?:\.com(?:\.mx)?)?$",
+            re.IGNORECASE
+        ),
+        # Metadata de tallas
+        re.compile(r"^tallas?\s*:\s*[A-Za-z0-9]{2,}", re.IGNORECASE),
+        # Specs técnicas sueltas sin contexto
         re.compile(r"^\d+\s*(?:gb|mb|ghz|mhz|watts?|w\b|mpx|pulgadas)", re.IGNORECASE),
 
-        # ── v2: Estados y geografía de México ────────────────────────────────
-        # Los folletos listan estados de cobertura — no son nombres de producto.
+        # ── Estados y geografía de México ──────────────────────────────────────
         re.compile(
             r"^(?:"
             r"aguascalientes|baja\s+california(?:\s+sur)?|campeche|"
@@ -143,22 +231,17 @@ class RegexExtractor:
             r"quintana\s+roo|san\s+luis\s+potos[íi]|sinaloa|sonora|"
             r"tabasco|tamaulipas|tlaxcala|veracruz|yucat[aá]n|zacatecas|"
             r"luis\s+potos[íi]|potosi|quintana|le[oó]n|xico|"
-            r"uevo|hapas|couma|estado\s+de\s+m[eé]xico|"
-            r"tamaulpas|teaxcala|zagaiecas|uer[eé]taro|ca\s+puebua|"
-            r"tamau[a-z]*pas|tlax[a-z]*la|zacat[a-z]*cas|quer[a-z]*taro"
+            r"uevo|hapas|couma|estado\s+de\s+m[eé]xico"
             r")$",
             re.IGNORECASE
         ),
-        # Abreviaturas de estados en mayúsculas
         re.compile(
             r"^(?:CDMX|DF|NL|BC|BCS|AGS|CHIS|CHIH|COAH|COL|DGO|GTO|GRO|"
             r"HGO|JAL|MEX|MICH|MOR|NAY|OAX|PUE|QRO|QROO|SLP|SIN|SON|"
             r"TAB|TAMPS|TLAX|VER|YUC|ZAC)$"
         ),
 
-        # ── v2: Información financiera / bancaria ─────────────────────────────
-        # Bancos, tarjetas y MSI no son productos ni atributos.
-        # Nombres exactos de bancos/wallets
+        # ── Financiero / bancario ───────────────────────────────────────────────
         re.compile(
             r"^(?:bbva|banamex|banorte|santander|hsbc|citibanamex|"
             r"scotiabank|inbursa|banbajio|afirme|invex|american\s+express|"
@@ -166,18 +249,8 @@ class RegexExtractor:
             r"clip|mercado\s+pago|oxxo\s+pay|codi)$",
             re.IGNORECASE
         ),
-        # Variantes OCR de bancos — el texto contiene el nombre del banco
-        # aunque con errores de reconocimiento (Inbursa Bodcgo, Amcrican Express)
-        re.compile(
-            r"\b(?:inbursa|amcrican|american)\b",
-            re.IGNORECASE
-        ),
-        # Walmart + INVEX juntos (línea de financiamiento en folletos)
-        re.compile(
-            r"\bwalmart\b.{0,30}\binvex\b",
-            re.IGNORECASE
-        ),
-        # Frases financieras de folleto (exactas o al inicio del bloque)
+        re.compile(r"\b(?:inbursa|amcrican|american)\b", re.IGNORECASE),
+        re.compile(r"\bwalmart\b.{0,30}\binvex\b", re.IGNORECASE),
         re.compile(
             r"^(?:pagando\s+con|meses\s+sin(?:\s+intereses)?|"
             r"tarjetas?\s+de\s+cr[eé]dito|tarjetas?\s+participantes|"
@@ -185,7 +258,6 @@ class RegexExtractor:
             r"en\s+toda\s+la\s+tienda|en\s+tiendas\s+participantes)$",
             re.IGNORECASE
         ),
-        # Líneas que listan múltiples bancos juntos (Banamex, Banorte, HSBC...)
         re.compile(
             r"\b(?:banamex|banorte|santander|hsbc|inbursa|bradescard)\b"
             r".{0,50}"
@@ -194,10 +266,9 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── v2: Slogans y encabezados de sección ─────────────────────────────
-        # Frases publicitarias del folleto — no son nombres de producto.
+        # ── Slogans y frases de campaña cross-tienda ───────────────────────────
         re.compile(
-            r"^[i¡](?:consiente|encuentra|renueva|aprovecha|celebra|"
+            r"^(?:i¡)?(?:consiente|encuentra|renueva|aprovecha|celebra|"
             r"descubre|cuida|disfruta)\b",
             re.IGNORECASE
         ),
@@ -207,24 +278,94 @@ class RegexExtractor:
             r"consiente\s+a\s+mam[aá]|renueva\s+el\s+espacio)\b",
             re.IGNORECASE
         ),
-        # Continuaciones de slogans que no empiezan con i/¡
         re.compile(
             r"^(?:hasta\s+[Ii]o\s+que|hasta\s+lo\s+que)\b.{0,30}[!;]?$",
             re.IGNORECASE
         ),
 
-        # ── v2: Ruido OCR — bloques solo de consonantes cortas sin contexto ──
-        # Solo filtra bloques de 1-3 palabras donde NINGUNA tiene vocal.
-        # Ejemplos válidos: "VB GBROM", "DBGBRON"
-        # NO filtra: "Slmply Baslco" (tiene vocales en otras palabras del bloque)
+        # ── Slogans específicos de tienda detectados en análisis ───────────────
+        re.compile(
+            r"^(?:"
+            r"en\s+tienda\s*y\s+en\s+l[ií]nea|s[oó]lo\s+en\s+tienda|"
+            r"en\s+tienda\s*\+\s*en\s*l[ií]nea|en\s+tienda\s+y\s+en\s*l[ií]nea|"
+            r"en\s*tienda[y\s]+en\s+l[ií]nea|"
+            r"en\s+tienda|en\s+linea|en\s+l[ií]nea|"       # solos sin contexto
+            r"enlinea|enl[ií]nea|"                          # fusiones OCR costco
+            r"s[oó]loenlinea|s[oó]loen\s+tienda|s[oó]loen\s+l[ií]nea|"
+            r"h[ií]per|"
+            r"rebajado|"
+            r"sale|"
+            r"el\s+mejor|"
+            r"cuesta\s+menos|nos\s+cuesta\s+menos|"
+            r"llevarte\s+m[aá]s|"
+            r"precios?\s+bajos?\s+todos\s+los\s+d[ií]as\.?|"
+            r"sucursales|"
+            r"de\s+cashback|"
+            r"dinero\s+electr[oó]nico|"
+            r"(?:pesos?\s+)?de\s+descuento|pesos\s+dedescuento|dedescuento|"
+            r"descuentos?\s+exclusivos?|"
+            r"precio\s+bajo|"
+            r"cashback|"
+            r"para\s+socios|"                               # costco header
+            r"patrocinadores|"                              # costco
+            r"precio\s+por\s+kilo"                          # costco
+            r")$",
+            re.IGNORECASE
+        ),
+
+        # ── Palabras sueltas de folleto que pasan isupper() ────────────────────
+        re.compile(
+            r"^(?:desde|ahora|antes|sale|rebajado|h[ií]per|kilo|kilos|"
+            r"oferta|ofertas|promocion|promoci[oó]n|exclusivo|exclusiva|"
+            r"descuento|descuentos|ahorro|ahorros|vigente|vigentes|"
+            r"temporada|liquidaci[oó]n|especial|gratis|bonificaci[oó]n)$",
+            re.IGNORECASE
+        ),
+
+        # ── Marcas-logo de envase (fresko / alsuper) ───────────────────────────
+        # Cubre: Golden, Hills, variantes OCR solas Y combinaciones compuestas
+        re.compile(
+            r"^['\"\`]?"                                    # comilla inicial OCR
+            r"(?:[IJSHMT]|[a-z])??"                         # prefijo OCR espurio opcional
+            r"(?:golden|gulden|golfen|galten|galden|gafen|golilen|galfen|"
+            r"lolden|colgen|goldcn|goldei|goiden|goldeni|golaen|"
+            r"golde[nr]?|jgolden|igolder|lolde|iolde|solden|folden|"
+            r"ggolden|golden\s*hills?[t*.:'\-\s]?|goldenhills?[t*]?)"
+            r"(?:\s*[,\.'\"\s]*"
+            r"(?:hills?|hilis?|hilils?|hiiis?|iiilis?|hifls|hilIs|"
+            r"hiiis|hilis|hiis|h[ií]lls?|fls|blanqueado\s+hills?))??"
+            r"['\"\`\.\-\s*]*$",
+            re.IGNORECASE
+        ),
+        # Hills solo o con prefijo OCR
+        re.compile(
+            r"^['\"\`]?(?:[IJSHMT])??"
+            r"(?:hills?|hilis?|hilils?|hiiis?|iiilis?)[\.:'\s*]*$",
+            re.IGNORECASE
+        ),
+
+        # ── Header repetido de folleto (fresko Golden Hills) ─────────────────
+        re.compile(
+            r"^(?:un\s+brillo(?:\s+de\s+calidad)?|de\s+calidad|decalidad)$",
+            re.IGNORECASE
+        ),
+
+        # ── Textos de portada / cierre de folleto ────────────────────────────
+        re.compile(
+            r"^(?:como\s+te\s+gusta|exploralo\s+en|s[ií]guenos\s+en|"
+            r"libera|el\s+potencial|de\s+tu\s+suv|"
+            r"consulte\s+a\s+su\s+m[eé]dico|ver\s+bien\s+es\s+importante)$",
+            re.IGNORECASE
+        ),
+
+        # ── Ruido OCR puro (consonantes sin vocales) ───────────────────────────
         re.compile(
             r"^(?:[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}\s+){1,3}"
             r"[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}$"
         ),
     ]
 
-    # --------------- Palabras clave de productos ---------------
-    # Si el texto contiene estas palabras, probablemente es un producto
+    # --------------- Keywords de producto ---------------
     KEYWORDS_PRODUCTO = re.compile(
         r"\b(?:lampara|l[aá]mpara|gabinete|carro|carrito|pintura|sellador|"
         r"impermeabilizante|escalera|taburete|herramienta|caja|silla|mesa|"
@@ -235,77 +376,64 @@ class RegexExtractor:
         re.IGNORECASE
     )
 
-    # --------------- Correcciones comunes de OCR ---------------
-    # corecciones caracteres para mejorar la calidad del texto antes de clasificar 
+    # --------------- Correcciones OCR ---------------
     CORRECCIONES_OCR = [
-        (re.compile(r"@"),           "o"),          # @ → o (confusión muy común)
-        (re.compile(r"(?<!\w)0(?=\d{2,})"), "o"),   # 0 al inicio de palabra → o
-        (re.compile(r"\$\s+"),       "$"),          # $ separado del número
-        (re.compile(r"(\d),(\d{3})(?!\d)"), r"\1,\2"),  # normalizar miles
-        (re.compile(r"(\d)\.(\d{3})(?!\d)"), r"\1,\2"), # punto de miles → coma
-        (re.compile(r"\s{2,}"),      " "),          # espacios múltiples
-        (re.compile(r"[|¡!]{2,}"),   ""),           # signos repetidos (ruido)
+        (re.compile(r"@"),                        "o"),
+        (re.compile(r"(?<!\w)0(?=\d{2,})"),       "o"),
+        # 'o' minúscula entre coma de miles y dígitos: $16,o00 → $16,000
+        (re.compile(r"(\d[,\.])o(\d{2,3})"),      r"\g<1>0\2"),
+        (re.compile(r"\$\s+"),                     "$"),
+        (re.compile(r"(\d),(\d{3})(?!\d)"),        r"\1,\2"),
+        (re.compile(r"(\d)\.(\d{3})(?!\d)"),       r"\1,\2"),
+        (re.compile(r"\s{2,}"),                    " "),
+        (re.compile(r"[|¡!]{2,}"),                 ""),
     ]
 
-    # --------------- Umbral mínimo de confianza OCR para considerar un bloque ---------------
     CONFIANZA_MINIMA = 0.15
 
-    # Constructor de confianza
     def __init__(self, confianza_minima: float = None):
         self.confianza_minima = confianza_minima or self.CONFIANZA_MINIMA
 
     # --------------- Método principal ---------------
 
-    # Procesa una página completa del folleto (OCR) y clasifica cada bloque
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
-        # datos_pagina: Dict con keys 'imagen' y 'bloques' (output del OCREngine).
-        
-        # Cada bloque tiene 'texto', 'confianza', y opcionalmente 'bbox' (coordenadas).
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
 
         for bloque in datos_pagina["bloques"]:
-            texto_raw  = bloque["texto"]
-            confianza  = bloque["confianza"]
-            bbox       = bloque.get("bbox", {})
+            texto_raw = bloque["texto"]
+            confianza = bloque["confianza"]
+            bbox      = bloque.get("bbox", {})
 
-            # Filtrar bloques con confianza muy baja
             if confianza < self.confianza_minima:
                 continue
 
-            # Limpiar texto
             texto_limpio = self._limpiar_texto(texto_raw)
-
             if not texto_limpio:
                 continue
 
-            # Clasificar
             entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox)
 
-            # Agregar al grupo correspondiente
-            if entidad.tipo == "PRECIO":
+            tipo = entidad.tipo
+            if tipo == "PRECIO":
                 resultado.precios.append(entidad)
-            elif entidad.tipo == "PROMO":
+            elif tipo == "PRECIO_ANTERIOR":
+                resultado.precios_anteriores.append(entidad)
+            elif tipo == "AHORRO":
+                resultado.ahorros.append(entidad)
+            elif tipo == "PROMO":
                 resultado.promos.append(entidad)
-            elif entidad.tipo == "PRODUCTO":
+            elif tipo == "EVENTO_PROMO":
+                resultado.eventos_promo.append(entidad)
+            elif tipo == "PRODUCTO":
                 resultado.productos.append(entidad)
-            elif entidad.tipo == "ATRIBUTO":
+            elif tipo == "ATRIBUTO":
                 resultado.atributos.append(entidad)
             else:
                 resultado.descartes.append(entidad)
 
-        # ResultadoPagina con entidades clasificadas
         return resultado
 
     def procesar_json_ocr(self, datos_ocr: list[dict]) -> list[ResultadoPagina]:
-        """
-        Procesa el JSON completo generado por el OCREngine.
-
-        Args:
-            datos_ocr: Lista de dicts con resultados por página.
-
-        Returns:
-            Lista de ResultadoPagina, uno por imagen procesada.
-        """
         resultados = []
         for pagina in datos_ocr:
             r = self.procesar_pagina(pagina)
@@ -315,149 +443,160 @@ class RegexExtractor:
 
     # --------------- Clasificador ---------------
 
-    def _clasificar(
-        self,
-        texto: str,
-        texto_raw: str,
-        confianza: float,
-        bbox: dict
-    ) -> EntidadExtraida:
-        """Aplica las reglas de clasificación en orden de prioridad."""
+    def _clasificar(self, texto, texto_raw, confianza, bbox) -> EntidadExtraida:
 
-        # 1. ¿Es descarte? (verificar primero para filtrar ruido rápido)
+        # 1. Descarte rápido
         if self._es_descarte(texto):
             return EntidadExtraida("DESCARTE", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 2. ¿Es precio?
+        # 2. Precio anterior ("Antes: $X")
+        valor_ant = self._extraer_precio_anterior(texto)
+        if valor_ant is not None:
+            return EntidadExtraida("PRECIO_ANTERIOR", texto_raw, texto,
+                                   valor=valor_ant, confianza=confianza, bbox=bbox)
+
+        # 3. Ahorro ("Ahorras $X")
+        valor_ahorro = self._extraer_ahorro(texto)
+        if valor_ahorro is not None:
+            return EntidadExtraida("AHORRO", texto_raw, texto,
+                                   valor=valor_ahorro, confianza=confianza, bbox=bbox)
+
+        # 4. Evento promocional (Julio Regalado, Hot Sale…)
+        if self.PATRONES_EVENTO_PROMO.search(texto):
+            return EntidadExtraida("EVENTO_PROMO", texto_raw, texto,
+                                   confianza=confianza, bbox=bbox)
+
+        # 5. Precio actual
         precio_valor = self._extraer_precio(texto)
         if precio_valor is not None:
             return EntidadExtraida("PRECIO", texto_raw, texto,
-                                   valor=precio_valor,
-                                   confianza=confianza, bbox=bbox)
+                                   valor=precio_valor, confianza=confianza, bbox=bbox)
 
-        # 3. ¿Es promoción?
+        # 6. Promoción (2x1, 30% OFF, compra uno y llévate…)
         if self._es_promo(texto):
             return EntidadExtraida("PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 4. ¿Está en el catálogo? — puede ser PRODUCTO o ATRIBUTO técnico
+        # 7. Catálogo → PRODUCTO o ATRIBUTO
         en_catalogo, categoria, es_atributo = buscar_categoria(texto)
         if en_catalogo:
             tipo = "ATRIBUTO" if es_atributo else "PRODUCTO"
             return EntidadExtraida(tipo, texto_raw, texto,
-                                   confianza=confianza, bbox=bbox,
-                                   categoria=categoria)
+                                   confianza=confianza, bbox=bbox, categoria=categoria)
 
-        # 5. ¿Tiene indicios de ser producto por heurísticas?
+        # 8. Heurística de producto
         if self._es_probable_producto(texto):
             return EntidadExtraida("PRODUCTO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 6. Por defecto → descarte
+        # 9. Por defecto
         return EntidadExtraida("DESCARTE", texto_raw, texto,
                                confianza=confianza, bbox=bbox)
 
     # --------------- Reglas individuales ---------------
 
     def _limpiar_texto(self, texto: str) -> str:
-        """Aplica correcciones comunes de errores de OCR."""
         texto = texto.strip()
         for patron, reemplazo in self.CORRECCIONES_OCR:
             texto = patron.sub(reemplazo, texto)
         return texto.strip()
 
     def _es_descarte(self, texto: str) -> bool:
-        """Retorna True si el texto es claramente ruido o irrelevante."""
         for patron in self.PATRONES_DESCARTE:
             if patron.search(texto):
                 return True
-        # Descartar si tiene más del 40% de caracteres no alfanuméricos
         chars_raros = sum(1 for c in texto
                          if not c.isalnum() and c not in " $.,-%áéíóúÁÉÍÓÚñÑ")
         if len(texto) > 3 and chars_raros / len(texto) > 0.4:
             return True
         return False
 
-    def _extraer_precio(self, texto: str) -> Optional[float]:
-        """
-        Intenta extraer un valor numérico de precio del texto.
-        Retorna float si lo encuentra, None si no.
+    def _extraer_precio_anterior(self, texto: str) -> Optional[float]:
+        match = self.PATRON_PRECIO_ANTERIOR.search(texto)
+        if not match:
+            return None
+        return self._parsear_numero(match.group(1))
 
-        Maneja separadores ambiguos:
-          $10,999 → 10999.0  (coma de miles, no decimales)
-          $10.999 → 10999.0  (punto de miles — común en OCR)
-          $18.50  → 18.5     (punto decimal real)
-          $1,390  → 1390.0
-        """
+    def _extraer_ahorro(self, texto: str) -> Optional[float]:
+        match = self.PATRON_AHORRO.search(texto)
+        if not match:
+            return None
+        return self._parsear_numero(match.group(1))
+
+    def _extraer_precio(self, texto: str) -> Optional[float]:
+        # Ignorar si el texto empieza con prefijo de ahorro o precio anterior
+        if re.match(r"^\s*(?:ahorr[ao]s?|antes|antos|precio\s+anterior)", texto,
+                    re.IGNORECASE):
+            return None
+        # Ignorar condiciones de compra ("En compras desde $500")
+        if re.match(r"^\s*(?:en\s+compras?|en\s+toda|válido\s+en)", texto,
+                    re.IGNORECASE):
+            return None
+        # Precio con $ OCR corrupto (s/8 + dígitos): fresko y similares
+        m_ocr = self.PATRON_PRECIO_OCR_CORRUPTO.match(texto)
+        if m_ocr:
+            try:
+                return float(f"{m_ocr.group(1)}.{m_ocr.group(2)}")
+            except ValueError:
+                pass
         match = self.PATRON_PRECIO.search(texto)
         if not match:
             return None
+        return self._parsear_numero(match.group(1))
+
+    def _parsear_numero(self, numero_str: str) -> Optional[float]:
+        """
+        Convierte string numérico a float manejando separadores de miles/decimales.
+
+        Reglas:
+          $2,295  → 2295.0  (coma de miles: 3 dígitos tras separador)
+          $10.999 → 10999.0 (punto de miles: 3 dígitos tras separador)
+          $18.50  → 18.5    (punto decimal: 1-2 dígitos tras separador)
+          $1,390  → 1390.0
+        """
         try:
-            numero_str = match.group(1)
-            # Detectar si el separador es de miles o decimal
-            # Regla: si hay 3 dígitos después del separador → es de miles
-            import re as _re
-            # Quitar separadores de miles (coma o punto seguido de exactamente 3 dígitos)
-            numero_str = _re.sub(r"[,\.](\d{3})(?!\d)", r"", numero_str)
-            # El separador que quede (si hay) es decimal
+            numero_str = numero_str.strip()
+            # Quitar letras sufijo (c, e, u, etc.) que hayan quedado
+            numero_str = re.sub(r"[a-zA-Z]+$", "", numero_str).strip()
+            # Separador de miles: coma o punto seguido de EXACTAMENTE 3 dígitos
+            # — reemplazar por placeholder vacío (eliminar separador de miles)
+            numero_str = re.sub(r"[,\.](\d{3})(?!\d)", r"\1", numero_str)
+            # El separador que quede ahora (si hay) es decimal → normalizar a punto
             numero_str = numero_str.replace(",", ".")
             return float(numero_str)
         except (ValueError, IndexError):
             return None
 
     def _es_promo(self, texto: str) -> bool:
-        """Retorna True si el texto contiene un patrón de promoción."""
         for patron in self.PATRONES_PROMO:
             if patron.search(texto):
                 return True
         return False
 
     def _es_probable_producto(self, texto: str) -> bool:
-        """
-        Heurísticas para detectar nombres de productos.
-        Un texto es probable producto si:
-          - Tiene al menos 4 caracteres
-          - Contiene al menos una palabra de 3+ letras
-          - Contiene una keyword de producto, O
-          - Está en mayúsculas (como suelen aparecer en folletos), O
-          - Tiene entre 3 y 60 caracteres y no es puro número, O
-          - Es una sola palabra larga con inicial mayúscula (nombre de producto/marca)
-        """
         if len(texto) < 4:
             return False
-
-        # Quitar apóstrofos/comillas al inicio para comparar
         texto_norm = texto.lstrip("'\"'")
-
-        # Verificar que tiene contenido alfabético real
-        palabras = [p for p in texto_norm.split() if len(p) >= 3 and p.replace("é","e").replace("á","a").replace("ó","o").replace("í","i").replace("ú","u").replace("ñ","n").isalpha()]
+        palabras = [p for p in texto_norm.split()
+                    if len(p) >= 3 and
+                    p.replace("é","e").replace("á","a").replace("ó","o")
+                     .replace("í","i").replace("ú","u").replace("ñ","n").isalpha()]
         if not palabras:
             return False
-
-        # Keyword explícita de producto
         if self.KEYWORDS_PRODUCTO.search(texto):
             return True
-
-        # Texto en MAYÚSCULAS (marcas y productos en folletos suelen estar así)
         if texto_norm.isupper() and 4 <= len(texto_norm) <= 60:
             return True
-
-        # Una sola palabra de 5+ letras con inicial mayúscula → nombre de producto o marca
-        # Captura: Licuadora, Balerinas, Camison, Exprimidor, Galaxy, Koblenz, mabe...
         if len(palabras) == 1 and len(palabras[0]) >= 5:
             return True
-
-        # Texto mixto de longitud razonable con 2+ palabras reales
         if 4 <= len(texto_norm) <= 80 and len(palabras) >= 2:
             return True
-
         return False
 
     # --------------- Utilidades ---------------
 
     def imprimir_resultado(self, resultado: ResultadoPagina):
-        """Imprime el resultado clasificado de forma legible."""
         print(f"\n{'═'*65}")
         print(f"  {resultado.imagen}")
         print(f"{'═'*65}")
@@ -473,9 +612,24 @@ class RegexExtractor:
             for e in resultado.precios:
                 print(f"      ${e.valor:>10,.2f}  ←  '{e.texto_norm}'")
 
+        if resultado.precios_anteriores:
+            print(f"\n  📉 PRECIOS ANTERIORES ({len(resultado.precios_anteriores)}):")
+            for e in resultado.precios_anteriores:
+                print(f"      ${e.valor:>10,.2f}  ←  '{e.texto_norm}'")
+
+        if resultado.ahorros:
+            print(f"\n  💸 AHORROS ({len(resultado.ahorros)}):")
+            for e in resultado.ahorros:
+                print(f"      ${e.valor:>10,.2f}  ←  '{e.texto_norm}'")
+
         if resultado.promos:
             print(f"\n  🎯 PROMOCIONES ({len(resultado.promos)}):")
             for e in resultado.promos:
+                print(f"      {e.texto_norm[:55]}")
+
+        if resultado.eventos_promo:
+            print(f"\n  📅 EVENTOS PROMO ({len(resultado.eventos_promo)}):")
+            for e in resultado.eventos_promo:
                 print(f"      {e.texto_norm[:55]}")
 
         if resultado.atributos:

@@ -79,24 +79,33 @@ _OPCIONES_PERFIL = [
     "bn_suave",
     "bn_normal",
     "bn_fuerte",
+    "badge_normal",   # experimental — no aparece destacado en el menú
 ]
 
-def menu_perfil() -> str:
-    """Selección del perfil de preprocesamiento — independiente del motor."""
+def menu_perfil(tienda: str = "") -> str:
+    """Selección del perfil de preprocesamiento.
+
+    Producción: opciones 1-6 (color y B/N).
+    Experimental: opción 7 (badge_normal) — disponible pero no destacado.
+    """
     print("\n" + "─" * 55)
     print("   Perfil de preprocesamiento:")
     print("   1. Color         - suave")
-    print("   2. Color         - normal")
+    print("   2. Color         - normal  ★ producción")
     print("   3. Color         - fuerte")
     print("   4. Blanco y Negro - suave")
     print("   5. Blanco y Negro - normal")
     print("   6. Blanco y Negro - fuerte")
+    print("   7. Badge normal              [experimental]")
     print("─" * 55)
     try:
-        idx = int(input("   Perfil (Enter = Color - suave): ").strip() or "1")
-        return _OPCIONES_PERFIL[idx - 1]
+        raw = input("   Perfil (Enter = Color normal): ").strip()
+        if not raw:
+            return "color_normal"
+        idx = int(raw) - 1
+        return _OPCIONES_PERFIL[idx]
     except (ValueError, IndexError):
-        return "color_suave"
+        return "color_normal"
 
 
 def menu_resolucion() -> int | None:
@@ -344,7 +353,7 @@ def modo_batch(ocr: OCREngine):
     resolucion    = menu_resolucion()
     preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=resolucion)
 
-    res_str = f"{resolucion}px" if resolucion else "1350px (default)"
+    res_str = f"{resolucion}px" if resolucion else "1500px (default)"
     print(f"\n  Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
     print(f"  Se procesarán {len(pendientes)} folletos.")
     if input("  ¿Continuar? (s/n): ").strip().lower() != "s":

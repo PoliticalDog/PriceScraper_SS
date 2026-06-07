@@ -56,6 +56,12 @@ class Preprocessor:
         # ── v2 COLOR (EasyOCR) ──────────────────────────────────────────
         sharpening:     bool  = False,  # Realza bordes conservando color
         clahe:          bool  = False,  # Mejora contraste local por canal
+        # ── v3 BADGE — texto blanco sobre fondo de color saturado ───────
+        # Para: fresko, la_comer, tiendas_neto y cualquier folleto donde
+        # los badges de precio usan fondo morado/verde/naranja + texto blanco.
+        # Extrae canal V (valor) de HSV → amplifica brillo → invierte →
+        # convierte texto blanco en negro sobre fondo gris: ideal para EasyOCR.
+        badge_precio:   bool  = False,
         # ── v2 B/N (Tesseract) ──────────────────────────────────────────
         # Reutiliza: escala_grises, reducir_ruido, corregir_rot, binarizar
     ):
@@ -70,6 +76,8 @@ class Preprocessor:
         # v2 color
         self.sharpening    = sharpening
         self.clahe         = clahe
+        # v3 badge
+        self.badge_precio  = badge_precio
 
     # ─────────────────────────────────────────────────────────────────────
     # Método principal
@@ -93,6 +101,12 @@ class Preprocessor:
         # 3. Sharpening — realza bordes conservando color (v2 color)
         if self.sharpening:
             imagen = self._sharpening(imagen)
+
+        # 3b. Badge precio — texto blanco sobre fondo saturado (v3)
+        #     Se aplica ANTES de grises/binarización porque opera en color.
+        #     Si está activo, clahe y sharpening anteriores complementan el resultado.
+        if self.badge_precio:
+            imagen = self._realce_badge_precio(imagen)
 
         # 4. Escala de grises (v1 / v2 bn)
         if self.escala_grises:
@@ -272,6 +286,51 @@ class Preprocessor:
         return cv2.filter2D(imagen, -1, kernel)
 
     # ─────────────────────────────────────────────────────────────────────
+    # v3 BADGE — texto blanco sobre fondo de color saturado
+    # ─────────────────────────────────────────────────────────────────────
+    def _realce_badge_precio(self, imagen: np.ndarray) -> np.ndarray:
+        """Realce para badges de precio con texto blanco sobre fondo saturado.
+
+        Problema: folletos como fresko, la_comer y tiendas_neto imprimen los
+        precios con texto blanco sobre fondo morado/verde/naranja intenso.
+        EasyOCR confunde el símbolo '$' con 's' o '8' en ese contexto.
+
+        Solución en 3 pasos:
+          1. Convertir BGR → HSV y extraer canal V (valor/brillo)
+             El texto blanco tiene V≈255; el fondo saturado tiene V≈100-180.
+          2. Amplificar el canal V con CLAHE para maximizar la diferencia
+             brillo-texto vs brillo-fondo antes de binarizar.
+          3. Invertir el canal V: texto blanco → negro, fondo → claro.
+             Resultado: imagen en escala de grises con texto negro legible.
+
+        Retorna escala de grises (1 canal) — compatible con EasyOCR y con
+        los pasos siguientes del pipeline (reducir_ruido, binarizar).
+
+        Parámetros CLAHE usados:
+          clipLimit=3.0: más agresivo que el CLAHE general (2.0) para
+                         maximizar separación en fondos muy saturados.
+          tileGridSize=(4,4): rejilla más fina para respetar los bordes
+                              del badge sin contaminar texto adyacente.
+        """
+        if len(imagen.shape) == 2:
+            # Ya está en grises — invertir directamente
+            return cv2.bitwise_not(imagen)
+
+        # BGR → HSV → canal V
+        hsv     = cv2.cvtColor(imagen, cv2.COLOR_BGR2HSV)
+        _, _, v = cv2.split(hsv)
+
+        # CLAHE en canal V — amplifica diferencia texto/fondo
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+        v_eq  = clahe.apply(v)
+
+        # Invertir: texto blanco (255) → negro (0), fondo oscuro → claro
+        v_inv = cv2.bitwise_not(v_eq)
+
+        logger.debug("[Preprocessor] Badge precio: HSV→V→CLAHE→invertido")
+        return v_inv
+
+    # ─────────────────────────────────────────────────────────────────────
     # Comparación visual original vs procesada
     # ─────────────────────────────────────────────────────────────────────
     def guardar_comparacion(self, ruta_original: Path, ruta_salida: Path) -> Path:
@@ -350,6 +409,18 @@ _PERFILES_COLOR = {
     ),
 }
 
+# ── v3 BADGE — texto blanco sobre fondo de color saturado (experimental) ─────
+# Perfil de investigación — NO usar en producción hasta nuevo benchmark.
+# Resultado: no mejora la lectura del símbolo $ tipográfico de fresko.
+# Disponible para experimentos futuros con otros tipos de folleto.
+_PERFILES_BADGE = {
+    "badge_normal": Preprocessor(
+        escalar=True, escala_factor=None, ancho_objetivo=1500,
+        escala_grises=False, reducir_ruido=True, binarizar=False, corregir_rot=False,
+        sharpening=False, clahe=False, badge_precio=True,
+    ),
+}
+
 # ── v2 B/N — optimizado para Tesseract ────────────────────────────────────────
 # Tesseract opera mejor con texto negro sobre fondo blanco — pipeline clásico.
 # La binarización adaptativa maximiza el contraste texto/fondo para el motor.
@@ -375,21 +446,45 @@ _PERFILES_BN = {
 }
 
 # Catálogo unificado
-PERFILES = {**_PERFILES_V1, **_PERFILES_COLOR, **_PERFILES_BN}
+PERFILES = {**_PERFILES_V1, **_PERFILES_COLOR, **_PERFILES_BN, **_PERFILES_BADGE}
 
 # Agrupaciones para el menú
 PERFILES_V1    = list(_PERFILES_V1.keys())     # ["suave", "normal", "fuerte"]
 PERFILES_COLOR = list(_PERFILES_COLOR.keys())  # ["color_suave", "color_normal", "color_fuerte"]
 PERFILES_BN    = list(_PERFILES_BN.keys())     # ["bn_suave", "bn_normal", "bn_fuerte"]
+PERFILES_BADGE = list(_PERFILES_BADGE.keys())  # ["badge_normal"]  — experimental
+
+# ── Mapa de perfil recomendado por tienda ─────────────────────────────────────
+# Producción: todas las tiendas usan color_normal.
+# El símbolo $ de fresko/la_comer/tiendas_neto se maneja en NLP con
+# PATRON_PRECIO_OCR_CORRUPTO — el preprocesador no resuelve ese glifo.
+# badge_normal está disponible como perfil experimental manual.
+PERFIL_POR_TIENDA: dict[str, str] = {
+    "default": "color_normal",
+}
+
+
+def perfil_para_tienda(tienda: str) -> str:
+    """Retorna el nombre del perfil recomendado para una tienda.
+
+    Args:
+        tienda: Nombre normalizado de la tienda (ej: "fresko", "walmart").
+                Debe coincidir con el campo `tienda` del ocr_resultado.json.
+
+    Returns:
+        Nombre del perfil a usar. Siempre retorna un valor válido.
+    """
+    return PERFIL_POR_TIENDA.get(tienda.lower(), PERFIL_POR_TIENDA["default"])
 
 
 def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocessor:
     """Retorna el preprocesador correspondiente al nombre del perfil.
 
     Args:
-        nombre:         Nombre del perfil (color_suave, color_normal, etc.)
+        nombre:         Nombre del perfil (color_normal, badge_normal, etc.)
+                        También acepta nombre de tienda si se usa con perfil_para_tienda().
         ancho_objetivo: Resolución objetivo en píxeles para escalado adaptativo.
-                        None → usa el default del perfil (1350px).
+                        None → usa el default del perfil (1350/1500px).
                         Útil para benchmarks de resolución (1200 / 1500 / 1800px).
 
     Si el nombre no existe, retorna color_suave como default seguro.

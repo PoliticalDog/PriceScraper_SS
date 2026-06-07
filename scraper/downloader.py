@@ -3,6 +3,8 @@
 import asyncio
 import aiohttp
 import logging
+import re
+import unicodedata
 from pathlib import Path
 
 #inicia loger
@@ -10,6 +12,20 @@ logger = logging.getLogger(__name__)
 
 # Directorio raíz donde se guardan las imágenes crudas
 DATA_RAW = Path(__file__).parent.parent / "data" / "raw"
+
+
+def normalizar_nombre(nombre: str) -> str:
+    """Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo.
+
+    Ejemplos:
+        'Soriana Híper' -> 'soriana_hiper'
+        'Soriana Súper' -> 'soriana_super'
+        'Bodega Aurrerá' -> 'bodega_aurrera'
+    """
+    nfkd = unicodedata.normalize("NFKD", nombre)
+    sin_acentos = "".join(c for c in nfkd if not unicodedata.combining(c))
+    limpio = sin_acentos.lower().strip()
+    return re.sub(r"\s+", "_", limpio)
 
 # Clase downloader que descarga las imagenmes de forma asincrona
 class Downloader: 
@@ -33,7 +49,7 @@ class Downloader:
         if not tienda or not tienda.strip():
             tienda_slug = "desconocidos"
         else:
-            tienda_slug = tienda.lower().replace(" ", "_").replace("/", "-")
+            tienda_slug = normalizar_nombre(tienda).replace("/", "-")
         ruta = DATA_RAW / fuente / tienda_slug / folleto_id
         ruta.mkdir(parents=True, exist_ok=True)
         return ruta
