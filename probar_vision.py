@@ -1,4 +1,6 @@
-#Orquestador de procesamiento de visión -->  preprocesamiento (OpenCV) + OCR
+# Orquestador de procesamiento de visión
+# Preprocesamiento (OpenCV) + OCR (EasyOCR | Tesseract)
+# El motor y el perfil de imagen se eligen explícitamente en cada sesión.
 
 import sys
 import logging
@@ -7,13 +9,13 @@ import cv2
 import numpy as np
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from vision.preprocessor import obtener_preprocesador
-from vision.preprocessor import Preprocessor
-from vision.ocr_engine   import OCREngine
 
-PERFIL_DEFAULT = "suave"
+from vision.preprocessor import obtener_preprocesador, Preprocessor
+from vision.ocr_engine import OCREngine, MOTORES_DISPONIBLES
 
-# ------------------------- Logging -------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Logging
+# ─────────────────────────────────────────────────────────────────────────────
 Path("logs").mkdir(exist_ok=True)
 
 console_handler = logging.StreamHandler()
@@ -24,18 +26,23 @@ file_handler = RotatingFileHandler(
     "logs/vision.log", maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
 )
 file_handler.setFormatter(logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
 ))
 logging.basicConfig(level=logging.INFO, handlers=[console_handler, file_handler])
 logger = logging.getLogger("vision")
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-# ------------------------- Rutas -------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Rutas
+# ─────────────────────────────────────────────────────────────────────────────
 DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 
-# ------------------------- Menús -------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Menús
+# ─────────────────────────────────────────────────────────────────────────────
 def menu_principal() -> int:
     print("\n" + "═" * 55)
     print("   PriceScraper — Módulo de Visión")
@@ -49,21 +56,73 @@ def menu_principal() -> int:
     except ValueError:
         return -1
 
-# Perfil de preprocesamiento
-def menu_perfil() -> str:
+
+def menu_motor() -> str:
+    """Selección del motor OCR."""
     print("\n" + "─" * 55)
-    print("   Perfil de preprocesamiento:")
-    print("   1. suave  → solo escala (folletos coloridos)")
-    print("   2. normal → escala + grises + ruido")
-    print("   3. fuerte → pipeline completo con binarización")
+    print("   Motor OCR:")
+    print("   1. EasyOCR")
+    print("   2. Tesseract")
     print("─" * 55)
     try:
-        idx = int(input("   Perfil (Enter = suave): ").strip() or "1")
-        return ["suave", "normal", "fuerte"][idx - 1]
+        idx = int(input("   Motor (Enter = EasyOCR): ").strip() or "1")
+        return MOTORES_DISPONIBLES[idx - 1]
     except (ValueError, IndexError):
-        return "suave"
+        return "easyocr"
 
-# selección de carpeta para modo prueba
+
+# Mapeo opción → nombre interno de perfil
+_OPCIONES_PERFIL = [
+    "color_suave",
+    "color_normal",
+    "color_fuerte",
+    "bn_suave",
+    "bn_normal",
+    "bn_fuerte",
+]
+
+def menu_perfil() -> str:
+    """Selección del perfil de preprocesamiento — independiente del motor."""
+    print("\n" + "─" * 55)
+    print("   Perfil de preprocesamiento:")
+    print("   1. Color         - suave")
+    print("   2. Color         - normal")
+    print("   3. Color         - fuerte")
+    print("   4. Blanco y Negro - suave")
+    print("   5. Blanco y Negro - normal")
+    print("   6. Blanco y Negro - fuerte")
+    print("─" * 55)
+    try:
+        idx = int(input("   Perfil (Enter = Color - suave): ").strip() or "1")
+        return _OPCIONES_PERFIL[idx - 1]
+    except (ValueError, IndexError):
+        return "color_suave"
+
+
+def menu_resolucion() -> int | None:
+    """Selección de resolución objetivo para escalado adaptativo.
+    Solo aplica a perfiles v2 (color_* y bn_*).
+    Retorna None si se elige el default.
+    """
+    print("\n" + "─" * 55)
+    print("   Resolución objetivo (escalado adaptativo):")
+    print("   1. 1200px  → más rápido, bueno para imágenes ya grandes")
+    print("   2. 1350px  → default (benchmark base Bodega Aurrerá)")
+    print("   3. 1500px  → recomendado para imágenes pequeñas")
+    print("   4. 1800px  → máxima calidad, más lento")
+    print("─" * 55)
+    opciones = [1200, 1350, 1500, 1800]
+    try:
+        raw = input("   Resolución (Enter = 1350px): ").strip() or "2"
+        idx = int(raw) - 1
+        resolucion = opciones[idx]
+        if resolucion == 1350:
+            return None  # default, no necesita cambio
+        return resolucion
+    except (ValueError, IndexError):
+        return None
+
+
 def menu_carpeta() -> Path | None:
     carpetas = sorted([
         p for p in DATA_RAW.rglob("*")
@@ -79,11 +138,14 @@ def menu_carpeta() -> Path | None:
     print(f"   {'#':>3}  {'RUTA':<45}  {'PÁG':>4}  {'ESTADO'}")
     print("─" * 55)
 
-    # Listar carpetas con número, ruta relativa, cantidad de páginas y estado de procesamiento
     for i, carpeta in enumerate(carpetas, 1):
-        n = len(list(carpeta.glob("pagina_*.webp")))
+        n        = len(list(carpeta.glob("pagina_*.webp")))
         ruta_rel = carpeta.relative_to(DATA_RAW)
-        estado = "✅ procesado" if (DATA_PROCESSED / ruta_rel / "ocr_resultado.json").exists() else "pendiente"
+        estado   = (
+            "✅ procesado"
+            if (DATA_PROCESSED / ruta_rel / "ocr_resultado.json").exists()
+            else "pendiente"
+        )
         print(f"   {i:>3}. {str(ruta_rel):<45}  {n:>4}  {estado}")
 
     print("─" * 55)
@@ -96,14 +158,16 @@ def menu_carpeta() -> Path | None:
     return None
 
 
-# ------------------------- Procesamiento -------------------------
-
-# Procesa una carpeta de folleto: preprocesa cada página, extrae texto con OCR y guarda resultados en JSON
+# ─────────────────────────────────────────────────────────────────────────────
+# Procesamiento
+# ─────────────────────────────────────────────────────────────────────────────
 def procesar_carpeta(
-    carpeta_raw: Path,
-    preprocessor: Preprocessor,
-    ocr: OCREngine,
-    forzar: bool = False,
+    carpeta_raw:         Path,
+    preprocessor:        Preprocessor,
+    ocr:                 OCREngine,
+    motor:               str,
+    nombre_perfil:       str,
+    forzar:              bool = False,
     guardar_comparacion: bool = False,
 ) -> dict | None:
 
@@ -111,70 +175,62 @@ def procesar_carpeta(
     carpeta_proc = DATA_PROCESSED / ruta_rel
     ruta_json    = carpeta_proc / "ocr_resultado.json"
 
-    # Si ya existe el JSON y no se fuerza, se salta el procesamiento
     if ruta_json.exists() and not forzar:
         logger.info(f"[Vision] ⏭️  Ya procesado: {ruta_rel}")
         return None
-    
-    # Listar páginas (imágenes) en la carpeta
+
     paginas = sorted(carpeta_raw.glob("pagina_*.webp"))
     if not paginas:
         logger.warning(f"[Vision] Sin páginas en {carpeta_raw}")
         return None
 
-    # Crear carpeta de procesamiento si no existe
     carpeta_proc.mkdir(parents=True, exist_ok=True)
     logger.info(f"\n[Vision] Procesando: {ruta_rel} ({len(paginas)} páginas)")
 
-    # Comparación visual (modo prueba)
     if guardar_comparacion:
         ruta_comp = carpeta_proc / "comparacion.jpg"
         preprocessor.guardar_comparacion(paginas[0], ruta_comp)
         logger.info(f"[Vision] 🖼️  Comparación: {ruta_comp}")
 
-    # Estructura de resultado para el folleto
     resultado_folleto = {
         "fuente":        ruta_rel.parts[0] if len(ruta_rel.parts) > 0 else "",
         "tienda":        ruta_rel.parts[1] if len(ruta_rel.parts) > 1 else "",
         "folleto_id":    ruta_rel.parts[2] if len(ruta_rel.parts) > 2 else "",
+        "motor_ocr":     motor,
+        "perfil_imagen": nombre_perfil,
         "total_paginas": len(paginas),
-        "paginas":       []
+        "paginas":       [],
     }
 
     total_bloques   = 0
     confianzas_prom = []
 
-    # Procesar cada página: preprocesar, OCR y guardar resultados
     for ruta_pagina in paginas:
         ruta_pagina_proc = carpeta_proc / ruta_pagina.name
 
-        # ------------------------- Preprocesar con OpenCV -------------------------
+        # Preprocesar y guardar
         preprocessor.procesar_y_guardar(ruta_pagina, ruta_pagina_proc)
 
-        # --------- Leer imagen procesada como ndarray para EasyOCR ---------
-        # IMPORTANTE: extraer_texto() espera np.ndarray, no Path
-        # procesar_y_guardar() retorna Path → hay que leer con cv2
+        # Leer como ndarray para el motor OCR
         imagen_np = cv2.imread(str(ruta_pagina_proc))
-
         if imagen_np is None:
             logger.error(f"[Vision] 🛑 No se pudo leer: {ruta_pagina_proc}")
             continue
 
-        # ------------------------- OCR -------------------------
-        resultados_ocr = ocr.extraer_texto(imagen_np)
+        # OCR con el motor elegido
+        resultados_ocr = ocr.extraer_texto(imagen_np, motor=motor)
 
-        # Calcular confianza promedio de la página
         conf_prom = (
             sum(r.confianza for r in resultados_ocr) / len(resultados_ocr)
             if resultados_ocr else 0.0
         )
         confianzas_prom.append(conf_prom)
-
-        logger.info(f"[Vision] {ruta_pagina.name}: "
-                   f"{len(resultados_ocr)} bloques, "
-                   f"confianza: {conf_prom:.0%}")
-
         total_bloques += len(resultados_ocr)
+
+        logger.info(
+            f"[Vision] {ruta_pagina.name}: "
+            f"{len(resultados_ocr)} bloques, confianza: {conf_prom:.0%}"
+        )
 
         resultado_folleto["paginas"].append({
             "pagina":         ruta_pagina.name,
@@ -187,10 +243,9 @@ def procesar_carpeta(
                     "motor":     r.motor,
                 }
                 for r in resultados_ocr
-            ]
+            ],
         })
 
-    # Calcular confianza global del folleto como promedio de las páginas
     conf_global = (
         sum(confianzas_prom) / len(confianzas_prom) if confianzas_prom else 0
     )
@@ -200,36 +255,45 @@ def procesar_carpeta(
     with open(ruta_json, "w", encoding="utf-8") as f:
         json.dump(resultado_folleto, f, ensure_ascii=False, indent=2)
 
-    logger.info(f"[Vision] ✅ {ruta_rel} → "
-               f"{total_bloques} bloques, confianza: {conf_global:.0%}")
-
+    logger.info(
+        f"[Vision] ✅ {ruta_rel} → "
+        f"{total_bloques} bloques, confianza: {conf_global:.0%}"
+    )
     return resultado_folleto
 
 
-# ------------------------- Modos -------------------------
-# Solo una capreta --> prueba
+# ─────────────────────────────────────────────────────────────────────────────
+# Modos
+# ─────────────────────────────────────────────────────────────────────────────
 def modo_prueba(ocr: OCREngine):
     carpeta = menu_carpeta()
     if not carpeta:
         return
 
+    motor         = menu_motor()
     nombre_perfil = menu_perfil()
-    preprocessor  = obtener_preprocesador(nombre_perfil)
-    logger.info(f"[Vision] Perfil seleccionado: {nombre_perfil}")
+    resolucion    = menu_resolucion()
+    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=resolucion)
+
+    res_str = f"{resolucion}px" if resolucion else "1350px (default)"
+    logger.info(f"[Vision] Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
 
     resultado = procesar_carpeta(
         carpeta_raw=carpeta,
         preprocessor=preprocessor,
         ocr=ocr,
+        motor=motor,
+        nombre_perfil=nombre_perfil,
         forzar=True,
         guardar_comparacion=True,
     )
 
-    # Mostrar resumen de resultados en consola
     if resultado:
         print(f"\n{'─'*55}")
         print(f"  Folleto:         {resultado['tienda']} / {resultado['folleto_id']}")
-        print(f"  Perfil usado:    {nombre_perfil}")
+        print(f"  Motor OCR:       {resultado['motor_ocr']}")
+        print(f"  Perfil imagen:   {resultado['perfil_imagen']}")
+        print(f"  Resolución obj:  {res_str}")
         print(f"  Páginas:         {resultado['total_paginas']}")
         print(f"  Bloques totales: {resultado['total_bloques']}")
         print(f"  Confianza OCR:   {resultado['confianza_global']:.0%}")
@@ -237,17 +301,20 @@ def modo_prueba(ocr: OCREngine):
         print(f"\n  {'PÁGINA':<20} {'BLOQUES':>8} {'CONFIANZA':>10}")
         print(f"  {'─'*20} {'─'*8} {'─'*10}")
         for pag in resultado["paginas"]:
-            print(f"  {pag['pagina']:<20} {len(pag['bloques']):>8} {pag['confianza_prom']:>9.0%}")
+            print(
+                f"  {pag['pagina']:<20} "
+                f"{len(pag['bloques']):>8} "
+                f"{pag['confianza_prom']:>9.0%}"
+            )
 
         if resultado["confianza_global"] < 0.5:
             print(f"\n  ⚠️  Confianza baja ({resultado['confianza_global']:.0%})")
-            print(f"     Prueba otro perfil — actual: '{nombre_perfil}'")
-            if nombre_perfil == "fuerte":
-                print("     Sugerencia: intenta con 'suave' o 'normal'")
-            elif nombre_perfil == "normal":
-                print("     Sugerencia: intenta con 'suave'")
+            if motor == "easyocr":
+                print("     Prueba con 'color_normal' o 'color_fuerte'")
+            else:
+                print("     Prueba con 'bn_normal' o 'bn_fuerte'")
 
-# Todo data/raw/ --> batch
+
 def modo_batch(ocr: OCREngine):
     carpetas = sorted([
         p for p in DATA_RAW.rglob("*")
@@ -258,7 +325,10 @@ def modo_batch(ocr: OCREngine):
         logger.error("No se encontraron imágenes en data/raw/")
         return
 
-    pendientes    = [c for c in carpetas if not (DATA_PROCESSED / c.relative_to(DATA_RAW) / "ocr_resultado.json").exists()]
+    pendientes    = [
+        c for c in carpetas
+        if not (DATA_PROCESSED / c.relative_to(DATA_RAW) / "ocr_resultado.json").exists()
+    ]
     ya_procesadas = len(carpetas) - len(pendientes)
 
     logger.info(f"\n[Vision] {len(carpetas)} folletos totales")
@@ -269,10 +339,14 @@ def modo_batch(ocr: OCREngine):
         logger.info("[Vision] ✅ Todo procesado.")
         return
 
+    motor         = menu_motor()
     nombre_perfil = menu_perfil()
-    preprocessor  = obtener_preprocesador(nombre_perfil)
+    resolucion    = menu_resolucion()
+    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=resolucion)
 
-    print(f"\n  Se procesarán {len(pendientes)} folletos con perfil '{nombre_perfil}'.")
+    res_str = f"{resolucion}px" if resolucion else "1350px (default)"
+    print(f"\n  Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
+    print(f"  Se procesarán {len(pendientes)} folletos.")
     if input("  ¿Continuar? (s/n): ").strip().lower() != "s":
         return
 
@@ -283,7 +357,14 @@ def modo_batch(ocr: OCREngine):
     for i, carpeta in enumerate(pendientes, 1):
         logger.info(f"\n[Vision] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_RAW)}")
         try:
-            r = procesar_carpeta(carpeta, preprocessor, ocr, forzar=False)
+            r = procesar_carpeta(
+                carpeta_raw=carpeta,
+                preprocessor=preprocessor,
+                ocr=ocr,
+                motor=motor,
+                nombre_perfil=nombre_perfil,
+                forzar=False,
+            )
             if r:
                 procesados    += 1
                 total_bloques += r["total_bloques"]
@@ -292,19 +373,22 @@ def modo_batch(ocr: OCREngine):
             errores += 1
 
     logger.info("\n" + "=" * 55)
-    logger.info(f"✅ Batch completado — {procesados} folletos, {total_bloques} bloques, {errores} errores")
+    logger.info(
+        f"✅ Batch completado — {procesados} folletos, "
+        f"{total_bloques} bloques, {errores} errores"
+    )
     logger.info("=" * 55)
 
 
-# ------------------------- Main -------------------------
-
-# Disparador principal del programa
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
 def main():
     logger.info("=" * 55)
     logger.info("PriceScraper — Módulo de Visión")
     logger.info("=" * 55)
 
-    # OCR se inicializa una sola vez para toda la sesión
+    # OCREngine se instancia una sola vez — carga EasyOCR en memoria la primera vez
     ocr = OCREngine(idiomas=["es", "en"], usar_gpu=False)
 
     while True:

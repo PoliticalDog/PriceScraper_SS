@@ -210,36 +210,77 @@ CATALOGO = {
         ]
     },
 
+    # ----------------------- Atributos técnicos de producto -----------------------
+    # Características que describen un producto y aparecen como bloques independientes
+    # en folletos. Se clasifican como ATRIBUTO en lugar de PRODUCTO o DESCARTE.
+    "atributos_tecnicos": {
+        "nombre": "Atributo Técnico",
+        "keywords": [
+            # Cocina / línea blanca
+            "quemadores", "quemadores sellados", "encendido manual",
+            "encendido electrónico", "encendido electronico",
+            "convertible a gas natural", "capelo de cristal",
+            "termocontrol", "perfect cook", "easyhandle",
+            "jaladera", "parrilla", "parrilla electrica",
+            # Electrodomésticos pequeños
+            "velocidades", "función de descongelado", "funcion de descongelado",
+            "niveles de potencia", "menus de coccion", "menús de cocción",
+            "cocción automática", "coccion automatica",
+            "boton de un toque", "botón de un toque",
+            "perilla selectora",
+            # Electrónica / tecnología
+            "watts", "watt", "pantalla ips", "pantalla lcd",
+            "resolución", "resolucion", "frecuencia de actualización",
+            "batería de", "bateria de", "mah", "autonomía",
+            "ram", "almacenamiento interno", "procesador",
+            "cámara principal", "camara principal",
+            "lente gran angular", "zoom óptico", "zoom optico",
+            # General
+            "luces rgb", "multicolores", "recargable",
+            "potencia de", "capacidad de",
+            "sonido potente", "sonido envolvente",
+            # Controles de electrodoméstico
+            "boton de un toque", "botón de un toque", "botòn de un toque",
+            "perilla selectora", "selector de",
+            "panel de control", "display digital",
+        ]
+    },
+
 }
 
 # ----------------------- Función de búsqueda -----------------------
 
-# Con  un texto busca si corresponde a alguna categoría del catálogo usando las keywords
-def buscar_categoria(texto: str) -> tuple[bool, str]:
+# Con un texto busca si corresponde a alguna categoría del catálogo usando las keywords.
+# Retorna (encontrado, nombre_categoria, es_atributo)
+def buscar_categoria(texto: str) -> tuple[bool, str, bool]:
     """
     Match:
       - Keywords de 4+ caracteres --> substring match (flexible)
       - Keywords de 1-3 caracteres --> word boundary match (evita falsos positivos)
+
+    Retorna:
+      (True, nombre_categoria, es_atributo) si hay match
+      (False, "", False) si no hay match
+
+    es_atributo=True indica que es una característica técnica de producto,
+    no un nombre de producto en sí — se guarda como ATRIBUTO en el extractor.
     """
-    # REGEX
     import re as _re
     texto_lower = texto.lower()
 
-    # Iterar sobre cada categoría y sus keywords para encontrar una coincidencia
     for clave, datos in CATALOGO.items():
         for keyword in datos["keywords"]:
             kw = keyword.lower()
-            # Para keywords cortas
             if len(kw) <= 3:
-                # Word boundary 
                 if _re.search(r"\b" + _re.escape(kw) + r"\b", texto_lower):
-                    return True, datos["nombre"]
-            # Para keywords largas
+                    es_atributo = (clave == "atributos_tecnicos")
+                    return True, datos["nombre"], es_atributo
             else:
                 if kw in texto_lower:
-                    return True, datos["nombre"]
-    
-    return False, ""
+                    es_atributo = (clave == "atributos_tecnicos")
+                    return True, datos["nombre"], es_atributo
+
+    return False, "", False
 
 
 # Lista de todas las keywords para uso rápido en regex

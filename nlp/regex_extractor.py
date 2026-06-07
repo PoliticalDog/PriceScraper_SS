@@ -33,16 +33,17 @@ class EntidadExtraida:
 # Resultado agrupado por página del folleto
 @dataclass
 class ResultadoPagina:
-    imagen:    str
-    productos: list[EntidadExtraida] = field(default_factory=list) # field construye una nueva lista vacía de forma segura para cada instancia
-    precios:   list[EntidadExtraida] = field(default_factory=list)
-    promos:    list[EntidadExtraida] = field(default_factory=list)
-    descartes: list[EntidadExtraida] = field(default_factory=list)
+    imagen:     str
+    productos:  list[EntidadExtraida] = field(default_factory=list)
+    precios:    list[EntidadExtraida] = field(default_factory=list)
+    promos:     list[EntidadExtraida] = field(default_factory=list)
+    atributos:  list[EntidadExtraida] = field(default_factory=list)  # v2: características técnicas
+    descartes:  list[EntidadExtraida] = field(default_factory=list)
 
-    # Contar el total de entidades clasificadas --> debuggin
+    # Contar el total de entidades útiles
     @property
     def total_entidades(self):
-        return len(self.productos) + len(self.precios) + len(self.promos)
+        return len(self.productos) + len(self.precios) + len(self.promos) + len(self.atributos)
 
     # Resumen legible para logging
     def resumen(self) -> str:
@@ -50,6 +51,7 @@ class ResultadoPagina:
                 f"Productos: {len(self.productos)} | "
                 f"Precios: {len(self.precios)} | "
                 f"Promos: {len(self.promos)} | "
+                f"Atributos: {len(self.atributos)} | "
                 f"Descartes: {len(self.descartes)}")
 
 
@@ -67,16 +69,28 @@ class RegexExtractor:
     """
 
     # --------------- Patrones de PRECIO ---------------
-    # Captura --> $18.50 / $1,568.00 / $2,498 / 18.50 MXN
+    # Captura: $18.50 / $1,568.00 / $2,498 / $10,999 / $10.999 / Antes:$699 / $359c
+    #
+    # Mejoras v2:
+    #   - Acepta punto como separador de miles ($10.999 -> 10999)
+    #   - Acepta sufijos OCR pegados ($359c, $999e, $249u) — se ignoran
+    #   - Acepta prefijo "Antes:" para precios anteriores
+    #   - Captura números de 4-6 dígitos sin separador ($10999)
     PATRON_PRECIO = re.compile(
         r"""
-        (?:^\$|(?<!\w)\$)           # $ al inicio o precedido de no-palabra
+        (?:antes\s*:?\s*|precio\s+anterior\s*:?\s*)?  # prefijo opcional
+        (?:^\$|(?<!\w)\$)               # $ al inicio o precedido de no-palabra
         \s*
-        (\d{1,3}(?:[,\.]\d{3})*    # número con separadores de miles
-        (?:[,\.]\d{2})?)           # centavos opcionales
-        (?:\s*(?:MXN|pesos?))?     # moneda opcional
+        (
+            \d{4,6}                     # PRIMERO: 4-6 dígitos sin separador ($10999)
+            |
+            \d{1,3}(?:[,\.]\d{3})*      # número con separadores de miles
+            (?:[,\.]\d{1,2})?           # centavos opcionales
+        )
+        [a-zA-Z/_]*                     # sufijos OCR: c, e, u, / etc. (se ignoran)
+        (?:\s*(?:MXN|pesos?))?          # moneda opcional
         """,
-        re.VERBOSE | re.IGNORECASE) # permite comentarios y espacios en el regex + ignora mayúsculas
+        re.VERBOSE | re.IGNORECASE)
 
     # --------------- Patrones de PROMOCIÓN ---------------
     PATRONES_PROMO = [
@@ -114,8 +128,99 @@ class RegexExtractor:
                    re.IGNORECASE),
         # Metadata de tallas suelta — no es nombre de producto
         re.compile(r"^tallas?:\s*[A-Za-z0-9]{2,}", re.IGNORECASE),
-        # Especificaciones técnicas sueltas
+        # Especificaciones técnicas sueltas sin contexto de producto
         re.compile(r"^\d+\s*(?:gb|mb|ghz|mhz|watts?|w\b|mpx|pulgadas)", re.IGNORECASE),
+
+        # ── v2: Estados y geografía de México ────────────────────────────────
+        # Los folletos listan estados de cobertura — no son nombres de producto.
+        re.compile(
+            r"^(?:"
+            r"aguascalientes|baja\s+california(?:\s+sur)?|campeche|"
+            r"chiapas|chihuahua|ciudad\s+de\s+m[eé]xico|cdmx|"
+            r"coahuila|colima|durango|guanajuato|guerrero|hidalgo|"
+            r"jalisco|m[eé]xico|michoac[aá]n|morelos|nayarit|"
+            r"nuevo\s+le[oó]n|oaxaca|puebla|quer[eé]taro|"
+            r"quintana\s+roo|san\s+luis\s+potos[íi]|sinaloa|sonora|"
+            r"tabasco|tamaulipas|tlaxcala|veracruz|yucat[aá]n|zacatecas|"
+            r"luis\s+potos[íi]|potosi|quintana|le[oó]n|xico|"
+            r"uevo|hapas|couma|estado\s+de\s+m[eé]xico|"
+            r"tamaulpas|teaxcala|zagaiecas|uer[eé]taro|ca\s+puebua|"
+            r"tamau[a-z]*pas|tlax[a-z]*la|zacat[a-z]*cas|quer[a-z]*taro"
+            r")$",
+            re.IGNORECASE
+        ),
+        # Abreviaturas de estados en mayúsculas
+        re.compile(
+            r"^(?:CDMX|DF|NL|BC|BCS|AGS|CHIS|CHIH|COAH|COL|DGO|GTO|GRO|"
+            r"HGO|JAL|MEX|MICH|MOR|NAY|OAX|PUE|QRO|QROO|SLP|SIN|SON|"
+            r"TAB|TAMPS|TLAX|VER|YUC|ZAC)$"
+        ),
+
+        # ── v2: Información financiera / bancaria ─────────────────────────────
+        # Bancos, tarjetas y MSI no son productos ni atributos.
+        # Nombres exactos de bancos/wallets
+        re.compile(
+            r"^(?:bbva|banamex|banorte|santander|hsbc|citibanamex|"
+            r"scotiabank|inbursa|banbajio|afirme|invex|american\s+express|"
+            r"amex|sam['\"]?s\s+club|walmart\s+invex|bradescard|"
+            r"clip|mercado\s+pago|oxxo\s+pay|codi)$",
+            re.IGNORECASE
+        ),
+        # Variantes OCR de bancos — el texto contiene el nombre del banco
+        # aunque con errores de reconocimiento (Inbursa Bodcgo, Amcrican Express)
+        re.compile(
+            r"\b(?:inbursa|amcrican|american)\b",
+            re.IGNORECASE
+        ),
+        # Walmart + INVEX juntos (línea de financiamiento en folletos)
+        re.compile(
+            r"\bwalmart\b.{0,30}\binvex\b",
+            re.IGNORECASE
+        ),
+        # Frases financieras de folleto (exactas o al inicio del bloque)
+        re.compile(
+            r"^(?:pagando\s+con|meses\s+sin(?:\s+intereses)?|"
+            r"tarjetas?\s+de\s+cr[eé]dito|tarjetas?\s+participantes|"
+            r"con\s+tu\s+tarjeta|a\s+\d+\s+meses|sin\s+intereses|"
+            r"en\s+toda\s+la\s+tienda|en\s+tiendas\s+participantes)$",
+            re.IGNORECASE
+        ),
+        # Líneas que listan múltiples bancos juntos (Banamex, Banorte, HSBC...)
+        re.compile(
+            r"\b(?:banamex|banorte|santander|hsbc|inbursa|bradescard)\b"
+            r".{0,50}"
+            r"\b(?:banamex|banorte|santander|hsbc|inbursa|bradescard|"
+            r"walmart|invex|liverpool|coppel)\b",
+            re.IGNORECASE
+        ),
+
+        # ── v2: Slogans y encabezados de sección ─────────────────────────────
+        # Frases publicitarias del folleto — no son nombres de producto.
+        re.compile(
+            r"^[i¡](?:consiente|encuentra|renueva|aprovecha|celebra|"
+            r"descubre|cuida|disfruta)\b",
+            re.IGNORECASE
+        ),
+        re.compile(
+            r"\b(?:sin\s+gastar\s+de\s+m[aá]s|lo\s+que\s+necesita|"
+            r"lo\s+que\s+le\s+gustar[ií]a|espacio\s+de\s+mam[aá]|"
+            r"consiente\s+a\s+mam[aá]|renueva\s+el\s+espacio)\b",
+            re.IGNORECASE
+        ),
+        # Continuaciones de slogans que no empiezan con i/¡
+        re.compile(
+            r"^(?:hasta\s+[Ii]o\s+que|hasta\s+lo\s+que)\b.{0,30}[!;]?$",
+            re.IGNORECASE
+        ),
+
+        # ── v2: Ruido OCR — bloques solo de consonantes cortas sin contexto ──
+        # Solo filtra bloques de 1-3 palabras donde NINGUNA tiene vocal.
+        # Ejemplos válidos: "VB GBROM", "DBGBRON"
+        # NO filtra: "Slmply Baslco" (tiene vocales en otras palabras del bloque)
+        re.compile(
+            r"^(?:[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}\s+){1,3}"
+            r"[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}$"
+        ),
     ]
 
     # --------------- Palabras clave de productos ---------------
@@ -183,6 +288,8 @@ class RegexExtractor:
                 resultado.promos.append(entidad)
             elif entidad.tipo == "PRODUCTO":
                 resultado.productos.append(entidad)
+            elif entidad.tipo == "ATRIBUTO":
+                resultado.atributos.append(entidad)
             else:
                 resultado.descartes.append(entidad)
 
@@ -234,10 +341,11 @@ class RegexExtractor:
             return EntidadExtraida("PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
-        # 4. ¿Es producto confirmado por catálogo?
-        en_catalogo, categoria = buscar_categoria(texto)
+        # 4. ¿Está en el catálogo? — puede ser PRODUCTO o ATRIBUTO técnico
+        en_catalogo, categoria, es_atributo = buscar_categoria(texto)
         if en_catalogo:
-            return EntidadExtraida("PRODUCTO", texto_raw, texto,
+            tipo = "ATRIBUTO" if es_atributo else "PRODUCTO"
+            return EntidadExtraida(tipo, texto_raw, texto,
                                    confianza=confianza, bbox=bbox,
                                    categoria=categoria)
 
@@ -275,13 +383,25 @@ class RegexExtractor:
         """
         Intenta extraer un valor numérico de precio del texto.
         Retorna float si lo encuentra, None si no.
+
+        Maneja separadores ambiguos:
+          $10,999 → 10999.0  (coma de miles, no decimales)
+          $10.999 → 10999.0  (punto de miles — común en OCR)
+          $18.50  → 18.5     (punto decimal real)
+          $1,390  → 1390.0
         """
         match = self.PATRON_PRECIO.search(texto)
         if not match:
             return None
         try:
-            # Limpiar el número: quitar comas de miles, normalizar decimales
-            numero_str = match.group(1).replace(",", "")
+            numero_str = match.group(1)
+            # Detectar si el separador es de miles o decimal
+            # Regla: si hay 3 dígitos después del separador → es de miles
+            import re as _re
+            # Quitar separadores de miles (coma o punto seguido de exactamente 3 dígitos)
+            numero_str = _re.sub(r"[,\.](\d{3})(?!\d)", r"", numero_str)
+            # El separador que quede (si hay) es decimal
+            numero_str = numero_str.replace(",", ".")
             return float(numero_str)
         except (ValueError, IndexError):
             return None
@@ -301,13 +421,17 @@ class RegexExtractor:
           - Contiene al menos una palabra de 3+ letras
           - Contiene una keyword de producto, O
           - Está en mayúsculas (como suelen aparecer en folletos), O
-          - Tiene entre 3 y 60 caracteres y no es puro número
+          - Tiene entre 3 y 60 caracteres y no es puro número, O
+          - Es una sola palabra larga con inicial mayúscula (nombre de producto/marca)
         """
         if len(texto) < 4:
             return False
 
+        # Quitar apóstrofos/comillas al inicio para comparar
+        texto_norm = texto.lstrip("'\"'")
+
         # Verificar que tiene contenido alfabético real
-        palabras = [p for p in texto.split() if len(p) >= 3 and p.isalpha()]
+        palabras = [p for p in texto_norm.split() if len(p) >= 3 and p.replace("é","e").replace("á","a").replace("ó","o").replace("í","i").replace("ú","u").replace("ñ","n").isalpha()]
         if not palabras:
             return False
 
@@ -315,12 +439,17 @@ class RegexExtractor:
         if self.KEYWORDS_PRODUCTO.search(texto):
             return True
 
-        # Texto en MAYÚSCULAS (productos en folletos suelen estar así)
-        if texto.isupper() and 4 <= len(texto) <= 60:
+        # Texto en MAYÚSCULAS (marcas y productos en folletos suelen estar así)
+        if texto_norm.isupper() and 4 <= len(texto_norm) <= 60:
             return True
 
-        # Texto mixto de longitud razonable con palabras reales
-        if 4 <= len(texto) <= 80 and len(palabras) >= 2:
+        # Una sola palabra de 5+ letras con inicial mayúscula → nombre de producto o marca
+        # Captura: Licuadora, Balerinas, Camison, Exprimidor, Galaxy, Koblenz, mabe...
+        if len(palabras) == 1 and len(palabras[0]) >= 5:
+            return True
+
+        # Texto mixto de longitud razonable con 2+ palabras reales
+        if 4 <= len(texto_norm) <= 80 and len(palabras) >= 2:
             return True
 
         return False
@@ -348,6 +477,11 @@ class RegexExtractor:
             print(f"\n  🎯 PROMOCIONES ({len(resultado.promos)}):")
             for e in resultado.promos:
                 print(f"      {e.texto_norm[:55]}")
+
+        if resultado.atributos:
+            print(f"\n  🔧 ATRIBUTOS ({len(resultado.atributos)}):")
+            for e in resultado.atributos:
+                print(f"      {e.texto_norm[:55]:<55} [{e.confianza:.0%}]")
 
         print(f"\n  🗑️  Descartes: {len(resultado.descartes)} bloques filtrados")
         print(f"{'─'*65}\n")

@@ -159,21 +159,19 @@ def procesar_carpeta(
             extractor.imprimir_resultado(r)
 
     # ── Calcular métricas globales ────────────────────────────────
-    total_prod     = sum(len(r.productos) for r in resultados_paginas)
-    total_prec     = sum(len(r.precios)   for r in resultados_paginas)
-    total_promo    = sum(len(r.promos)    for r in resultados_paginas)
-    # Extraer PRECIO_ANTERIOR y FINANCIERO del pool de descartes
-    total_prec_ant = sum(
-        sum(1 for e in r.descartes if e.tipo == "PRECIO_ANTERIOR")
-        for r in resultados_paginas
-    )
-    total_financiero = sum(
-        sum(1 for e in r.descartes if e.tipo == "FINANCIERO")
-        for r in resultados_paginas
-    )
+    total_prod     = sum(len(r.productos)  for r in resultados_paginas)
+    total_prec     = sum(len(r.precios)    for r in resultados_paginas)
+    total_promo    = sum(len(r.promos)     for r in resultados_paginas)
+    total_attr     = sum(len(r.atributos)  for r in resultados_paginas)
+    # PRECIO_ANTERIOR y FINANCIERO no se generan aún como tipos independientes
+    # — reservados para iteraciones futuras del extractor
+    total_prec_ant   = 0
+    total_financiero = 0
     total_desc  = sum(len(r.descartes) for r in resultados_paginas)
-    total       = total_prod + total_prec + total_promo + total_desc
-    tasa_util   = (total_prod + total_prec + total_promo) / total if total > 0 else 0
+    # La tasa útil incluye atributos — son información rescatada del descarte
+    total_util  = total_prod + total_prec + total_promo + total_attr
+    total       = total_util + total_desc
+    tasa_util   = total_util / total if total > 0 else 0
 
     # ── Construir JSON de salida ──────────────────────────────────
     resultado = {
@@ -187,6 +185,7 @@ def procesar_carpeta(
             "total_precios_anterior": total_prec_ant,
             "total_financiero":       total_financiero,
             "total_promos":           total_promo,
+            "total_atributos":        total_attr,
             "total_descartes":        total_desc,
             "tasa_util":              round(tasa_util, 3),
         },
@@ -225,6 +224,11 @@ def procesar_carpeta(
                 {"texto": e.texto_norm, "confianza": e.confianza, "bbox": e.bbox}
                 for e in r.promos
             ],
+            "atributos": [
+                {"texto": e.texto_norm, "confianza": e.confianza,
+                 "bbox": e.bbox, "categoria": e.categoria}
+                for e in r.atributos
+            ],
         })
 
     # ── Guardar junto al folleto ──────────────────────────────────
@@ -234,7 +238,7 @@ def procesar_carpeta(
     logger.info(
         f"[NLP] ✅ {ruta_rel} → "
         f"prod:{total_prod} prec:{total_prec} promo:{total_promo} "
-        f"desc:{total_desc} | tasa útil: {tasa_util:.0%}"
+        f"attr:{total_attr} desc:{total_desc} | tasa útil: {tasa_util:.0%}"
     )
     logger.info(f"[NLP] 💾 Guardado: {ruta_nlp}")
 
@@ -266,6 +270,7 @@ def modo_prueba(extractor: RegexExtractor):
         print(f"  🔖 Precios anteriores: {r['total_precios_anterior']}")
         print(f"  🏦 Financiero:         {r['total_financiero']}")
         print(f"  🎯 Promociones:        {r['total_promos']}")
+        print(f"  🔧 Atributos:          {r['total_atributos']}")
         print(f"  🗑️  Descartes:          {r['total_descartes']}")
         print(f"  ✅ Tasa útil:          {r['tasa_util']:.0%}")
         print(f"{'─'*55}")
