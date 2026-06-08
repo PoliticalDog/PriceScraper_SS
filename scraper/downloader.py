@@ -13,19 +13,12 @@ logger = logging.getLogger(__name__)
 # Directorio raíz donde se guardan las imágenes crudas
 DATA_RAW = Path(__file__).parent.parent / "data" / "raw"
 
-
+# Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo par ano rtomper los paths
 def normalizar_nombre(nombre: str) -> str:
-    """Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo.
-
-    Ejemplos:
-        'Soriana Híper' -> 'soriana_hiper'
-        'Soriana Súper' -> 'soriana_super'
-        'Bodega Aurrerá' -> 'bodega_aurrera'
-    """
-    nfkd = unicodedata.normalize("NFKD", nombre)
-    sin_acentos = "".join(c for c in nfkd if not unicodedata.combining(c))
+    texto_normalizado = unicodedata.normalize("NFKD", nombre) # nfkd separa acento y la letra
+    sin_acentos = "".join(c for c in texto_normalizado if not unicodedata.combining(c)) # elimina los caracteres de acento
     limpio = sin_acentos.lower().strip()
-    return re.sub(r"\s+", "_", limpio)
+    return re.sub(r"\s+", "_", limpio) # patron, remplazo, texto
 
 # Clase downloader que descarga las imagenmes de forma asincrona
 class Downloader: 

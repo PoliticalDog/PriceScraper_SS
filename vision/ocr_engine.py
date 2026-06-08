@@ -1,40 +1,29 @@
 # Motor de OCR — EasyOCR y Tesseract como motores independientes.
-# El motor se elige explícitamente desde el orquestador (probar_vision.py).
-# No existe fallback automático — cada motor corre de forma aislada para
-# permitir benchmarks limpios y comparaciones justas entre ambos.
-
-"""
-    Flujo:
-        imagen preprocesada
-            --> motor elegido: "easyocr" | "tesseract"
-            --> lista de ResultadoOCR ordenados por posición (arriba→abajo, izq→der)
-
-    Historial de cambios:
-        v1: EasyOCR principal + Tesseract fallback automático (umbral de confianza)
-        v2: Motores independientes, sin fallback — elección explícita por el orquestador
-"""
 
 import logging
 import numpy as np
+import cv2
 from dataclasses import dataclass
 from pathlib import Path
 
+# inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
 
+# Lista de motores OCR disponibles
 MOTORES_DISPONIBLES = ["easyocr", "tesseract"]
 
-
+# Resultado de OCR con texto, confianza, bbox y motor utilizado
 @dataclass
 class ResultadoOCR:
-    """Representa un bloque de texto detectado por el OCR."""
+    #Representa un bloque de texto detectado por el OCR
     texto:     str    # Texto extraído
     confianza: float  # Score de confianza (0.0 a 1.0)
     bbox:      list   # [[x1,y1],[x2,y1],[x2,y2],[x1,y2]] en píxeles
     motor:     str    # Motor que lo extrajo: 'easyocr' o 'tesseract'
 
+    # Convierte el bbox a formato simple {x, y, ancho, alto} para JSON
     @property
     def bbox_simple(self) -> dict:
-        """Convierte el bbox de lista de puntos a dict {x, y, ancho, alto} para JSON."""
         xs = [p[0] for p in self.bbox]
         ys = [p[1] for p in self.bbox]
         return {
@@ -47,54 +36,41 @@ class ResultadoOCR:
     def __str__(self):
         return f"[{self.confianza:.0%}] '{self.texto}' ({self.motor})"
 
+# Motor de OCR con EasyOCR y Tesseract como opciones independientes
+class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
 
-class OCREngine:
-    """Motor OCR con EasyOCR y Tesseract como opciones independientes.
-
-    Uso:
-        ocr = OCREngine()
-        resultados = ocr.extraer_texto(imagen_np, motor="easyocr")
-        resultados = ocr.extraer_texto(imagen_np, motor="tesseract")
-    """
-
+    # Inicialización con idiomas
     def __init__(
         self,
         idiomas:  list[str] = None,
-        usar_gpu: bool       = False,
+        usar_gpu: bool= False, # nota: probar conexion con GPU para battch en local
     ):
         self.idiomas  = idiomas or ["es", "en"]
         self.usar_gpu = usar_gpu
 
-        self._reader    = None   # EasyOCR — carga lazy (tarda ~5s la primera vez)
-        self._tesseract = False  # Flag de disponibilidad de Tesseract
+        self._reader    = None   # instancia de EasyOCR.Reader (inicialización lazy) 
+        self._tesseract = False  # instancia de Tesseract verificada (lazy)
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Método principal
-    # ─────────────────────────────────────────────────────────────────────
+    # ------------------ Método principal ------------------ 
+    # Extraer texto OCR con motor seleccionado y ordenar resultados por posición
     def extraer_texto(
         self,
         imagen: np.ndarray,
         motor:  str = "easyocr",
     ) -> list[ResultadoOCR]:
-        """Extrae texto de una imagen preprocesada con el motor indicado.
-
-        Args:
-            imagen: ndarray BGR (o escala de grises) ya preprocesado.
-            motor:  "easyocr" (default) | "tesseract"
-
-        Returns:
-            Lista de ResultadoOCR ordenada por posición (arriba→abajo, izq→der).
-        """
+        
+        # Verificar motor solicitado, easyocr es el default
         if motor not in MOTORES_DISPONIBLES:
             logger.warning(f"[OCR] Motor '{motor}' no válido, usando 'easyocr'.")
             motor = "easyocr"
-
+        # usar easyocr
         if motor == "easyocr":
             self._iniciar_easyocr()
             resultados = self._extraer_easyocr(imagen)
+        # usar tesseract
         else:
             resultados = self._extraer_tesseract(imagen)
-
+        # Log de resultados y confianza promedio
         if resultados:
             conf_prom = sum(r.confianza for r in resultados) / len(resultados)
             logger.info(
@@ -104,26 +80,30 @@ class OCREngine:
         else:
             logger.warning(f"[OCR] {motor.upper()} no encontró texto.")
 
-        return self._ordenar_resultados(resultados)
+        return self._ordenar_resultados(resultados) # ordenar por posición (arriba-abajo, izquierda-derecha)
 
+    # Extraer texto directamente desde un archivo de imagen sin preprocesar
     def extraer_texto_desde_archivo(
         self,
         ruta:  Path,
         motor: str = "easyocr",
     ) -> list[ResultadoOCR]:
-        """Extrae texto directamente desde un archivo de imagen sin preprocesar."""
-        import cv2
+        
+        # Cargar imagen con OpenCV (BGR) y convertir a RGB para OCR
         imagen = cv2.imread(str(ruta))
         if imagen is None:
             raise ValueError(f"No se pudo cargar: {ruta}")
-        return self.extraer_texto(imagen, motor=motor)
+        # Convertir de BGR a RGB
+        imagen = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+        return self.extraer_texto(imagen, motor=motor) # extraer texto desde imagen numpy (RGB) con motor seleccionado
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Inicialización lazy de motores
-    # ─────────────────────────────────────────────────────────────────────
+    
+    # ---------------------- Inicialización lazy de motores ---------------------- 
+    # cargar easyocr, solo cuando se seleeciona
     def _iniciar_easyocr(self):
         if self._reader is None:
             logger.info("[OCR] Iniciando EasyOCR ...")
+            # importar biblioetca
             import easyocr
             self._reader = easyocr.Reader(
                 self.idiomas,
@@ -132,10 +112,12 @@ class OCREngine:
             )
             logger.info("[OCR] EasyOCR listo.")
 
+    # verificar disponibilidad de Tesseract
     def _verificar_tesseract(self) -> bool:
         if self._tesseract:
             return True
         try:
+            # importar biblioteca y verificar versión
             import pytesseract
             pytesseract.get_tesseract_version()
             self._tesseract = True
@@ -144,9 +126,9 @@ class OCREngine:
             logger.warning("[OCR] 🛑 Tesseract no disponible.")
             return False
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Motores individuales
-    # ─────────────────────────────────────────────────────────────────────
+    
+    # ---------------- Motores individuales ----------------
+    # Extraer texto con EasyOCR, filtrando por confianza y limpiando texto
     def _extraer_easyocr(self, imagen: np.ndarray) -> list[ResultadoOCR]:
         try:
             raw = self._reader.readtext(
@@ -168,7 +150,8 @@ class OCREngine:
         except Exception as e:
             logger.error(f"[OCR] Error en EasyOCR: {e}")
             return []
-
+        
+    # Extraer texto con Tesseract, filtrando por confianza y limpiando texto
     def _extraer_tesseract(self, imagen: np.ndarray) -> list[ResultadoOCR]:
         if not self._verificar_tesseract():
             return []
@@ -201,21 +184,20 @@ class OCREngine:
             logger.error(f"[OCR] Error en Tesseract: {e}")
             return []
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Utilidades
-    # ─────────────────────────────────────────────────────────────────────
+    
+    # --------------- Utilidades ---------------
+    # Ordenar resultados por posición: primero por Y (arriba-abajo) con tolerancia de 20px, luego por X (izquierda-derecha)
     def _ordenar_resultados(
         self, resultados: list[ResultadoOCR]
     ) -> list[ResultadoOCR]:
-        """Ordena bloques de arriba a abajo y de izquierda a derecha.
-        Agrupa en filas con tolerancia de 20px para alinear texto al mismo nivel.
-        """
+        # Ordenar por Y (arriba-abajo) con tolerancia de 20px, luego por X (izquierda-derecha)
         def _clave(r: ResultadoOCR) -> tuple:
             y_min = min(p[1] for p in r.bbox)
             x_min = min(p[0] for p in r.bbox)
             return (y_min // 20, x_min)
         return sorted(resultados, key=_clave)
-
+    
+    # Imprimir resultados en consola con formato legible
     def imprimir_resultados(self, resultados: list[ResultadoOCR]):
         print(f"\n{'─'*62}")
         print(f"  {'TEXTO':<35} {'CONF':>6}  {'MOTOR'}")

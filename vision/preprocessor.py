@@ -1,87 +1,73 @@
-# Metodos de preprocesamiento de imagenes para mejorar el OCR
+# Metodos de 3 perfiles de preprocesamiento de imagenes para mejorar el OCR
 # Escalado --> grises --> reduccion ruido --> rotacion --> binarizacion --> OCR
+import cv2
+import numpy as np
+import logging
+from pathlib import Path
 
+# Perfiles de preprocesamiento:
 """
-    [v1 - Legacy] Pipeline original (3 perfiles):
-        Escalado --> INTER_CUBIC
-        Reducir ruido --> gaussiano
-        Rotación --> Hough
-        Binarización --> adaptativa (gaussiana)
-
-    [v2 - Color] Pipeline optimizado para EasyOCR (3 perfiles):
+     Color - Pipeline optimizado para EasyOCR (3 perfiles):
         Preserva color --> EasyOCR usa canales RGB para segmentar texto del fondo
         Sharpening --> realza bordes de letras sin quitar color
         CLAHE --> mejora contraste local en zonas oscuras sin afectar zonas claras
 
-    [v2 - B/N] Pipeline optimizado para Tesseract (3 perfiles):
+    Blanco y Negro - Pipeline optimizado para Tesseract (3 perfiles):
         Escala de grises --> Tesseract opera mejor en un solo canal
         Gaussiano --> reduce ruido antes de binarizar
         Rotación --> Hough (útil para documentos escaneados)
         Binarización adaptativa --> máximo contraste texto/fondo
 """
 
-import cv2
-import numpy as np
-import logging
-from pathlib import Path
-
+# Configuración de logging
 logger = logging.getLogger(__name__)
 
-
+# Clase preporcesar
 class Preprocessor:
-    # ── Resolución objetivo para escalado adaptativo ──────────────────────
-    # Normaliza todas las imágenes al mismo ancho antes del OCR.
-    # Garantiza que EasyOCR reciba imágenes comparables sin importar la fuente.
-    #
-    # Referencia empírica (benchmark en curso):
-    #   Bodega Aurrerá: 900px  → factor 1.5x → 1350px  (benchmark v1 base)
-    #   Soriana Híper:  560px  → factor 2.4x → 1350px
-    #   Resoluciones candidatas: 1200 / 1500 / 1800px
-    #
-    # Activo cuando escala_factor=None. Con valor explícito usa factor fijo.
-    # Configurable vía constructor para benchmarks de resolución.
-    ANCHO_OBJETIVO_DEFAULT = 1350  # píxeles — valor por defecto
+    
+    ANCHO_OBJETIVO_DEFAULT = 1500  # píxeles — valor por defecto
 
     def __init__(
         self,
-        # ── Parámetros compartidos ──────────────────────────────────────
+        
+        # --------------- Parámetros compartidos entre perfiles ---------------
         escalar:        bool       = True,
         escala_factor:  float|None = None,   # None → adaptativo por ancho_objetivo
-        ancho_objetivo: int        = None,   # None → usa ANCHO_OBJETIVO_DEFAULT (1350px)
-        # ── v1 legacy ───────────────────────────────────────────────────
+        ancho_objetivo: int        = None,   # None → usa ANCHO_OBJETIVO_DEFAULT (1500px)
+        
+        # --------------- Blanco y negro (Tesseract) ---------------
         escala_grises:  bool  = True,
         reducir_ruido:  bool  = True,
         binarizar:      bool  = True,
         corregir_rot:   bool  = True,
-        # ── v2 COLOR (EasyOCR) ──────────────────────────────────────────
+        
+        # --------------- COLOR (EasyOCR) ---------------
         sharpening:     bool  = False,  # Realza bordes conservando color
         clahe:          bool  = False,  # Mejora contraste local por canal
-        # ── v3 BADGE — texto blanco sobre fondo de color saturado ───────
+        
+        # ---------------BADGE — texto blanco sobre fondo de color saturado ───────
         # Para: fresko, la_comer, tiendas_neto y cualquier folleto donde
         # los badges de precio usan fondo morado/verde/naranja + texto blanco.
-        # Extrae canal V (valor) de HSV → amplifica brillo → invierte →
-        # convierte texto blanco en negro sobre fondo gris: ideal para EasyOCR.
         badge_precio:   bool  = False,
-        # ── v2 B/N (Tesseract) ──────────────────────────────────────────
-        # Reutiliza: escala_grises, reducir_ruido, corregir_rot, binarizar
+        
     ):
+        # Pasos compartidos
         self.escalar_flag  = escalar
         self.escala_factor = escala_factor  # None = adaptativo
         self.ancho_objetivo = ancho_objetivo or self.ANCHO_OBJETIVO_DEFAULT
-        # v1
+        # Perfil --> blanco y negro
         self.escala_grises = escala_grises
         self.reducir_ruido = reducir_ruido
         self.binarizar     = binarizar
         self.corregir_rot  = corregir_rot
-        # v2 color
+        # Perfil --> color
         self.sharpening    = sharpening
         self.clahe         = clahe
-        # v3 badge
+        # Perfil --> badge
         self.badge_precio  = badge_precio
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Método principal
-    # ─────────────────────────────────────────────────────────────────────
+    # --------------------- Método principal ---------------------
+    # Procesa la imagen según los pasos activos en el orden correcto.
     def procesar(self, ruta_imagen: Path) -> np.ndarray:
         imagen = cv2.imread(str(ruta_imagen))
         if imagen is None:
@@ -124,9 +110,11 @@ class Preprocessor:
         if self.binarizar:
             imagen = self._binarizar(imagen)
 
+        # Log final con resolución de la imagen procesada
         logger.info(f"[Preprocessor] Listo → {imagen.shape[1]}x{imagen.shape[0]}px")
         return imagen
 
+    # Guarda la imagen procesada en la ruta de salida especificada
     def procesar_y_guardar(self, ruta_imagen: Path, ruta_salida: Path) -> Path:
         ruta_salida.parent.mkdir(parents=True, exist_ok=True)
         imagen_procesada = self.procesar(ruta_imagen)
@@ -134,22 +122,13 @@ class Preprocessor:
         logger.info(f"[Preprocessor] Guardada en: {ruta_salida}")
         return ruta_salida
 
-    # ─────────────────────────────────────────────────────────────────────
-    # Pasos compartidos
-    # ─────────────────────────────────────────────────────────────────────
+    # -------------------- Pasos compartidos --------------------
+    # escalado adaptativo o fijo, según el perfil
     def _escalar(self, imagen: np.ndarray) -> np.ndarray:
-        """Escala la imagen al tamaño óptimo para OCR.
-
-        Modo adaptativo (escala_factor=None):
-            Calcula el factor dinámicamente para llevar el ancho a ANCHO_OBJETIVO.
-            Si la imagen ya es más grande que el objetivo, no se reduce
-            (escalar hacia abajo perjudica la calidad OCR).
-
-        Modo fijo (escala_factor=float):
-            Aplica el factor explícito — usado por perfiles v1 legacy.
-        """
+        
         alto, ancho = imagen.shape[:2]
 
+        # Si la imagen ya es más ancha que el objetivo, no SE escala 
         if self.escala_factor is None:
             # Modo adaptativo: normalizar al ancho objetivo en ambas direcciones.
             # - Imagen pequeña (<1350px): escalar arriba  → más detalle para OCR
@@ -174,22 +153,21 @@ class Preprocessor:
         return cv2.resize(imagen, (nuevo_ancho, nuevo_alto),
                           interpolation=cv2.INTER_CUBIC)
 
+    # Convierte a escala de grises si la imagen tiene 3 canales (color).
     def _escala_grises(self, imagen: np.ndarray) -> np.ndarray:
         if len(imagen.shape) == 3:
             return cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
         return imagen
 
-    # ─────────────────────────────────────────────────────────────────────
-    # v1 — Legacy
-    # ─────────────────────────────────────────────────────────────────────
+    # ---------------------- Perfil Blanco y negro — Tesseracy ----------------------
+    # elimina ruido con gauss, no destruye tipografías finas
     def _reducir_ruido(self, imagen: np.ndarray) -> np.ndarray:
-        """Gaussiano ligero: más rápido que bilateral, no destruye tipografías finas.
-        Alternativa pendiente de prueba: bilateralFilter(d=9, sigmaColor=75, sigmaSpace=75)
-        """
+        # si la imagen es de 3 canales (color), se convierte a escala de grises
         if len(imagen.shape) == 3:
             imagen = self._escala_grises(imagen)
         return cv2.GaussianBlur(imagen, (3, 3), 0)
 
+    # 
     def _binarizar(self, imagen: np.ndarray) -> np.ndarray:
         """Binarización adaptativa gaussiana.
         blockSize=11: vecindad local para calcular umbral
