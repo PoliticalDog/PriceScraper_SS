@@ -1,25 +1,5 @@
-"""
-db_builder.py
-PriceScraper MX — Constructor del modelo de base de datos
-
-Crea y gestiona el schema de SQLite (prueba) → PostgreSQL (producción).
-Módulo independiente: no depende del ETL ni del NLP.
-Importable desde cualquier parte del pipeline.
-
-Tablas:
-    tiendas        → cadenas comerciales
-    folletos       → folletos scrapeados con vigencia
-    paginas        → páginas individuales de cada folleto
-    extracciones   → entidades NLP (PRECIO, PRODUCTO, PROMO, etc.)
-    eventos_promo  → campañas (Julio Regalado, Hot Sale, etc.)
-    alertas        → monitoreo de precios por tienda/producto
-
-Uso directo:
-    python db_builder.py
-
-Uso como módulo:
-    from etl.db_builder import get_engine, crear_tablas, TIPOS_EXTRACCION
-"""
+# Constructor del modelo de base de datos
+# Crea y gestiona el schema de SQLite (prueba) → PostgreSQL (producción)
 
 import logging
 from pathlib import Path
@@ -32,12 +12,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, relationship, Session
 
+# Tablas principales del modelo de datos
+"""
+    tiendas        → cadenas comerciales
+    folletos       → folletos scrapeados con vigencia
+    paginas        → páginas individuales de cada folleto
+    extracciones   → entidades NLP (PRECIO, PRODUCTO, PROMO, etc.)
+    eventos_promo  → campañas (Julio Regalado, Hot Sale, etc.)
+    alertas        → monitoreo de precios por tienda/producto
+"""
+
+# Configuración de logging
 logger = logging.getLogger(__name__)
 
-# ── Ruta por defecto ───────────────────────────────────────────────────────────
+# Ruta por defecto
 DB_PATH_DEFAULT = Path("data/pricescraper.db")
 
-# ── Tipos válidos de extracción NLP ───────────────────────────────────────────
+#  Tipos válidos de extracción NLP
 TIPOS_EXTRACCION = (
     "PRODUCTO",
     "PRECIO",
@@ -49,26 +40,20 @@ TIPOS_EXTRACCION = (
     "DESCARTE",
 )
 
-# ── Fuentes válidas ───────────────────────────────────────────────────────────
+# Fuentes
 FUENTES = ("tiendeo", "ofertomat")
 
-# ── Estados de folleto ────────────────────────────────────────────────────────
+# Estados de folleto
 ESTADOS_FOLLETO = ("pending", "processing", "done", "error")
 
 Base = declarative_base()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Modelos ORM
-# ─────────────────────────────────────────────────────────────────────────────
+# -------------------------- Modelos ORM --------------------------
 
+# Cada clase representa una tabla en la base de datos. Las relaciones entre tablas
+# Cadena comercial (supermercado))
 class Tienda(Base):
-    """
-    Cadena comercial.
-    fuente_slug: valor tal como llega del scraper (puede ser 'walmart' para Soriana).
-    nombre:      nombre corregido y legible ('Soriana Híper').
-    slug:        identificador normalizado para URLs y lookups ('soriana_hiper').
-    """
     __tablename__ = "tiendas"
 
     id          = Column(Integer, primary_key=True, autoincrement=True)
@@ -87,15 +72,8 @@ class Tienda(Base):
     def __repr__(self):
         return f"<Tienda id={self.id} slug='{self.slug}'>"
 
-
+# Folleto scrapeado, con metadata de vigencia, URL origen, etc.
 class Folleto(Base):
-    """
-    Folleto scrapeado. Un folleto = un PDF/conjunto de páginas de una tienda.
-
-    folleto_id_fuente: ID en Tiendeo o Ofertomat (no se cruzan entre fuentes).
-    perfil_ocr/motor_ocr: trazabilidad de investigación — con qué config se procesó.
-    fecha_fin null: permitido para Ofertomat (no expone fecha_fin).
-    """
     __tablename__ = "folletos"
     __table_args__ = (
         UniqueConstraint("fuente", "folleto_id_fuente", name="uq_folleto_fuente_id"),
@@ -137,12 +115,8 @@ class Folleto(Base):
     def __repr__(self):
         return f"<Folleto id={self.id} fuente='{self.fuente}' id_fuente='{self.folleto_id_fuente}'>"
 
-
+# Página individual de un folleto, con métricas de OCR y NLP para análisis de calidad.
 class Pagina(Base):
-    """
-    Página individual de un folleto.
-    Guarda métricas del OCR y del NLP para análisis de calidad.
-    """
     __tablename__ = "paginas"
     __table_args__ = (
         UniqueConstraint("folleto_id", "numero_pagina", name="uq_pagina_folleto_num"),
@@ -171,23 +145,8 @@ class Pagina(Base):
     def __repr__(self):
         return f"<Pagina folleto={self.folleto_id} pag={self.numero_pagina}>"
 
-
+# Entidad extraída por el NLP de un bloque OCR
 class Extraccion(Base):
-    """
-    Entidad extraída por el NLP de un bloque OCR.
-
-    Cubre todos los tipos: PRODUCTO, PRECIO, PRECIO_ANTERIOR, AHORRO,
-    PROMO, EVENTO_PROMO, ATRIBUTO.
-
-    valor:          precio actual, ahorro, etc. (float, nullable)
-    valor_anterior: precio antes del descuento (float, nullable)
-                    — el ETL lo vincula por proximidad bbox cuando tipo=PRECIO
-                      y hay un PRECIO_ANTERIOR cercano en la misma página.
-    bbox_*:         coordenadas del bloque en la imagen preprocesada.
-                    Usados por el ETL para la asociación posicional producto→precio.
-
-    tienda_id / folleto_id desnormalizados para queries de BI sin JOINs profundos.
-    """
     __tablename__ = "extracciones"
 
     id             = Column(BigInteger().with_variant(Integer, "sqlite"),
@@ -237,15 +196,8 @@ class Extraccion(Base):
         val = f" ${self.valor:.2f}" if self.valor else ""
         return f"<Extraccion [{self.tipo}]{val} '{self.texto_norm[:30] if self.texto_norm else ''}'>"
 
-
+# Campaña promocional detectada en un folleto.
 class EventoPromo(Base):
-    """
-    Campaña promocional detectada en un folleto.
-    Ej: 'Julio Regalado', 'Hot Sale', 'Buen Fin', 'Precio Bajo'.
-
-    Separada de Extraccion porque es metadata de campaña con vigencia propia
-    — no tiene valor numérico pero sí tiene relevancia temporal para el BI.
-    """
     __tablename__ = "eventos_promo"
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
@@ -272,15 +224,8 @@ class EventoPromo(Base):
     def __repr__(self):
         return f"<EventoPromo '{self.nombre_evento}' tienda={self.tienda_id}>"
 
-
+# Alerta de monitoreo de precios por tienda y producto normalizado
 class Alerta(Base):
-    """
-    Monitoreo de precios por tienda y producto normalizado.
-
-    slug_producto: texto normalizado del producto a monitorear
-                   (sin tabla de productos normalizada aún — fase 2 lo migra a FK).
-    umbral_precio: se dispara cuando precio <= umbral.
-    """
     __tablename__ = "alertas"
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
@@ -303,23 +248,10 @@ class Alerta(Base):
         return f"<Alerta '{self.slug_producto}' umbral=${self.umbral_precio} activa={self.activa}>"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Funciones de gestión
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ------------------------ Funciones de gestión ------------------------
+# Funciones para crear el engine, crear/eliminar tablas, verificar estado, etc.
 def get_engine(db_path: Path = None, echo: bool = False):
-    """
-    Crea y retorna el engine de SQLAlchemy.
-
-    Args:
-        db_path: Ruta al archivo SQLite. None → usa DB_PATH_DEFAULT.
-                 Para PostgreSQL en producción:
-                 usar create_engine('postgresql://user:pass@host/db') directamente.
-        echo:    Si True, imprime todas las queries SQL (debug).
-
-    Returns:
-        Engine de SQLAlchemy configurado.
-    """
+    
     if db_path is None:
         db_path = DB_PATH_DEFAULT
 
@@ -343,32 +275,19 @@ def get_engine(db_path: Path = None, echo: bool = False):
     logger.info(f"[DB] Engine SQLite: {db_path}")
     return engine
 
-
+# Funciones para crear/eliminar tablas, verificar estado, etc.
 def crear_tablas(engine) -> None:
-    """
-    Crea todas las tablas si no existen (CREATE TABLE IF NOT EXISTS).
-    Idempotente — seguro de llamar múltiples veces.
-    """
     Base.metadata.create_all(engine)
     logger.info("[DB] ✅ Tablas creadas/verificadas")
     _log_tablas(engine)
 
 
 def eliminar_tablas(engine) -> None:
-    """
-    Elimina todas las tablas. DESTRUCTIVO — solo para desarrollo/reset.
-    """
     Base.metadata.drop_all(engine)
     logger.info("[DB] 🗑️  Todas las tablas eliminadas")
 
-
+#   Verifica qué tablas existen y cuántos registros tienen.
 def verificar_tablas(engine) -> dict:
-    """
-    Verifica qué tablas existen y cuántos registros tienen.
-
-    Returns:
-        Dict {nombre_tabla: conteo_filas}
-    """
     from sqlalchemy import inspect, text
     inspector = inspect(engine)
     tablas_existentes = inspector.get_table_names()
@@ -389,9 +308,8 @@ def verificar_tablas(engine) -> dict:
 
     return resultado
 
-
+# Imprime el estado de las tablas en el log
 def _log_tablas(engine) -> None:
-    """Imprime el estado de las tablas en el log."""
     estado = verificar_tablas(engine)
     for tabla, count in estado.items():
         if count is None:
@@ -399,32 +317,31 @@ def _log_tablas(engine) -> None:
         else:
             logger.info(f"[DB]   ✓ {tabla}: {count} registros")
 
-
+# Función para obtener una sesión de base de datos (context manager recomendado)
 def get_session(engine) -> Session:
-    """Retorna una sesión de SQLAlchemy lista para usar."""
     return Session(engine)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI interactivo
-# ─────────────────────────────────────────────────────────────────────────────
 
+# ---------------------------- CLI interactivo ----------------------------
+
+# Menu
 def _menu() -> int:
     print("\n" + "═" * 55)
-    print("   PriceScraper MX — Constructor de BD")
+    print("Constructor de BD")
     print("═" * 55)
-    print("   1 → Crear tablas (si no existen)")
-    print("   2 → Verificar estado de tablas")
-    print("   3 → Eliminar TODAS las tablas  ⚠️")
-    print("   4 → Recrear schema completo     ⚠️")
-    print("   0 → Salir")
+    print("   1 --> Crear tablas (si no existen)")
+    print("   2 --> Verificar estado de tablas")
+    print("   3 --> Eliminar TODAS las tablas")
+    print("   4 --> Recrear schema completo")
+    print("   0 --> Salir")
     print("─" * 55)
     try:
         return int(input("   Selecciona una opción: ").strip())
     except ValueError:
         return -1
 
-
+# ---------------- MAIN ----------------
 def main():
     import sys
 
@@ -448,7 +365,7 @@ def main():
 
         elif opcion == 1:
             crear_tablas(engine)
-            print(f"\n  ✅ Schema creado en: {db_path}")
+            print(f"\n  Schema creado en: {db_path}")
 
         elif opcion == 2:
             estado = verificar_tablas(engine)
@@ -461,24 +378,24 @@ def main():
             print(f"{'─'*45}")
 
         elif opcion == 3:
-            confirm = input("\n  ⚠️  Escriba 'ELIMINAR' para confirmar: ").strip()
+            confirm = input("\n   Escriba 'ELIMINAR' para confirmar: ").strip()
             if confirm == "ELIMINAR":
                 eliminar_tablas(engine)
-                print("  🗑️  Tablas eliminadas.")
+                print("    Tablas eliminadas.")
             else:
                 print("  Cancelado.")
 
         elif opcion == 4:
-            confirm = input("\n  ⚠️  Esto borra y recrea todo. Escriba 'RECREAR': ").strip()
+            confirm = input("\n    Esto borra y recrea todo. Escriba 'RECREAR': ").strip()
             if confirm == "RECREAR":
                 eliminar_tablas(engine)
                 crear_tablas(engine)
-                print(f"  ✅ Schema recreado en: {db_path}")
+                print(f"   Schema recreado en: {db_path}")
             else:
                 print("  Cancelado.")
 
         else:
-            print("  ⚠️  Opción no válida.")
+            print("    Opción no válida.")
 
         try:
             if input("\n  ¿Otra operación? (s/n): ").strip().lower() != "s":

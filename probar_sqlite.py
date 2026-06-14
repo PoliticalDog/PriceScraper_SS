@@ -1,36 +1,18 @@
-"""
-probar_sqlite.py
-PriceScraper MX — Carga y visualización experimental de SQLite
-
-Fusión de probar_sqlite.py + view_sqllite.py adaptados al nuevo schema
-(db_builder.py v2: tiendas, folletos, paginas, extracciones, eventos_promo).
-
-EXPERIMENTAL — Para pruebas de carga y verificación visual.
-No es el ETL definitivo: no usa el normalizador todavía.
-
-Menú:
-  1 → Crear BD y tablas
-  2 → Cargar TODOS los nlp_resultado.json de data/processed/
-  3 → Cargar carpeta específica
-  4 → Vista rápida — precios con contexto
-  5 → Vista detallada — todas las extracciones por tipo
-  6 → Vista eventos promo
-  7 → Limpiar todos los datos (conserva esquema)
-  0 → Salir
-
-Uso: python probar_sqlite.py
-"""
+# Carga y visualización experimental de SQLite
 
 import sys
 import re
 import json
 import logging
 import sqlite3
+import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+# Logging
 Path("data").mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -40,21 +22,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sqlite_exp")
 
-# ── Dependencias ──────────────────────────────────────────────────────────────
-try:
-    import pandas as pd
-except ImportError:
-    logger.error("Falta pandas: pip install pandas")
-    sys.exit(1)
 
-try:
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-except ImportError:
-    logger.error("Falta sqlalchemy: pip install sqlalchemy")
-    sys.exit(1)
-
-# ── Importar modelos del db_builder ──────────────────────────────────────────
+# -------------------- Importar modelos del db_builder --------------------
 sys.path.insert(0, str(Path(__file__).parent))
 try:
     from etl.db_builder import (
@@ -67,28 +36,20 @@ except ImportError:
     logger.error("Asegúrate de que el archivo existe en etl/db_builder.py")
     sys.exit(1)
 
-# ── Config ────────────────────────────────────────────────────────────────────
+# -------------------- Config --------------------
 DB_PATH        = Path("data/pricescraper.db")
 DATA_PROCESSED = Path("data/processed")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Cargador SQLite experimental
-# ─────────────────────────────────────────────────────────────────────────────
 
+# ------------------- Cargador SQLite -------------------
+
+#  Lee nlp_resultado.json y carga en SQLite
 class CargadorSQLite:
-    """
-    Lee nlp_resultado.json y carga en SQLite usando los modelos de db_builder.
-
-    Lógica de asociación bbox (heredada del probar_sqlite.py original):
-      - producto → precio: el producto más cercano por encima del precio (eje Y)
-      - precio → precio_anterior: por distancia euclidiana < 300px
-    """
-
     def __init__(self):
         self.engine = None
 
-    # ── Init ──────────────────────────────────────────────────────────────────
+    # ------------------- Init -------------------
 
     def crear_bd(self) -> bool:
         try:
@@ -105,7 +66,7 @@ class CargadorSQLite:
             return False
         return True
 
-    # ── Descubrimiento ────────────────────────────────────────────────────────
+    # ------------------- Descubrimiento -------------------
 
     def listar_nlp(self, raiz: Path = DATA_PROCESSED) -> list[Path]:
         return sorted(raiz.rglob("nlp_resultado.json"))
@@ -115,7 +76,7 @@ class CargadorSQLite:
             return []
         return sorted([p for p in DATA_PROCESSED.iterdir() if p.is_dir()])
 
-    # ── Carga principal ───────────────────────────────────────────────────────
+    # ------------------- Carga principal -------------------
 
     def cargar_archivo(self, ruta_nlp: Path) -> dict:
         """
