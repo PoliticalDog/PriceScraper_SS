@@ -18,8 +18,8 @@ USER_AGENTS = [
 ]
 
 # Definicion de la clase abstracta para ambas fuentes : navegador, reintentos, delays, logging
-class BaseScraper(ABC):
-    def __init__(self, headless: bool = True, delay_min: float = 1.5, delay_max: float = 3.5):
+class BaseScraper(ABC): 
+    def __init__(self, headless: bool = True, delay_min: float = 1.5, delay_max: float = 3.5): # Headless - ventana
         # Configuración del scraper, delay aleatorio para simular comportamiento humano y activar o desactivar ventana del navegador.
         self.headless = headless # False muestra la ventana
         self.delay_min = delay_min
@@ -27,12 +27,13 @@ class BaseScraper(ABC):
         self.browser: Browser | None = None
         self.page: Page | None = None
 
-    # ----------------- Inicio y cierre del navegador -----------------
+    # ---------------------- Inicio y cierre del navegador ----------------------
     # iniciar navegador
     async def iniciar(self):
         
         # inicia el navegador con un user-agent aleatorio
         self._playwright = await async_playwright().start()
+        # configuracion chromium
         self.browser = await self._playwright.chromium.launch(
             headless=self.headless,
             args=[
@@ -64,7 +65,7 @@ class BaseScraper(ABC):
             await self._playwright.stop()
         logger.info(f"[{self.__class__.__name__}] Navegador cerrado.")
 
-    #---------------------- Métodos comunes para navegación, reintentos y delays ----------------------
+    # ---------------------- Métodos comunes para navegación, reintentos y delays ----------------------
     
     # Lapsos de tiempo para simular navegacion 
     async def _delay_aleatorio(self):
@@ -77,7 +78,6 @@ class BaseScraper(ABC):
 
         # url: URL de destino.
         # networkidle --> espera a que no haya peticiones de red (más seguro)
-    
         try:
             logger.info(f"Navegando a: {url}")
             await self.page.goto(url, wait_until=esperar, timeout=30_000)
@@ -105,7 +105,7 @@ class BaseScraper(ABC):
             await self.page.evaluate(f"window.scrollTo(0, document.body.scrollHeight * {(i+1)/pasos})")
             await asyncio.sleep(0.8)
 
-    # ---------------------- Métodos abstractos que cada scraper debe implementar ----------------------
+    # ---------------------- Métodos abstractos que cada scraper usa ----------------------
 
     # Extrae la lista de folletos disponibles en una categoría.
     @abstractmethod
@@ -121,7 +121,7 @@ class BaseScraper(ABC):
         # regresa: Lista de URLs de imágenes ordenadas por página.
         pass
 
-    # -------------------------- Context manager para manejo automático del navegador ----------------------
+    # -------------------------- inicio y cierre navegador  ----------------------
 
     async def __aenter__(self):
         await self.iniciar()

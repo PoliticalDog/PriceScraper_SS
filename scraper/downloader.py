@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import logging
 import re
-import unicodedata
+import unicodedata # normlizar nombres con acentos y caracteres especiales
 from pathlib import Path
 
 #inicia loger
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Directorio raíz donde se guardan las imágenes crudas
 DATA_RAW = Path(__file__).parent.parent / "data" / "raw"
 
-# Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo par ano rtomper los paths
+# Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo para no rtomper los paths
 def normalizar_nombre(nombre: str) -> str:
     texto_normalizado = unicodedata.normalize("NFKD", nombre) # nfkd separa acento y la letra
     sin_acentos = "".join(c for c in texto_normalizado if not unicodedata.combining(c)) # elimina los caracteres de acento
@@ -29,7 +29,7 @@ class Downloader:
         "Accept":     "image/webp,image/apng,image/*,*/*;q=0.8",
     }
     
-    # max_concurrentes: Máximo de descargas simultáneas (para veitar bloqueos)
+    # maximo de iamgenes en descraga en proceso y timeout para cada descarga
     def __init__(self, max_concurrentes: int = 3, timeout: int = 30):
         self.max_concurrentes = max_concurrentes
         self.timeout = timeout
@@ -50,7 +50,7 @@ class Downloader:
     # Descarga todas las páginas de un folleto.
     async def descargar_paginas(
         self,
-        urls_paginas: list[str],    # Lista de URLs de las páginas del folleto.
+        urls_paginas: list[str],    # Lista de URLs de las páginas del folleto
         fuente: str,                # tiendeo o ofertomat
         tienda: str,                # Nombre de la tienda (para organizar carpetas)
         folleto_id: str,            # ID único del folleto (para organizar carpetas)
@@ -110,29 +110,3 @@ class Downloader:
             except Exception as e:
                 logger.error(f"Error descargando página {num_pagina} ({url}): {e}")
                 raise
-    
-    # Descarga solo la imagen de portada (preview) de un folleto
-    async def descargar_preview(
-        self,
-        url_preview: str,
-        fuente: str,
-        tienda: str,
-        folleto_id: str,
-    ) -> Path | None:
-        
-        ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
-        ruta_archivo = ruta_destino / "preview.webp"
-
-        if ruta_archivo.exists():
-            return ruta_archivo
-
-        try:
-            async with aiohttp.ClientSession(headers=self.HEADERS) as session:
-                async with session.get(url_preview, timeout=aiohttp.ClientTimeout(total=15)) as r:
-                    r.raise_for_status()
-                    ruta_archivo.write_bytes(await r.read())
-            logger.info(f"[Downloader] Preview guardada: {ruta_archivo}")
-            return ruta_archivo
-        except Exception as e:
-            logger.error(f"Error descargando preview de folleto {folleto_id}: {e}")
-            return None

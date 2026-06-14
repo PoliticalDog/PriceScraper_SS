@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+# Configuración del logger para el módulo de registro
 logger = logging.getLogger(__name__)
 
 # Ruta por defecto para el registro de folletos procesados
