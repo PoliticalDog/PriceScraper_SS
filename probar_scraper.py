@@ -130,7 +130,7 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str = "todas"):
 
     # Filtrar ya procesados
     nuevos = [f for f in folletos
-              if not registro.ya_procesado("tiendeo", f["folleto_id"])]
+              if not registro.ya_procesado("tiendeo", f["folleto_id"], f["tienda"])]
     ya_procesados = len(folletos) - len(nuevos)
 
     if ya_procesados:
@@ -212,7 +212,7 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
             continue
 
         nuevos = [f for f in folletos
-                  if not registro.ya_procesado("tiendeo", f["folleto_id"])]
+                  if not registro.ya_procesado("tiendeo", f["folleto_id"], f["tienda"])]
 
         logger.info(f"[TIENDEO] {nombre}: {len(folletos)} folletos, {len(nuevos)} nuevos")
 
@@ -280,7 +280,7 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str = "todas",
         json.dump(folletos, f, ensure_ascii=False, indent=2)
 
     nuevos = [f for f in folletos
-              if not registro.ya_procesado("ofertomat", f["folleto_id"])]
+              if not registro.ya_procesado("ofertomat", f["folleto_id"], f["tienda"])]
     ya_procesados = len(folletos) - len(nuevos)
 
     if ya_procesados:

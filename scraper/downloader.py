@@ -4,7 +4,7 @@ import asyncio
 import aiohttp
 import logging
 import re
-import unicodedata # normlizar nombres con acentos y caracteres especiales
+import unicodedata
 from pathlib import Path
 
 #inicia loger
@@ -13,12 +13,23 @@ logger = logging.getLogger(__name__)
 # Directorio raíz donde se guardan las imágenes crudas
 DATA_RAW = Path(__file__).parent.parent / "data" / "raw"
 
-# Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo para no rtomper los paths
+# Elimina acentos, convierte a minúsculas y reemplaza espacios con guión bajo par ano rtomper los paths
 def normalizar_nombre(nombre: str) -> str:
     texto_normalizado = unicodedata.normalize("NFKD", nombre) # nfkd separa acento y la letra
     sin_acentos = "".join(c for c in texto_normalizado if not unicodedata.combining(c)) # elimina los caracteres de acento
     limpio = sin_acentos.lower().strip()
     return re.sub(r"\s+", "_", limpio) # patron, remplazo, texto
+
+
+# Construye la ruta esperada de un folleto: data/raw/{fuente}/{tienda_slug}/{folleto_id}/
+# Se expone como función de módulo para que Registro pueda usar la misma lógica
+# sin depender de una instancia de Downloader.
+def ruta_folleto(fuente: str, tienda: str, folleto_id: str) -> Path:
+    if not tienda or not tienda.strip():
+        tienda_slug = "desconocidos"
+    else:
+        tienda_slug = normalizar_nombre(tienda).replace("/", "-")
+    return DATA_RAW / fuente / tienda_slug / folleto_id
 
 # Clase downloader que descarga las imagenmes de forma asincrona
 class Downloader: 
@@ -29,7 +40,7 @@ class Downloader:
         "Accept":     "image/webp,image/apng,image/*,*/*;q=0.8",
     }
     
-    # maximo de iamgenes en descraga en proceso y timeout para cada descarga
+    # max_concurrentes: Máximo de descargas simultáneas (para veitar bloqueos)
     def __init__(self, max_concurrentes: int = 3, timeout: int = 30):
         self.max_concurrentes = max_concurrentes
         self.timeout = timeout
@@ -39,18 +50,14 @@ class Downloader:
         
         # Estructura: data/raw/{fuente}/{tienda_slug}/{folleto_id}/
         # Si la tienda está vacía → carpeta desconocidos para revisión manual
-        if not tienda or not tienda.strip():
-            tienda_slug = "desconocidos"
-        else:
-            tienda_slug = normalizar_nombre(tienda).replace("/", "-")
-        ruta = DATA_RAW / fuente / tienda_slug / folleto_id
+        ruta = ruta_folleto(fuente, tienda, folleto_id)
         ruta.mkdir(parents=True, exist_ok=True)
         return ruta
 
     # Descarga todas las páginas de un folleto.
     async def descargar_paginas(
         self,
-        urls_paginas: list[str],    # Lista de URLs de las páginas del folleto
+        urls_paginas: list[str],    # Lista de URLs de las páginas del folleto.
         fuente: str,                # tiendeo o ofertomat
         tienda: str,                # Nombre de la tienda (para organizar carpetas)
         folleto_id: str,            # ID único del folleto (para organizar carpetas)
@@ -110,3 +117,29 @@ class Downloader:
             except Exception as e:
                 logger.error(f"Error descargando página {num_pagina} ({url}): {e}")
                 raise
+    
+    # Descarga solo la imagen de portada (preview) de un folleto
+    async def descargar_preview(
+        self,
+        url_preview: str,
+        fuente: str,
+        tienda: str,
+        folleto_id: str,
+    ) -> Path | None:
+        
+        ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
+        ruta_archivo = ruta_destino / "preview.webp"
+
+        if ruta_archivo.exists():
+            return ruta_archivo
+
+        try:
+            async with aiohttp.ClientSession(headers=self.HEADERS) as session:
+                async with session.get(url_preview, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                    r.raise_for_status()
+                    ruta_archivo.write_bytes(await r.read())
+            logger.info(f"[Downloader] Preview guardada: {ruta_archivo}")
+            return ruta_archivo
+        except Exception as e:
+            logger.error(f"Error descargando preview de folleto {folleto_id}: {e}")
+            return None

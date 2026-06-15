@@ -1,6 +1,7 @@
 # Tiendeo scraper
 
 import re
+import asyncio
 import logging
 from bs4 import BeautifulSoup
 from ..metodos_scraper import BaseScraper
@@ -41,6 +42,15 @@ MAX_PAGINAS = 60
 
 # Cuántas páginas captura el visor por apertura (~5 en la práctica)
 PAGINAS_POR_BLOQUE = 5
+
+# Extrae el "publication ID" de una URL del CDN de Shopfully:
+# .../page_assets/{publication_id}/{num_pagina}/page_{n}_level_{lvl}_{hash}.{ext}
+PATRON_PUBLICATION_ID = re.compile(r"/page_assets/(\d+)/")
+
+
+def _publication_id(url: str) -> str | None:
+    m = PATRON_PUBLICATION_ID.search(url)
+    return m.group(1) if m else None
 
 # Tiendeo tiene un sistema de detección de bots que a veces bloquea el acceso
 class TiendeoScraper(BaseScraper):
@@ -169,12 +179,13 @@ class TiendeoScraper(BaseScraper):
         
         todas_urls: set[str] = set()
         pagina_inicio = 1
+        publication_id: str | None = None
 
         while pagina_inicio <= MAX_PAGINAS:
             url_bloque = f"{url_folleto}?flyerPage={pagina_inicio}"
             logger.info(f"[Tiendeo] Capturando bloque desde página {pagina_inicio}...")
 
-            urls_bloque = await self._capturar_bloque(url_bloque)
+            urls_bloque, publication_id = await self._capturar_bloque(url_bloque, publication_id)
 
             if not urls_bloque:
                 logger.info(f"[Tiendeo] Sin páginas en bloque {pagina_inicio} → fin del folleto")
@@ -198,9 +209,30 @@ class TiendeoScraper(BaseScraper):
     # abre la URL del bloque de páginas y captura las URLs de las imágenes que el visor carga para ese bloque, 
     # usando un listener de peticiones de red. 
     # Si no se capturan URLs por este método, hace un fallback extrayendo URLs directamente del DOM.
-    async def _capturar_bloque(self, url_con_pagina: str) -> list[str]:
+    #
+    # IMPORTANTE: el visor de Tiendeo puede mezclar páginas de OTROS folletos
+    # con las del folleto que se está scrapeando, de dos formas distintas:
+    #
+    #   A) REDIRECT (folletos de "1 de 1" página): tras ~8-11s la página
+    #      navega automáticamente a OTRO catálogo, y las peticiones de red
+    #      de ese catálogo ajeno se siguen capturando.
+    #      → Mitigación: detectar el redirect vía 'framenavigated', detener
+    #        la espera inmediatamente, y descartar toda URL capturada DESDE
+    #        ese momento en adelante (índice de corte).
+    #
+    #   B) THUMBNAILS DE RELACIONADOS (sin redirect): al cargar, el visor
+    #      precarga 1-2 imágenes "_level_2_" de folletos relacionados ANTES
+    #      de cargar las páginas reales "_level_4_" del folleto actual.
+    #      → Mitigación: _filtrar_por_publication_id se queda con el GRUPO
+    #        MAYORITARIO de publication_id (el folleto real aporta más
+    #        páginas que un thumbnail aislado de 1 imagen).
+    async def _capturar_bloque(
+        self, url_con_pagina: str, publication_id_conocido: str | None = None
+    ) -> tuple[list[str], str | None]:
     
         urls_capturadas: list[str] = []
+        redirect_detectado = asyncio.Event()
+        indice_corte = [None]  # índice en urls_capturadas al momento del redirect
 
         # Listener de peticiones para capturar URLs de imágenes que el visor carga al abrir el bloque de páginas
         def _on_request(request):
@@ -215,28 +247,151 @@ class TiendeoScraper(BaseScraper):
                     urls_capturadas.append(url)
                     logger.debug(f"[Tiendeo] Capturada: ...{url[-55:]}")
 
+        # Detecta si la página navega a otra URL (redirect a otro catálogo)
+        def _on_framenavigated(frame):
+            if frame == self.page.main_frame:
+                if frame.url.split("?")[0] != url_con_pagina.split("?")[0]:
+                    if not redirect_detectado.is_set():
+                        indice_corte[0] = len(urls_capturadas)
+                    redirect_detectado.set()
+
         # El bloque de código que abre la URL del bloque de páginas y espera a que se carguen las imágenes, mientras el listener captura las URLs
         async def _extraer():
             self.page.on("request", _on_request)
-            await self._navegar(url_con_pagina, esperar="networkidle")
-            await self.page.wait_for_timeout(2500)
-            await self._scroll_visor()
-            await self.page.wait_for_timeout(1500)
-            self.page.remove_listener("request", _on_request)
+            self.page.on("framenavigated", _on_framenavigated)
+            try:
+                await self._navegar(url_con_pagina, esperar="networkidle")
+
+                # Esperar en pasos cortos, abortando temprano si hay redirect
+                for _ in range(5):  # 5 x 500ms = 2500ms equivalente al timeout original
+                    if redirect_detectado.is_set():
+                        logger.info(f"[Tiendeo] Redirect detectado en {url_con_pagina} "
+                                    f"→ deteniendo captura de este bloque")
+                        break
+                    await self.page.wait_for_timeout(500)
+                else:
+                    if not redirect_detectado.is_set():
+                        await self._scroll_visor()
+                        for _ in range(3):  # 3 x 500ms = 1500ms equivalente al timeout original
+                            if redirect_detectado.is_set():
+                                logger.info(f"[Tiendeo] Redirect detectado en {url_con_pagina} "
+                                            f"→ deteniendo captura de este bloque")
+                                break
+                            await self.page.wait_for_timeout(500)
+            finally:
+                self.page.remove_listener("request", _on_request)
+                self.page.remove_listener("framenavigated", _on_framenavigated)
 
             # Si el listener no capturó nada, es posible que el visor haya cargado las páginas sin hacer peticiones nuevas o que haya un bloqueo. 
             # En ese caso, hacemos un fallback extrayendo URLs directamente del DOM.
             if not urls_capturadas:
-                # Fallback al DOM si el listener no capturó nada
-                return await self._extraer_desde_dom()
+                if redirect_detectado.is_set():
+                    # No hacer fallback al DOM si ya hubo redirect: el DOM
+                    # corresponde al folleto equivocado.
+                    return [], publication_id_conocido
+                if publication_id_conocido is not None:
+                    # Sin publication_id conocido no podemos validar el DOM;
+                    # y si ya conocemos el ID, una captura vacía simplemente
+                    # significa "nada nuevo de este folleto en este bloque".
+                    return [], publication_id_conocido
+                return await self._extraer_desde_dom(), publication_id_conocido
 
-            return urls_capturadas
+            # Si hubo redirect, descartar de tajo cualquier URL capturada
+            # DESPUÉS del momento del redirect (pertenecen al folleto ajeno
+            # al que se redirigió, sin importar cuántas sean).
+            urls_validas = urls_capturadas
+            if redirect_detectado.is_set() and indice_corte[0] is not None:
+                descartadas = urls_capturadas[indice_corte[0]:]
+                for url in descartadas:
+                    logger.warning(f"[Tiendeo] Descartando página capturada tras "
+                                   f"redirect: ...{url[-55:]}")
+                urls_validas = urls_capturadas[:indice_corte[0]]
+
+            return self._filtrar_por_publication_id(urls_validas, publication_id_conocido)
 
         try:
             return await self.reintentar(_extraer, intentos=2)
         except Exception as e:
             logger.warning(f"[Tiendeo] Error en bloque {url_con_pagina}: {e}")
-            return []
+            return [], publication_id_conocido
+
+    # Conserva solo las URLs cuyo "publication ID" corresponde al folleto
+    # real que se está scrapeando.
+    #
+    # No podemos confiar en "el primer publication_id capturado" porque:
+    #   - A veces el visor precarga THUMBNAILS de folletos "relacionados"
+    #     (1 sola imagen en level_2) ANTES de cargar las páginas reales
+    #     (level_4) del folleto actual.
+    #   - A veces (folletos de 1 página) ocurre un REDIRECT a otro catálogo
+    #     y se capturan páginas de ESE folleto DESPUÉS de la real.
+    #
+    # Si `publication_id_conocido` se proporciona (porque ya se determinó en
+    # un bloque anterior del mismo folleto), se filtra ESTRICTAMENTE por ese
+    # ID — sin lógica de mayoría. Esto es crítico para bloques posteriores
+    # (flyerPage=6, 11, ...) donde la página real ya está cacheada por el
+    # navegador y NO genera una nueva petición de red: si solo llegan
+    # thumbnails de relacionados + páginas de un redirect, la "mayoría"
+    # elegiría el grupo equivocado.
+    #
+    # Sin `publication_id_conocido` (primer bloque), se usa el GRUPO
+    # MAYORITARIO de páginas (mayor número de URLs con el mismo
+    # publication_id), con preferencia por "_level_4_" en caso de empate.
+    #
+    # Retorna (urls_filtradas, publication_id_usado).
+    def _filtrar_por_publication_id(
+        self, urls: list[str], publication_id_conocido: str | None = None
+    ) -> tuple[list[str], str | None]:
+        if not urls:
+            return urls, publication_id_conocido
+
+        grupos: dict[str, list[str]] = {}
+        for url in urls:
+            pid = _publication_id(url)
+            if pid is None:
+                continue
+            grupos.setdefault(pid, []).append(url)
+
+        if not grupos:
+            return urls, publication_id_conocido  # no se pudo determinar ningún publication_id, no filtrar
+
+        if publication_id_conocido is not None:
+            if publication_id_conocido in grupos:
+                for pid, urls_grupo in grupos.items():
+                    if pid != publication_id_conocido:
+                        for url in urls_grupo:
+                            logger.warning(f"[Tiendeo] Descartando página de otro folleto "
+                                           f"(publication_id={pid}, correcto={publication_id_conocido}): "
+                                           f"...{url[-55:]}")
+                return grupos[publication_id_conocido], publication_id_conocido
+            else:
+                # Ninguna URL de este bloque corresponde al folleto real
+                # (probablemente la página real ya está cacheada y no
+                # generó petición de red). No hay páginas nuevas válidas.
+                for pid, urls_grupo in grupos.items():
+                    for url in urls_grupo:
+                        logger.warning(f"[Tiendeo] Descartando página de otro folleto "
+                                       f"(publication_id={pid}, correcto={publication_id_conocido}): "
+                                       f"...{url[-55:]}")
+                return [], publication_id_conocido
+
+        def _es_level_4(urls_grupo: list[str]) -> bool:
+            return any("_level_4_" in u for u in urls_grupo)
+
+        # Ordenar grupos por: (1) cantidad de páginas desc, (2) preferencia level_4
+        id_correcto = max(
+            grupos,
+            key=lambda pid: (len(grupos[pid]), _es_level_4(grupos[pid]))
+        )
+
+        if len(grupos) > 1:
+            for pid, urls_grupo in grupos.items():
+                if pid != id_correcto:
+                    for url in urls_grupo:
+                        logger.warning(f"[Tiendeo] Descartando página de otro folleto "
+                                       f"(publication_id={pid}, correcto={id_correcto}): "
+                                       f"...{url[-55:]}")
+
+        return grupos[id_correcto], id_correcto
         
     # Scroll dentro del visor para activar carga de páginas adyacentes.
     async def _scroll_visor(self):

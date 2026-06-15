@@ -63,3 +63,8 @@ playwright-report/
 
 # api, aun no estavtermiando
 api/
+
+# ----- Test scrap -----
+diagnostico_hero.py
+diagnostico_redirect.py
+diagnostico_tarjetas.py
