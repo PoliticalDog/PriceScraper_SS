@@ -1,4 +1,4 @@
-# Tiendeo scraper
+# Tiendeo scraper personalizado
 
 import re
 import asyncio
@@ -9,15 +9,12 @@ from ..metodos_scraper import BaseScraper
 # inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
 
+# categoria
 CATEGORIAS = {
-    "supermercados":   "https://www.tiendeo.mx/Folletos-Catalogos/hiper-supermercados",
-    "farmacias":       "https://www.tiendeo.mx/Folletos-Catalogos/farmacias-y-salud",
-    "departamentales": "https://www.tiendeo.mx/Folletos-Catalogos/tiendas-departamentales",
-    "electronica":     "https://www.tiendeo.mx/Folletos-Catalogos/electronica-y-tecnologia",
-    "hogar":           "https://www.tiendeo.mx/Folletos-Catalogos/hogar-muebles",
+    "supermercados":   "https://www.tiendeo.mx/Folletos-Catalogos/hiper-supermercados"
 }
 
-# URLs directas por tienda en Tiendeo
+# URLs directas por cada cadena Tiendeo
 TIENDAS = {
     "bodega-aurrera":   "https://www.tiendeo.mx/ofertas-folletos/bodega-aurrera",
     "walmart":          "https://www.tiendeo.mx/Folletos-Catalogos/walmart",
@@ -37,55 +34,55 @@ TIENDAS = {
     "merco":            "https://www.tiendeo.mx/ofertas-catalogos/merco",
 }
 
-# Máximo de páginas esperadas por folleto (para el loop de bloques)
+# Para romper el loop de bloques
 MAX_PAGINAS = 60
 
-# Cuántas páginas captura el visor por apertura (~5 en la práctica)
+# Numero de paginas por bloque (ventana del visor)
 PAGINAS_POR_BLOQUE = 5
 
-# Extrae el "publication ID" de una URL del CDN de Shopfully:
-# .../page_assets/{publication_id}/{num_pagina}/page_{n}_level_{lvl}_{hash}.{ext}
+# Extrae el "publication ID" de una URL de la imagen
+# page_assets/{publication_id}/{num_pagina}/page_{n}_level_{lvl}_{hash}.{ext}
 PATRON_PUBLICATION_ID = re.compile(r"/page_assets/(\d+)/")
 
-
+# Extrae el ID de publicación de una URL de imagen
 def _publication_id(url: str) -> str | None:
     m = PATRON_PUBLICATION_ID.search(url)
     return m.group(1) if m else None
 
-# Tiendeo tiene un sistema de detección de bots que a veces bloquea el acceso
+# clase prinicpal de tiendeo
 class TiendeoScraper(BaseScraper):
 
     FUENTE   = "tiendeo"
     BASE_URL = "https://www.tiendeo.mx"
 
-    # ---------------- Métodos principales de scraping ----------------
+    # -------------------- Métodos principales de scraping --------------------
 
     # Obtiene los folletos listados en una categoría o tienda específica.
     async def obtener_folletos(self, categoria_url: str) -> list[dict]:
         async def _extraer():
+            # carga los metodos estadnar de navegacion y carga
             await self._navegar(categoria_url)
             await self._scroll_hasta_abajo(pasos=12) # Con 12 se logra cargar todos los folletos
             html = await self.page.content()
             return self._parsear_tarjetas(html)
 
+        # Segunda vuelta la extracción de folletos para manejar posibles bloqueos o fallos temporales
         folletos = await self.reintentar(_extraer)
         logger.info(f"[Tiendeo] {len(folletos)} folletos encontrados")
         """
-            Regresa:
-                {
-                    "tienda": "Soriana",
-                    "titulo": "Julio Regalado",
-                    "url_folleto": "...",
-                }     
+            "tienda": "Soriana",
+            "titulo": "Julio Regalado",
+            "url_folleto": "...",
         """
         return folletos
     
     # Parsea las tarjetas de folletos en la página de categoría/tienda de html a dict con datos estructurados. 
     # Cada tarjeta es un enlace <a> que contiene info del folleto.
     def _parsear_tarjetas(self, html: str) -> list[dict]:
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(html, "html.parser") # b4 interpreta html y busca eleemntos en html y css
         folletos = []
 
+        # revisa el html y halla las etioquetass <a> y evlua que tenga un id
         # Cada tarjeta de folleto es un <a> con href que incluye "/Catalogos/ID"
         for tarjeta in soup.select("a[href*='/Catalogos/']"):
             try:
@@ -105,11 +102,13 @@ class TiendeoScraper(BaseScraper):
 
     # Extrae datos de una tarjeta de folleto a un dict con campos estructurados
     def _extraer_datos_tarjeta(self, tarjeta) -> dict | None:
+        # ------ extra el id del folleto ------
         href = tarjeta.get("href", "")
         match_id = re.search(r"/Catalogos/(\d+)", href) # expresión regular: busca "/Catalogos/" seguido de dígitos y captura esos dígitos como ID del folleto
         if not match_id:
             return None
 
+        # extrae el codifo id
         folleto_id = match_id.group(1)
         url_folleto = f"{self.BASE_URL}{href}" if href.startswith("/") else href
 
@@ -121,20 +120,34 @@ class TiendeoScraper(BaseScraper):
         h4 = tarjeta.select_one("h4")
         if h4:
             tienda = h4.get_text(strip=True)
-
+        
         titulo = ""
         h3 = tarjeta.select_one("h3")
         if h3:
             titulo = h3.get_text(strip=True)
 
-        # Extraer fechas de inicio y fin del folleto desde el atributo alt de la imagen, si está disponible
-        fecha_inicio, fecha_fin = self._extraer_fechas(tarjeta)
+        # La tarjeta "hero" contirne el nombre de lña tienda en un contenedor
+        contenedor_busqueda = tarjeta
+        if not tienda and not titulo:
+            contenedor = tarjeta.find_parent(class_="js-flyer") or tarjeta.parent
+            if contenedor:
+                contenedor_busqueda = contenedor
+                h4 = contenedor.select_one("h4")
+                if h4:
+                    tienda = h4.get_text(strip=True)
+                h3 = contenedor.select_one("h3")
+                if h3:
+                    titulo = h3.get_text(strip=True)
+
+        # Extraer fechas de inicio y fin del folleto desde el atributo alt de la imagen
+        fecha_inicio, fecha_fin = self._extraer_fechas(contenedor_busqueda)
         url_preview = self._extraer_url_imagen(tarjeta, folleto_id)
 
         # Si no se pudo extraer ni tienda ni título se descarta
         if not tienda and not titulo:
             return None
 
+        # Regresa un dict con los datos estructurados del folleto
         return {
             "fuente":       self.FUENTE,
             "folleto_id":   folleto_id,
@@ -176,22 +189,26 @@ class TiendeoScraper(BaseScraper):
 
     # El visor de folletos de Tiendeo carga las páginas en bloques usando el parámetro flyerPage=N.
     async def obtener_paginas_folleto(self, url_folleto: str) -> list[str]:
-        
+        # se captura desde la paghina 1
         todas_urls: set[str] = set()
         pagina_inicio = 1
         publication_id: str | None = None
 
+        # Se itera sobre los bloques de páginas (flyerPage=1, 6, 11, ...)
         while pagina_inicio <= MAX_PAGINAS:
             url_bloque = f"{url_folleto}?flyerPage={pagina_inicio}"
             logger.info(f"[Tiendeo] Capturando bloque desde página {pagina_inicio}...")
-
+            # Abre la URL del bloque de páginas y captura las URLs de las imágenes que el visor carga para ese bloque
             urls_bloque, publication_id = await self._capturar_bloque(url_bloque, publication_id)
 
+            # si no hay mas paginas en el iguiente bloque, cierra
             if not urls_bloque:
                 logger.info(f"[Tiendeo] Sin páginas en bloque {pagina_inicio} → fin del folleto")
                 break
-
+            
+            
             nuevas = set(urls_bloque) - todas_urls
+            # si no hay nuevas pagina se cierra
             if not nuevas:
                 logger.info(f"[Tiendeo] Sin páginas nuevas en bloque {pagina_inicio} → fin del folleto")
                 break
@@ -234,9 +251,10 @@ class TiendeoScraper(BaseScraper):
         redirect_detectado = asyncio.Event()
         indice_corte = [None]  # índice en urls_capturadas al momento del redirect
 
-        # Listener de peticiones para capturar URLs de imágenes que el visor carga al abrir el bloque de páginas
+        # Cacha las peticiones para capturar SOLO URLs de imágenes
         def _on_request(request):
             url = request.url
+            # valida que sea una URL con nivel de imagen
             if (
                 "publications/page_assets" in url or
                 "page_level" in url or
