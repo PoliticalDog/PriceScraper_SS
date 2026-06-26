@@ -1,32 +1,6 @@
-"""
-normalizador.py
-PriceScraper MX — Normalizador de productos NLP
-
-Convierte el texto OCR crudo de productos en nombres canónicos comparables
-entre tiendas y semanas. Necesario para que el BI pueda rastrear un mismo
-producto a lo largo del tiempo sin duplicados por variantes OCR.
-
-Pipeline (3 capas):
-    1. Limpieza textual   → normaliza mayúsculas, acentos, unidades, OCR errors
-    2. Filtro de basura   → descarta textos que pasaron el NLP pero no son productos
-    3. Fuzzy matching     → compara contra catálogo curado con RapidFuzz
-
-Output por producto:
-    {
-        "texto_raw":       "PLATANO",
-        "nombre_canonico": "Plátano",
-        "confianza_norm":  0.94,
-        "metodo":          "fuzzy" | "exacto" | "heuristico" | "sin_match",
-        "categoria":       "alimentos",
-        "marca":           null | "Bimbo"
-    }
-
-Uso:
-    from nlp.normalizador import Normalizador
-    norm = Normalizador()
-    resultado = norm.normalizar("PLATANO")
-    batch    = norm.normalizar_lista(["PLATANO", "Leche entera", "PLTANO"])
-"""
+# Convierte el texto OCR crudo de productos en nombres canónicos comparables
+# entre tiendas y semanas. Necesario para que el BI pueda rastrear un mismo
+# producto a lo largo del tiempo sin duplicados por variantes OCR.
 
 import re
 import unicodedata
@@ -37,17 +11,11 @@ from rapidfuzz import process, fuzz
 
 logger = logging.getLogger(__name__)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Catálogo de productos canónicos
-# Estructura: { "Nombre canónico": {"categoria": str, "marca": str|None,
-#               "aliases": [str]} }
-# Los aliases son variantes OCR frecuentes o nombres alternativos conocidos.
-# ─────────────────────────────────────────────────────────────────────────────
 
 CATALOGO_CANONICO: dict[str, dict] = {
 
-    # ── Lácteos ──────────────────────────────────────────────────────────────
+    # ---------------------------- Lácteos ----------------------------
     "Leche entera":            {"categoria": "alimentos", "marca": None,  "aliases": ["leche entra", "leche ent", "leche 1l", "leche 1lt"]},
     "Leche light":             {"categoria": "alimentos", "marca": None,  "aliases": ["leche lite", "leche descremada"]},
     "Leche deslactosada":      {"categoria": "alimentos", "marca": None,  "aliases": ["leche sin lactosa", "leche deslac"]},
@@ -57,7 +25,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Crema":                   {"categoria": "alimentos", "marca": None,  "aliases": ["crema acida", "crema ácida"]},
     "Mantequilla":             {"categoria": "alimentos", "marca": None,  "aliases": ["manequilla", "mantequlla"]},
 
-    # ── Carnes y embutidos ───────────────────────────────────────────────────
+    # ---------------------------- Carnes y embutidos ----------------------------
     "Salchicha":               {"categoria": "alimentos", "marca": None,  "aliases": ["salchica", "salchcha", "salcihca"]},
     "Jamón":                   {"categoria": "alimentos", "marca": None,  "aliases": ["jamon", "hamon", "jámon"]},
     "Chorizo":                 {"categoria": "alimentos", "marca": None,  "aliases": ["choriso", "chorizoo"]},
@@ -67,7 +35,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Bistec de res":           {"categoria": "alimentos", "marca": None,  "aliases": ["bistec res", "bisteck"]},
     "Atún en agua":            {"categoria": "alimentos", "marca": None,  "aliases": ["atun en agua", "atun agua", "atún"]},
 
-    # ── Despensa básica ──────────────────────────────────────────────────────
+    # ---------------------------- Despensa básica ----------------------------
     "Arroz":                   {"categoria": "alimentos", "marca": None,  "aliases": ["arros", "arrros"]},
     "Frijol negro":            {"categoria": "alimentos", "marca": None,  "aliases": ["frijol ngro", "frijoles negros"]},
     "Frijol pinto":            {"categoria": "alimentos", "marca": None,  "aliases": ["frijoles pintos"]},
@@ -89,7 +57,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Cereal":                  {"categoria": "alimentos", "marca": None,  "aliases": ["cereal mañanero", "cereales"]},
     "Avena":                   {"categoria": "alimentos", "marca": None,  "aliases": ["hojuelas de avena"]},
 
-    # ── Frutas y verduras ────────────────────────────────────────────────────
+    # ---------------------------- Frutas y verduras ----------------------------
     "Plátano":                 {"categoria": "alimentos", "marca": None,  "aliases": ["platano", "pltano", "platano macho", "plátanos"]},
     "Manzana":                 {"categoria": "alimentos", "marca": None,  "aliases": ["manznas", "manzana roja"]},
     "Naranja":                 {"categoria": "alimentos", "marca": None,  "aliases": ["naranjas", "naranja valencia"]},
@@ -100,7 +68,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Chía":                    {"categoria": "alimentos", "marca": None,  "aliases": ["chia", "semilla de chia", "semilla de chía"]},
     "Quinoa":                  {"categoria": "alimentos", "marca": None,  "aliases": ["quinua", "quinua real"]},
 
-    # ── Bebidas ──────────────────────────────────────────────────────────────
+    # ---------------------------- Bebidas ----------------------------
     "Refresco":                {"categoria": "alimentos", "marca": None,  "aliases": ["refrcos", "refresco 2l", "refresco 600ml"]},
     "Agua natural":            {"categoria": "alimentos", "marca": None,  "aliases": ["agua purificada", "agua 1.5l", "agua garrafon"]},
     "Jugo":                    {"categoria": "alimentos", "marca": None,  "aliases": ["jugo de naranja", "jugo 1l"]},
@@ -109,13 +77,13 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Café":                    {"categoria": "alimentos", "marca": None,  "aliases": ["cafe", "cafe soluble", "café molido"]},
     "Vinagre":                 {"categoria": "alimentos", "marca": None,  "aliases": ["vinagre blanco", "vinagre de manzana"]},
 
-    # ── Condimentos ──────────────────────────────────────────────────────────
+    # ---------------------------- Condimentos ----------------------------
     "Mayonesa":                {"categoria": "alimentos", "marca": None,  "aliases": ["maonesa", "mayonesa de aguacate"]},
     "Salsa":                   {"categoria": "alimentos", "marca": None,  "aliases": ["salsa picante", "salsas", "salsa verde"]},
     "Ketchup":                 {"categoria": "alimentos", "marca": None,  "aliases": ["catsup", "ketxup"]},
     "Aderezos":                {"categoria": "alimentos", "marca": None,  "aliases": ["aderezo", "aderezo cesar", "aderezo italiano"]},
 
-    # ── Limpieza ─────────────────────────────────────────────────────────────
+    # ---------------------------- Limpieza ----------------------------
     "Detergente":              {"categoria": "limpieza", "marca": None,   "aliases": ["detergnte", "detrjente", "detergente líquido", "detergente en polvo"]},
     "Suavizante de telas":     {"categoria": "limpieza", "marca": None,   "aliases": ["suavizante", "suavizante ropa", "suavizante telas"]},
     "Cloro":                   {"categoria": "limpieza", "marca": None,   "aliases": ["cloro regular", "blanqueador"]},
@@ -124,7 +92,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Esponja":                 {"categoria": "limpieza", "marca": None,   "aliases": ["esponjas", "esponja fibra"]},
     "Bolsas de basura":        {"categoria": "limpieza", "marca": None,   "aliases": ["bolsa basura", "bolsas basura"]},
 
-    # ── Cuidado personal ─────────────────────────────────────────────────────
+    # ---------------------------- Cuidado personal ----------------------------
     "Shampoo":                 {"categoria": "cuidado_personal", "marca": None, "aliases": ["xampoo", "shampo", "champú"]},
     "Acondicionador":          {"categoria": "cuidado_personal", "marca": None, "aliases": ["acondicionadr", "rinse"]},
     "Desodorante":             {"categoria": "cuidado_personal", "marca": None, "aliases": ["desodrant", "antitranspirante", "desodorante roll-on"]},
@@ -134,7 +102,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Toallitas húmedas":       {"categoria": "cuidado_personal", "marca": None, "aliases": ["toallitas", "toallitas humedas", "toallitas bebe"]},
     "Tinte para cabello":      {"categoria": "cuidado_personal", "marca": None, "aliases": ["tinte", "tinte cabello", "coloración"]},
 
-    # ── Electrodomésticos ─────────────────────────────────────────────────────
+    # ---------------------------- Electrodomésticos ----------------------------
     "Refrigerador":            {"categoria": "linea_blanca",  "marca": None, "aliases": ["refri", "refrigeradr", "refrigerador duplex", "refirgerador"]},
     "Lavadora":                {"categoria": "linea_blanca",  "marca": None, "aliases": ["labadera", "lavdora", "lavadora automatica"]},
     "Estufa":                  {"categoria": "linea_blanca",  "marca": None, "aliases": ["estfa", "cocina integral"]},
@@ -145,18 +113,18 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Ventilador":              {"categoria": "linea_blanca",  "marca": None, "aliases": ["ventiladr", "abanico electrico"]},
     "Aire acondicionado":      {"categoria": "linea_blanca",  "marca": None, "aliases": ["aire acon", "minisplit", "a/a"]},
 
-    # ── Tecnología ───────────────────────────────────────────────────────────
+    # ---------------------------- Tecnología ----------------------------
     "Smart TV":                {"categoria": "electronica",   "marca": None, "aliases": ["smartv", "smart tv 4k", "television smart", "smart television"]},
     "Laptop":                  {"categoria": "electronica",   "marca": None, "aliases": ["lapto", "notebook", "computadora portatil"]},
     "Smartphone":              {"categoria": "electronica",   "marca": None, "aliases": ["celular", "telefono inteligente", "smartphoe"]},
     "Bocina Bluetooth":        {"categoria": "electronica",   "marca": None, "aliases": ["bocina bt", "altavoz bluetooth", "bocina inalambrica"]},
     "Audifonos":               {"categoria": "electronica",   "marca": None, "aliases": ["audífonos", "audifonos inalambricos", "headphones"]},
 
-    # ── Mascotas ─────────────────────────────────────────────────────────────
+    # ---------------------------- Mascotas ----------------------------
     "Croquetas para perro":    {"categoria": "mascotas",      "marca": None, "aliases": ["croquetas perro", "alimento perro", "comida perro"]},
     "Croquetas para gato":     {"categoria": "mascotas",      "marca": None, "aliases": ["croquetas gato", "alimento gato", "comida gato"]},
 
-    # ── Ropa ─────────────────────────────────────────────────────────────────
+    # ---------------------------- Ropa ----------------------------
     "Playera":                 {"categoria": "ropa",          "marca": None, "aliases": ["camiseta", "playra", "polera"]},
     "Pantalón":                {"categoria": "ropa",          "marca": None, "aliases": ["pantalon", "jeans", "pantalon de mezclilla"]},
     "Vestido":                 {"categoria": "ropa",          "marca": None, "aliases": ["vestdo", "vestidos"]},
@@ -164,7 +132,7 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Tenis":                   {"categoria": "ropa",          "marca": None, "aliases": ["tnis", "zapatillas deportivas"]},
 }
 
-# ── Marcas conocidas que se filtran del nombre canónico ───────────────────────
+# ---------------------------- Marcas conocidas que se filtran del nombre canónico ----------------------------
 # Si el producto contiene estas palabras, se extrae como campo `marca`
 MARCAS_CONOCIDAS = {
     # Alimentos
@@ -192,9 +160,8 @@ MARCAS_CONOCIDAS = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Resultado del normalizador
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ---------------------------- Resultado del normalizador ----------------------------
 
 @dataclass
 class ResultadoNorm:
@@ -214,9 +181,8 @@ class ResultadoNorm:
                 f"'{self.texto_raw}' → '{self.nombre_canonico}'{marca_str}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Normalizador principal
-# ─────────────────────────────────────────────────────────────────────────────
+
+# ---------------------------- Normalizador principal ----------------------------
 
 class Normalizador:
     """
@@ -292,7 +258,7 @@ class Normalizador:
         logger.info(f"[Norm] Catálogo cargado: {len(CATALOGO_CANONICO)} productos, "
                     f"{len(self._indice)} entradas de búsqueda")
 
-    # ── API pública ───────────────────────────────────────────────────────────
+    # ---------------------------- API pública ----------------------------
 
     def normalizar(self, texto: str) -> ResultadoNorm:
         """
@@ -444,7 +410,7 @@ class Normalizador:
         }
         return resultado
 
-    # ── Métodos internos ──────────────────────────────────────────────────────
+    # ---------------------------- Métodos internos ----------------------------
 
     def _es_basura(self, texto: str) -> bool:
         for patron in self.PATRONES_BASURA:
@@ -492,9 +458,7 @@ class Normalizador:
         return " ".join(resultado)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI de prueba rápida
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------- CLI de prueba rápida ----------------------------
 
 def main():
     logging.basicConfig(
@@ -525,13 +489,13 @@ def main():
     print(f"  Catálogo: {len(CATALOGO_CANONICO)} productos canónicos")
     print(f"{'═'*70}")
     print(f"  {'TEXTO RAW':<38} {'RESULTADO'}")
-    print(f"{'─'*70}")
+    print(f"{''*70}")
 
     for texto in casos_prueba:
         r = norm.normalizar(texto)
         print(f"  {texto:<38} {r}")
 
-    print(f"{'─'*70}\n")
+    print(f"{''*70}\n")
 
 
 if __name__ == "__main__":

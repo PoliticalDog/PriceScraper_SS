@@ -250,7 +250,7 @@ CATALOGO = {
 
 # ----------------------- Función de búsqueda -----------------------
 
-# Con un texto busca si corresponde a alguna categoría del catálogo usando las keywords.
+# Busca similitud de texto con catalogo de categorías y keywords
 # Retorna (encontrado, nombre_categoria, es_atributo)
 def buscar_categoria(texto: str) -> tuple[bool, str, bool]:
     """

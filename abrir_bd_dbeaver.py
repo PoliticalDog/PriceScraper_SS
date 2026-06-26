@@ -1,23 +1,6 @@
-"""
-abrir_bd_dbeaver.py
-PriceScraper MX — Abrir la base SQLite en DBeaver
+# Este módulo abre el archivo data/pricescraper.db directamente en DBeaver.
+# No modifica la base de datos; solo lanza el gestor visual.
 
-Este módulo abre el archivo data/pricescraper.db directamente en DBeaver.
-No modifica la base de datos; solo lanza el gestor visual.
-
-Uso:
-    python abrir_bd_dbeaver.py
-
-Opcional:
-    python abrir_bd_dbeaver.py ruta/a/tu_base.db
-
-Notas:
-- DBeaver debe estar instalado.
-- En Windows, si DBeaver no está en PATH, el script intenta buscarlo en
-  Program Files, AppData y rutas comunes.
-- En macOS intenta usar la app DBeaver.app.
-- En Linux intenta usar el comando dbeaver.
-"""
 
 from __future__ import annotations
 

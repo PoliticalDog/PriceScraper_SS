@@ -7,6 +7,7 @@ from datetime import datetime
 
 from .downloader import ruta_folleto
 
+# inicia el logger para este módulo
 logger = logging.getLogger(__name__)
 
 # Ruta por defecto para el registro de folletos procesados
@@ -20,7 +21,7 @@ class Registro:
         self.ruta = ruta or RUTA_REGISTRO
         self._datos = self._cargar()
     
-    # Carga el registro desde disco. Si no existe, lo crea vacío.
+    # Carga el registro desde disco. Si no existe, lo crea vacío
     def _cargar(self) -> dict:
         
         if self.ruta.exists():
@@ -38,16 +39,12 @@ class Registro:
             json.dump(self._datos, f, ensure_ascii=False, indent=2)
 
     # Verifica si un folleto ya fue procesado anteriormente.
-    # Además de revisar el JSON, verifica que la carpeta de páginas
-    # realmente exista en disco. Si el registro dice "procesado" pero
-    # la carpeta fue borrada (o nunca tuvo páginas), se considera
-    # NO procesado para forzar re-descarga y sobrescribir el registro.
+    # Si el registro esta procesado pero la carpeta del folleto no existe o esta vacia, se re-procesa
     def ya_procesado(self, fuente: str, folleto_id: str, tienda: str = "") -> bool:
         """
             fuente:         'tiendeo' o 'ofertomat'
             folleto_id:     ID único del folleto
-            tienda:         Nombre de la tienda (para localizar la carpeta en disco).
-                            Si no se da, se intenta usar la tienda guardada en el registro.
+            tienda:         Nombre de la tienda
         """
         clave = f"{fuente}:{folleto_id}"
         if clave not in self._datos:
@@ -60,7 +57,7 @@ class Registro:
         if not carpeta.exists() or not any(carpeta.iterdir()):
             logger.info(
                 f"[Registro] {clave} marcado como procesado pero "
-                f"la carpeta '{carpeta}' no existe o está vacía → re-procesar"
+                f"la carpeta '{carpeta}' no existe o está vacía --> re-procesar"
             )
             return False
 
@@ -68,7 +65,7 @@ class Registro:
 
     # Marca un folleto como procesado, guardando información relevante en el registro
     def marcar_procesado(self, fuente: str, folleto_id: str, metadata: dict = None):
-        # metadata:   Dict opcional con info adicional (tienda, título, fechas)
+        # metadata --> Dict opcional con info adicional (tienda, título, fechas)
 
         clave = f"{fuente}:{folleto_id}"
         self._datos[clave] = {

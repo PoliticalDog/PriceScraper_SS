@@ -24,7 +24,7 @@ console_handler.setFormatter(logging.Formatter(
     datefmt="%H:%M:%S"
 ))
 
-# Handler para archivo — acumula entre ejecuciones
+# Handler para archivo - acumula entre ejecuciones
 file_handler = RotatingFileHandler(
     "logs/scraper.log",
     maxBytes=5 * 1024 * 1024,  # 5 MB por archivo
@@ -147,7 +147,7 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str = "todas"):
     
     # Descargar cada folleto nuevo
     for folleto in nuevos:
-        tienda_display = folleto['tienda'] or "⚠️  Sin tienda (→ desconocidos)"
+        tienda_display = folleto['tienda'] or "X  Sin tienda (→ desconocidos)"
         logger.info(f"\n[TIENDEO] → {tienda_display} — {folleto['titulo']}")
 
         async with TiendeoScraper(headless=True) as scraper:
@@ -221,7 +221,7 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
 
         # ------------- Descargar los folletos nuevos de esta tienda -------------
         for folleto in nuevos:
-            tienda_display = folleto['tienda'] or "⚠️  Sin tienda (→ desconocidos)"
+            tienda_display = folleto['tienda'] or "X  Sin tienda (→ desconocidos)"
             logger.info(f"[TIENDEO] → {tienda_display} — {folleto['titulo']}")
             total_nuevos += 1
 
@@ -336,7 +336,7 @@ async def main():
         opcion = menu_principal()
 
         if opcion == 0:
-            print("\n  👋 Saliendo...\n")
+            print("\n  ------------------- Saliendo...\n")
             break
 
         elif opcion == 1:
@@ -357,14 +357,14 @@ async def main():
             await scrapear_tiendeo_todas_tiendas(registro)
 
         else:
-            print("  ⚠️  Opción no válida.")
+            print("  X  Opción no válida.")
 
         try:
             continuar = input("\n  ¿Hacer otra prueba? (s/n): ").strip().lower()
         except EOFError:
             break
         if continuar != "s":
-            print("\n  👋 Saliendo...\n")
+            print("\n  ------------------- Saliendo...\n")
             break
 
 

@@ -1,15 +1,5 @@
-# Modulo para extraer y clasificar entidades de texto OCR usando expresiones regulares.
 # Toma los bloques de texto del OCR y los clasifica en categorías:
-# PRECIO, PRECIO_ANTERIOR, AHORRO, PROMO, EVENTO_PROMO, PRODUCTO, ATRIBUTO, DESCARTE
-#
-# v3 — Cambios respecto a v2:
-#   - PRECIO_ANTERIOR: detecta "Antes: $X", "Antos; $X", "precio anterior $X"
-#   - AHORRO: detecta "Ahorras $X", "Ahorra $X", "Ahorras 5X" (OCR $ → 5)
-#   - EVENTO_PROMO: detecta campañas como "Julio Regalado", "Hot Sale", "Precio Bajo"
-#   - PATRON_PRECIO ampliado: prefijos DESDE/A sólo/desde:/a solo: + sufijo C/U
-#   - Corrección OCR: 'o' entre dígitos con coma → '0' ($16,o00 → $16,000)
-#   - PATRONES_DESCARTE ampliados: slogans cross-tienda, palabras sueltas de folleto
-#   - Marcas-logo de envase descartadas (Golden Hills, etc.)
+#       PRECIO, PRECIO_ANTERIOR, AHORRO, PROMO, EVENTO_PROMO, PRODUCTO, ATRIBUTO, DESCARTE
 
 import re
 import logging
@@ -17,15 +7,16 @@ from dataclasses import dataclass, field
 from typing import Optional
 from .catalogo_productos import buscar_categoria
 
+# configuración de logging
 logger = logging.getLogger(__name__)
 
 
 # --------------- Modelos de datos ---------------
 
+# pieza de informacion extraida de la pagina
 @dataclass
 class EntidadExtraida:
-    tipo:       str                     # PRECIO | PRECIO_ANTERIOR | AHORRO | PROMO |
-                                        # EVENTO_PROMO | PRODUCTO | ATRIBUTO | DESCARTE
+    tipo:       str    # PRECIO | PRECIO_ANTERIOR | AHORRO | PROMO | EVENTO_PROMO | PRODUCTO | ATRIBUTO | DESCARTE
     texto_raw:  str
     texto_norm: str
     valor:      Optional[float] = None  # Valor numérico (precios, ahorros)
@@ -33,11 +24,12 @@ class EntidadExtraida:
     bbox:       dict = field(default_factory=dict)
     categoria:  str = ""                # Categoría del catálogo (PRODUCTO/ATRIBUTO)
 
+    
     def __str__(self):
         val = f" → ${self.valor:,.2f}" if self.valor else ""
         return f"[{self.tipo}] '{self.texto_norm}'{val}"
 
-
+# Agrupacion de informacion extraida de una pagina completa
 @dataclass
 class ResultadoPagina:
     imagen:           str

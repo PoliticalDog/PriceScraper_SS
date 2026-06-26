@@ -1,18 +1,19 @@
-# Metodos de 3 perfiles de preprocesamiento de imagenes para mejorar el OCR
-# Escalado --> grises --> reduccion ruido --> rotacion --> binarizacion --> OCR
+# Metodos de los 3 perfiles de preprocesamiento de imagenes para mejorar el OCR
+# 2 categorías principales: Color (EasyOCR) y Blanco y negro (Tesseract)
+
 import cv2
 import numpy as np
-import logging
+import logging 
 from pathlib import Path
 
 # Perfiles de preprocesamiento:
 """
-     Color - Pipeline optimizado para EasyOCR (3 perfiles):
-        Preserva color --> EasyOCR usa canales RGB para segmentar texto del fondo
+     Color - EasyOCR (3 perfiles):
+        Preserva color -->  se usa usa canales RGB para segmentar texto del fondo
         Sharpening --> realza bordes de letras sin quitar color
         CLAHE --> mejora contraste local en zonas oscuras sin afectar zonas claras
 
-    Blanco y Negro - Pipeline optimizado para Tesseract (3 perfiles):
+    Blanco y Negro - Tesseract (3 perfiles):
         Escala de grises --> Tesseract opera mejor en un solo canal
         Gaussiano --> reduce ruido antes de binarizar
         Rotación --> Hough (útil para documentos escaneados)
@@ -25,15 +26,16 @@ logger = logging.getLogger(__name__)
 # Clase preporcesar
 class Preprocessor:
     
-    ANCHO_OBJETIVO_DEFAULT = 1500  # píxeles — valor por defecto
+    # Ancho del escalado por default
+    ANCHO_OBJETIVO_DEFAULT = 1500  # valor por defecto
 
     def __init__(
         self,
         
         # --------------- Parámetros compartidos entre perfiles ---------------
         escalar:        bool       = True,
-        escala_factor:  float|None = None,   # None → adaptativo por ancho_objetivo
-        ancho_objetivo: int        = None,   # None → usa ANCHO_OBJETIVO_DEFAULT (1500px)
+        escala_factor:  float|None = None,   # None --> adaptativo por ancho_objetivo
+        ancho_objetivo: int        = None,   # None -->ñ usa ANCHO_OBJETIVO_DEFAULT (1500px)
         
         # --------------- Blanco y negro (Tesseract) ---------------
         escala_grises:  bool  = True,
@@ -44,13 +46,8 @@ class Preprocessor:
         # --------------- COLOR (EasyOCR) ---------------
         sharpening:     bool  = False,  # Realza bordes conservando color
         clahe:          bool  = False,  # Mejora contraste local por canal
-        
-        # ---------------BADGE — texto blanco sobre fondo de color saturado ───────
-        # Para: fresko, la_comer, tiendas_neto y cualquier folleto donde
-        # los badges de precio usan fondo morado/verde/naranja + texto blanco.
-        badge_precio:   bool  = False,
-        
     ):
+        # Inicializacion de variables
         # Pasos compartidos
         self.escalar_flag  = escalar
         self.escala_factor = escala_factor  # None = adaptativo
@@ -63,8 +60,6 @@ class Preprocessor:
         # Perfil --> color
         self.sharpening    = sharpening
         self.clahe         = clahe
-        # Perfil --> badge
-        self.badge_precio  = badge_precio
 
     # --------------------- Método principal ---------------------
     # Procesa la imagen según los pasos activos en el orden correcto.
@@ -80,19 +75,14 @@ class Preprocessor:
         if self.escalar_flag:
             imagen = self._escalar(imagen)
 
-        # 2. CLAHE — mejora contraste antes del sharpening (v2 color)
+        # 2. CLAHE - mejora contraste antes del sharpening (v2 color)
         if self.clahe:
             imagen = self._clahe(imagen)
 
-        # 3. Sharpening — realza bordes conservando color (v2 color)
+        # 3. Sharpening - realza bordes conservando color (v2 color)
         if self.sharpening:
             imagen = self._sharpening(imagen)
 
-        # 3b. Badge precio — texto blanco sobre fondo saturado (v3)
-        #     Se aplica ANTES de grises/binarización porque opera en color.
-        #     Si está activo, clahe y sharpening anteriores complementan el resultado.
-        if self.badge_precio:
-            imagen = self._realce_badge_precio(imagen)
 
         # 4. Escala de grises (v1 / v2 bn)
         if self.escala_grises:
@@ -102,7 +92,7 @@ class Preprocessor:
         if self.reducir_ruido:
             imagen = self._reducir_ruido(imagen)
 
-        # 6. Corrección de rotación — Hough (v1 / v2 bn)
+        # 6. Corrección de rotación - Hough (v1 / v2 bn)
         if self.corregir_rot:
             imagen = self._corregir_rotacion(imagen)
 
@@ -111,7 +101,7 @@ class Preprocessor:
             imagen = self._binarizar(imagen)
 
         # Log final con resolución de la imagen procesada
-        logger.info(f"[Preprocessor] Listo → {imagen.shape[1]}x{imagen.shape[0]}px")
+        logger.info(f"[Preprocessor] Listo --> {imagen.shape[1]}x{imagen.shape[0]}px")
         return imagen
 
     # Guarda la imagen procesada en la ruta de salida especificada
@@ -126,14 +116,11 @@ class Preprocessor:
     # escalado adaptativo o fijo, según el perfil
     def _escalar(self, imagen: np.ndarray) -> np.ndarray:
         
-        alto, ancho = imagen.shape[:2]
+        alto, ancho = imagen.shape[:2] # alto, ancho, canales
 
         # Si la imagen ya es más ancha que el objetivo, no SE escala 
         if self.escala_factor is None:
-            # Modo adaptativo: normalizar al ancho objetivo en ambas direcciones.
-            # - Imagen pequeña (<1350px): escalar arriba  → más detalle para OCR
-            # - Imagen grande  (>1350px): escalar abajo   → menos carga, mismo resultado
-            # - Imagen exacta  (=1350px): sin cambio
+            # Escalado adaptativo --> calcular factor según ancho objetivo
             if ancho == self.ancho_objetivo:
                 logger.info(f"[Preprocessor] Escalado adaptativo: {ancho}px = objetivo, sin cambio")
                 return imagen
@@ -144,22 +131,22 @@ class Preprocessor:
                 f"{ancho}px {direccion} {self.ancho_objetivo}px (x{factor:.2f})"
             )
         else:
-            # Modo fijo: usar el factor explícito (perfiles v1 legacy)
+            # Modo fijo v1
             factor = self.escala_factor
 
         nuevo_ancho = int(ancho * factor)
         nuevo_alto  = int(alto  * factor)
-        # INTER_CUBIC suaviza bordes — alternativa: INTER_LANCZOS4 (más nítido, más lento)
+        # INTER_CUBIC suaviza bordes - alternativa: INTER_LANCZOS4 (más nítido, más lento)
         return cv2.resize(imagen, (nuevo_ancho, nuevo_alto),
                           interpolation=cv2.INTER_CUBIC)
 
-    # Convierte a escala de grises si la imagen tiene 3 canales (color).
+    # Convierte a escala de grises si la imagen tiene 3 canales (color)
     def _escala_grises(self, imagen: np.ndarray) -> np.ndarray:
         if len(imagen.shape) == 3:
             return cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
         return imagen
 
-    # ---------------------- Perfil Blanco y negro — Tesseracy ----------------------
+    # ---------------------- Perfil Blanco y negro - Tesseracy ----------------------
     # elimina ruido con gauss, no destruye tipografías finas
     def _reducir_ruido(self, imagen: np.ndarray) -> np.ndarray:
         # si la imagen es de 3 canales (color), se convierte a escala de grises
@@ -167,12 +154,9 @@ class Preprocessor:
             imagen = self._escala_grises(imagen)
         return cv2.GaussianBlur(imagen, (3, 3), 0)
 
-    # 
+    # Binarización adaptativa gaussiana
     def _binarizar(self, imagen: np.ndarray) -> np.ndarray:
-        """Binarización adaptativa gaussiana.
-        blockSize=11: vecindad local para calcular umbral
-        C=2: penalización para evitar fondo completamente blanco
-        """
+        
         if len(imagen.shape) == 3:
             imagen = self._escala_grises(imagen)
         return cv2.adaptiveThreshold(
@@ -180,15 +164,13 @@ class Preprocessor:
             maxValue=255,
             adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             thresholdType=cv2.THRESH_BINARY,
-            blockSize=11,
-            C=2
+            blockSize=11, #vecindad
+            C=2 # penalización para evitar fondo completamente blanco
         )
 
+    # tecnica de rotacion Hough (inecesaria en pruebas)
     def _corregir_rotacion(self, imagen: np.ndarray) -> np.ndarray:
-        """Corrección de rotación con Transformada de Hough.
-        Útil para documentos escaneados. Los folletos digitales de Tiendeo/Ofertomat
-        raramente llegan rotados, pero se conserva para completitud del pipeline.
-        """
+        
         try:
             img_gris = self._escala_grises(imagen)
             bordes   = cv2.Canny(img_gris, 50, 150, apertureSize=3)
@@ -225,36 +207,31 @@ class Preprocessor:
             logger.warning(f"Error en corrección de rotación: {e}, saltando paso.")
             return imagen
 
-    # ─────────────────────────────────────────────────────────────────────
-    # v2 COLOR — optimizado para EasyOCR
-    # ─────────────────────────────────────────────────────────────────────
+    # --------------------------------- v2 COLOR - optimizado para EasyOCR ---------------------- 
+    # mejora contraste local sin sobreexponer zonas claras
+    # Contrast Limited Adaptive Histogram Equalization
     def _clahe(self, imagen: np.ndarray) -> np.ndarray:
-        """CLAHE (Contrast Limited Adaptive Histogram Equalization) por canal.
-        Mejora el contraste local en zonas oscuras sin sobreexponer zonas claras.
-        Opera en el espacio LAB: solo modifica el canal L (luminosidad),
-        preservando los canales A y B (color) intactos.
-        clipLimit=2.0: límite de amplificación — valores altos aumentan ruido
-        tileGridSize=(8,8): tamaño de la rejilla local
-        """
+    
+        # Si eesta en grises se aplica directo
         if len(imagen.shape) == 2:
-            # Escala de grises: aplicar directamente
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             return clahe.apply(imagen)
 
-        # Color BGR → LAB → CLAHE en L → BGR
-        lab   = cv2.cvtColor(imagen, cv2.COLOR_BGR2LAB)
+        # Color BGR --> LAB --> CLAHE en L --> BGR
+        lab   = cv2.cvtColor(imagen, cv2.COLOR_BGR2LAB) # luminodsidad, componente verde-rojo, componente azul-amarillo
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) # 8x8 = 64 cuadricula
         l_eq  = clahe.apply(l)
         lab_eq = cv2.merge([l_eq, a, b])
         return cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
 
+    # Realza bordes de letras sin quitar color
     def _sharpening(self, imagen: np.ndarray) -> np.ndarray:
-        """Unsharp masking: realza los bordes de las letras sin quitar color.
-        Funciona en color (BGR) y en escala de grises.
-        Kernel: resta una versión suavizada de la imagen a sí misma,
-        amplificando las diferencias locales (bordes de texto).
-        alpha=1.5: intensidad del realce — valores > 2.0 generan halos
+        # Resalta bordes y el fondo blanco queda igual, usa el kernel de sharpening
+        """
+        Explicacion breve, se toma el centro y se multiplica por 5, 
+        se resta el valor de los 4 puntos cardenales y se le resta al producto, de esta forma si los 4 puntos cardnales son cargados
+        queda igual pero si los 4 puntos cardenales son blancos, el centro se resalta y se ve mas nítido
         """
         kernel = np.array([
             [ 0, -1,  0],
@@ -263,72 +240,31 @@ class Preprocessor:
         ], dtype=np.float32)
         return cv2.filter2D(imagen, -1, kernel)
 
-    # ─────────────────────────────────────────────────────────────────────
-    # v3 BADGE — texto blanco sobre fondo de color saturado
-    # ─────────────────────────────────────────────────────────────────────
-    def _realce_badge_precio(self, imagen: np.ndarray) -> np.ndarray:
-        """Realce para badges de precio con texto blanco sobre fondo saturado.
 
-        Problema: folletos como fresko, la_comer y tiendas_neto imprimen los
-        precios con texto blanco sobre fondo morado/verde/naranja intenso.
-        EasyOCR confunde el símbolo '$' con 's' o '8' en ese contexto.
-
-        Solución en 3 pasos:
-          1. Convertir BGR → HSV y extraer canal V (valor/brillo)
-             El texto blanco tiene V≈255; el fondo saturado tiene V≈100-180.
-          2. Amplificar el canal V con CLAHE para maximizar la diferencia
-             brillo-texto vs brillo-fondo antes de binarizar.
-          3. Invertir el canal V: texto blanco → negro, fondo → claro.
-             Resultado: imagen en escala de grises con texto negro legible.
-
-        Retorna escala de grises (1 canal) — compatible con EasyOCR y con
-        los pasos siguientes del pipeline (reducir_ruido, binarizar).
-
-        Parámetros CLAHE usados:
-          clipLimit=3.0: más agresivo que el CLAHE general (2.0) para
-                         maximizar separación en fondos muy saturados.
-          tileGridSize=(4,4): rejilla más fina para respetar los bordes
-                              del badge sin contaminar texto adyacente.
-        """
-        if len(imagen.shape) == 2:
-            # Ya está en grises — invertir directamente
-            return cv2.bitwise_not(imagen)
-
-        # BGR → HSV → canal V
-        hsv     = cv2.cvtColor(imagen, cv2.COLOR_BGR2HSV)
-        _, _, v = cv2.split(hsv)
-
-        # CLAHE en canal V — amplifica diferencia texto/fondo
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
-        v_eq  = clahe.apply(v)
-
-        # Invertir: texto blanco (255) → negro (0), fondo oscuro → claro
-        v_inv = cv2.bitwise_not(v_eq)
-
-        logger.debug("[Preprocessor] Badge precio: HSV→V→CLAHE→invertido")
-        return v_inv
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Comparación visual original vs procesada
-    # ─────────────────────────────────────────────────────────────────────
+    # ---------------- Comparación visual original vs procesada ----------------
+    # Imagen comparativa, original - tratada 
     def guardar_comparacion(self, ruta_original: Path, ruta_salida: Path) -> Path:
         original  = cv2.imread(str(ruta_original))
         procesada = self.procesar(ruta_original)
 
+        # si la imagen procesada es de 1 canal (grises), convertir a BGR para concatenar
         if len(procesada.shape) == 2:
             procesada_bgr = cv2.cvtColor(procesada, cv2.COLOR_GRAY2BGR)
         else:
             procesada_bgr = procesada
 
+        # rediomensionar ambas imágenes al mismo alto para concatenar horizontalmente
         alto_objetivo = min(original.shape[0], procesada_bgr.shape[0])
         escala_orig   = alto_objetivo / original.shape[0]
         escala_proc   = alto_objetivo / procesada_bgr.shape[0]
 
+        # Redimensionar imágenes manteniendo la relación de aspecto
         orig_resized = cv2.resize(
             original, (int(original.shape[1] * escala_orig), alto_objetivo))
         proc_resized = cv2.resize(
             procesada_bgr, (int(procesada_bgr.shape[1] * escala_proc), alto_objetivo))
 
+        # etiquetas
         cv2.putText(orig_resized, "ORIGINAL",  (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         cv2.putText(proc_resized, "PROCESADA", (10, 30),
@@ -341,13 +277,11 @@ class Preprocessor:
         return ruta_salida
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Catálogo de perfiles
-# ─────────────────────────────────────────────────────────────────────────────
 
-# ── v1 Legacy ─────────────────────────────────────────────────────────────────
-# Perfiles originales — conservados para trazabilidad de la investigación.
-# Benchmarks anteriores usaron estos perfiles con EasyOCR y EasyOCR+Tesseract.
+# ----------------- COMPARATIVAS ENTRE PERFILES -----------------
+
+"""
+PERFIL BASE V1
 _PERFILES_V1 = {
     "suave":  Preprocessor(
         escalar=True, escala_factor=1.5,
@@ -362,14 +296,13 @@ _PERFILES_V1 = {
         escala_grises=True, reducir_ruido=True, binarizar=True, corregir_rot=True,
     ),
 }
+"""
 
-# ── v2 COLOR — optimizado para EasyOCR ────────────────────────────────────────
-# Preserva los canales de color que EasyOCR usa para separar texto del fondo.
-# No convierte a grises ni binariza — ambos pasos dañan folletos coloridos.
+#  Color - EasyOcr
 _PERFILES_COLOR = {
     "color_suave": Preprocessor(
-        escalar=True, escala_factor=None,   # adaptativo → ANCHO_OBJETIVO
-        # Solo escala — línea base para EasyOCR en color
+        escalar=True, escala_factor=None,   # adaptativo --> ANCHO_OBJETIVO
+        # Solo escala - línea base para EasyOCR en color
         escala_grises=False, reducir_ruido=False, binarizar=False, corregir_rot=False,
         sharpening=False, clahe=False,
     ),
@@ -380,43 +313,29 @@ _PERFILES_COLOR = {
         sharpening=True, clahe=False,
     ),
     "color_fuerte": Preprocessor(
-        escalar=True, escala_factor=None,   # adaptativo → ANCHO_OBJETIVO
+        escalar=True, escala_factor=None,   # adaptativo --> ANCHO_OBJETIVO
         # Escala + CLAHE + sharpening: para páginas con bajo contraste o zonas oscuras
         escala_grises=False, reducir_ruido=False, binarizar=False, corregir_rot=False,
         sharpening=True, clahe=True,
     ),
 }
 
-# ── v3 BADGE — texto blanco sobre fondo de color saturado (experimental) ─────
-# Perfil de investigación — NO usar en producción hasta nuevo benchmark.
-# Resultado: no mejora la lectura del símbolo $ tipográfico de fresko.
-# Disponible para experimentos futuros con otros tipos de folleto.
-_PERFILES_BADGE = {
-    "badge_normal": Preprocessor(
-        escalar=True, escala_factor=None, ancho_objetivo=1500,
-        escala_grises=False, reducir_ruido=True, binarizar=False, corregir_rot=False,
-        sharpening=False, clahe=False, badge_precio=True,
-    ),
-}
-
-# ── v2 B/N — optimizado para Tesseract ────────────────────────────────────────
-# Tesseract opera mejor con texto negro sobre fondo blanco — pipeline clásico.
-# La binarización adaptativa maximiza el contraste texto/fondo para el motor.
+#  Blanco Y Negro - TESSERACT 
 _PERFILES_BN = {
     "bn_suave": Preprocessor(
-        escalar=True, escala_factor=None,   # adaptativo → ANCHO_OBJETIVO
+        escalar=True, escala_factor=None,   # adaptativo --> ANCHO_OBJETIVO
         # Escala + grises: mínimo procesamiento B/N
         escala_grises=True, reducir_ruido=False, binarizar=False, corregir_rot=False,
         sharpening=False, clahe=False,
     ),
     "bn_normal": Preprocessor(
-        escalar=True, escala_factor=None,   # adaptativo → ANCHO_OBJETIVO
+        escalar=True, escala_factor=None,   # adaptativo --> ANCHO_OBJETIVO
         # Escala + grises + gaussiano + rotación
         escala_grises=True, reducir_ruido=True, binarizar=False, corregir_rot=True,
         sharpening=False, clahe=False,
     ),
     "bn_fuerte": Preprocessor(
-        escalar=True, escala_factor=None,   # adaptativo → ANCHO_OBJETIVO
+        escalar=True, escala_factor=None,   # adaptativo --> ANCHO_OBJETIVO
         # Pipeline completo: escala + grises + gaussiano + rotación + binarización adaptativa
         escala_grises=True, reducir_ruido=True, binarizar=True, corregir_rot=True,
         sharpening=False, clahe=False,
@@ -424,49 +343,17 @@ _PERFILES_BN = {
 }
 
 # Catálogo unificado
-PERFILES = {**_PERFILES_V1, **_PERFILES_COLOR, **_PERFILES_BN, **_PERFILES_BADGE}
+PERFILES = {**_PERFILES_COLOR, **_PERFILES_BN} # desempaquetar diccionarios y unirlos en uno solo
 
 # Agrupaciones para el menú
-PERFILES_V1    = list(_PERFILES_V1.keys())     # ["suave", "normal", "fuerte"]
+#PERFILES_V1    = list(_PERFILES_V1.keys())     # ["suave", "normal", "fuerte"]
 PERFILES_COLOR = list(_PERFILES_COLOR.keys())  # ["color_suave", "color_normal", "color_fuerte"]
 PERFILES_BN    = list(_PERFILES_BN.keys())     # ["bn_suave", "bn_normal", "bn_fuerte"]
-PERFILES_BADGE = list(_PERFILES_BADGE.keys())  # ["badge_normal"]  — experimental
-
-# ── Mapa de perfil recomendado por tienda ─────────────────────────────────────
-# Producción: todas las tiendas usan color_normal.
-# El símbolo $ de fresko/la_comer/tiendas_neto se maneja en NLP con
-# PATRON_PRECIO_OCR_CORRUPTO — el preprocesador no resuelve ese glifo.
-# badge_normal está disponible como perfil experimental manual.
-PERFIL_POR_TIENDA: dict[str, str] = {
-    "default": "color_normal",
-}
 
 
-def perfil_para_tienda(tienda: str) -> str:
-    """Retorna el nombre del perfil recomendado para una tienda.
-
-    Args:
-        tienda: Nombre normalizado de la tienda (ej: "fresko", "walmart").
-                Debe coincidir con el campo `tienda` del ocr_resultado.json.
-
-    Returns:
-        Nombre del perfil a usar. Siempre retorna un valor válido.
-    """
-    return PERFIL_POR_TIENDA.get(tienda.lower(), PERFIL_POR_TIENDA["default"])
-
-
+# ----------------- Función para obtener preprocesador por nombre -----------------
 def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocessor:
-    """Retorna el preprocesador correspondiente al nombre del perfil.
-
-    Args:
-        nombre:         Nombre del perfil (color_normal, badge_normal, etc.)
-                        También acepta nombre de tienda si se usa con perfil_para_tienda().
-        ancho_objetivo: Resolución objetivo en píxeles para escalado adaptativo.
-                        None → usa el default del perfil (1350/1500px).
-                        Útil para benchmarks de resolución (1200 / 1500 / 1800px).
-
-    Si el nombre no existe, retorna color_suave como default seguro.
-    """
+    # Devuelve una instancia de Preprocessor según el nombre del perfil y el ancho objetivo opcional
     if nombre not in PERFILES:
         logger.warning(f"[Preprocessor] Perfil '{nombre}' no encontrado, usando 'color_suave'.")
         nombre = "color_suave"

@@ -22,8 +22,6 @@ def normalizar_nombre(nombre: str) -> str:
 
 
 # Construye la ruta esperada de un folleto: data/raw/{fuente}/{tienda_slug}/{folleto_id}/
-# Se expone como función de módulo para que Registro pueda usar la misma lógica
-# sin depender de una instancia de Downloader.
 def ruta_folleto(fuente: str, tienda: str, folleto_id: str) -> Path:
     if not tienda or not tienda.strip():
         tienda_slug = "desconocidos"

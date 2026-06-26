@@ -13,9 +13,7 @@ from pathlib import Path
 from vision.preprocessor import obtener_preprocesador, Preprocessor
 from vision.ocr_engine import OCREngine, MOTORES_DISPONIBLES
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Logging
-# ─────────────────────────────────────────────────────────────────────────────
+# configuración de logging
 Path("logs").mkdir(exist_ok=True)
 
 console_handler = logging.StreamHandler()
@@ -34,15 +32,14 @@ logger = logging.getLogger("vision")
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-# ─────────────────────────────────────────────────────────────────────────────
+
 # Rutas
-# ─────────────────────────────────────────────────────────────────────────────
 DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------------------------
 # Menús
-# ─────────────────────────────────────────────────────────────────────────────
+# --------------------------------------------------------
 def menu_principal() -> int:
     print("\n" + "═" * 55)
     print("   PriceScraper — Módulo de Visión")
@@ -79,15 +76,10 @@ _OPCIONES_PERFIL = [
     "bn_suave",
     "bn_normal",
     "bn_fuerte",
-    "badge_normal",   # experimental — no aparece destacado en el menú
 ]
 
 def menu_perfil(tienda: str = "") -> str:
-    """Selección del perfil de preprocesamiento.
-
-    Producción: opciones 1-6 (color y B/N).
-    Experimental: opción 7 (badge_normal) — disponible pero no destacado.
-    """
+    """Selección del perfil de preprocesamiento."""
     print("\n" + "─" * 55)
     print("   Perfil de preprocesamiento:")
     print("   1. Color         - suave")
@@ -96,7 +88,6 @@ def menu_perfil(tienda: str = "") -> str:
     print("   4. Blanco y Negro - suave")
     print("   5. Blanco y Negro - normal")
     print("   6. Blanco y Negro - fuerte")
-    print("   7. Badge normal              [experimental]")
     print("─" * 55)
     try:
         raw = input("   Perfil (Enter = Color normal): ").strip()
@@ -167,9 +158,8 @@ def menu_carpeta() -> Path | None:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Procesamiento
-# ─────────────────────────────────────────────────────────────────────────────
+#  ------------------- Procesamiento -------------------
+
 def procesar_carpeta(
     carpeta_raw:         Path,
     preprocessor:        Preprocessor,
@@ -271,9 +261,9 @@ def procesar_carpeta(
     return resultado_folleto
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Modos
-# ─────────────────────────────────────────────────────────────────────────────
+# ----------------------- Unitario o batch
+
+# procesameinto unitario (carpeta)
 def modo_prueba(ocr: OCREngine):
     carpeta = menu_carpeta()
     if not carpeta:
@@ -317,13 +307,13 @@ def modo_prueba(ocr: OCREngine):
             )
 
         if resultado["confianza_global"] < 0.5:
-            print(f"\n  ⚠️  Confianza baja ({resultado['confianza_global']:.0%})")
+            print(f"\n  X  Confianza baja ({resultado['confianza_global']:.0%})")
             if motor == "easyocr":
                 print("     Prueba con 'color_normal' o 'color_fuerte'")
             else:
                 print("     Prueba con 'bn_normal' o 'bn_fuerte'")
 
-
+# Procesamieno batch (todas las carpetas en data/raw)
 def modo_batch(ocr: OCREngine):
     carpetas = sorted([
         p for p in DATA_RAW.rglob("*")
@@ -373,6 +363,7 @@ def modo_batch(ocr: OCREngine):
                 motor=motor,
                 nombre_perfil=nombre_perfil,
                 forzar=False,
+                guardar_comparacion=True,   # ← esto es todo
             )
             if r:
                 procesados    += 1
@@ -389,9 +380,7 @@ def modo_batch(ocr: OCREngine):
     logger.info("=" * 55)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
+# ----------------------- Main -----------------------
 def main():
     logger.info("=" * 55)
     logger.info("PriceScraper — Módulo de Visión")
@@ -404,18 +393,18 @@ def main():
         opcion = menu_principal()
 
         if opcion == 0:
-            print("\n  👋 Saliendo...\n")
+            print("\n  ------------ Saliendo...\n")
             break
         elif opcion == 1:
             modo_prueba(ocr)
         elif opcion == 2:
             modo_batch(ocr)
         else:
-            print("  ⚠️  Opción no válida.")
+            print("  X  Opción no válida.")
 
         try:
             if input("\n  ¿Hacer otra operación? (s/n): ").strip().lower() != "s":
-                print("\n  👋 Saliendo...\n")
+                print("\n  ------------ Saliendo...\n")
                 break
         except EOFError:
             break

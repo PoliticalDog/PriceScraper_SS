@@ -26,7 +26,7 @@ logger = logging.getLogger("sqlite_exp")
 # -------------------- Importar modelos del db_builder --------------------
 sys.path.insert(0, str(Path(__file__).parent))
 try:
-    from etl.db_builder import (
+    from load.db_builder import (
         get_engine, crear_tablas, verificar_tablas,
         Tienda, Folleto, Pagina, Extraccion, EventoPromo,
         TIPOS_EXTRACCION, FUENTES,

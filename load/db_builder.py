@@ -399,7 +399,7 @@ def main():
 
         try:
             if input("\n  ¿Otra operación? (s/n): ").strip().lower() != "s":
-                print("\n  👋 Saliendo...\n")
+                print("\n  ------ Saliendo...\n")
                 break
         except EOFError:
             break

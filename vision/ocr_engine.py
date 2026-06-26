@@ -1,4 +1,5 @@
-# Motor de OCR — EasyOCR y Tesseract como motores independientes.
+# Motor de OCR - EasyOCR y Tesseract como motores independientes
+# Se obtienen resultados de OCR con texto, confianza, bbox y motor utilizado
 
 import logging
 import numpy as np
@@ -15,11 +16,11 @@ MOTORES_DISPONIBLES = ["easyocr", "tesseract"]
 # Resultado de OCR con texto, confianza, bbox y motor utilizado
 @dataclass
 class ResultadoOCR:
-    #Representa un bloque de texto detectado por el OCR
-    texto:     str    # Texto extraído
+    # bloque de texto detectado por el OCR
+    texto:     str    # texto detectado
     confianza: float  # Score de confianza (0.0 a 1.0)
     bbox:      list   # [[x1,y1],[x2,y1],[x2,y2],[x1,y2]] en píxeles
-    motor:     str    # Motor que lo extrajo: 'easyocr' o 'tesseract'
+    motor:     str    # motor usado
 
     # Convierte el bbox a formato simple {x, y, ancho, alto} para JSON
     @property
@@ -33,6 +34,7 @@ class ResultadoOCR:
             "alto":  max(ys) - min(ys),
         }
 
+    # resultado OCR
     def __str__(self):
         return f"[{self.confianza:.0%}] '{self.texto}' ({self.motor})"
 
@@ -43,7 +45,7 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
     def __init__(
         self,
         idiomas:  list[str] = None,
-        usar_gpu: bool= False, # nota: probar conexion con GPU para battch en local
+        usar_gpu: bool= False,
     ):
         self.idiomas  = idiomas or ["es", "en"]
         self.usar_gpu = usar_gpu
