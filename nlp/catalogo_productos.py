@@ -281,12 +281,3 @@ def buscar_categoria(texto: str) -> tuple[bool, str, bool]:
                     return True, datos["nombre"], es_atributo
 
     return False, "", False
-
-
-# Lista de todas las keywords para uso rápido en regex
-def todas_las_keywords() -> list[str]:
-    # Retorna todas las keywords del catálogo en una sola lista.
-    keywords = []
-    for datos in CATALOGO.values():
-        keywords.extend(datos["keywords"])
-    return keywords

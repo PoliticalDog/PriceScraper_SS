@@ -1,409 +1,165 @@
-# Constructor del modelo de base de datos
-# Crea y gestiona el schema de SQLite (prueba) → PostgreSQL (producción)
+"""
+load/db_builder.py
+PriceScraper MX - Gestor de conexion PostgreSQL (psycopg v3)
+
+Responsabilidades:
+    1. Leer DATABASE_URL desde .env
+    2. Conectar a PostgreSQL con psycopg (v3)
+    3. Verificar si el schema ya existe
+    4. Si no existe -> ejecutar schema.sql
+    5. Exponer get_connection() y get_cursor()
+"""
 
 import logging
+import os
+from contextlib import contextmanager
 from pathlib import Path
-from datetime import datetime
 
-from sqlalchemy import (
-    create_engine, Column, Integer, BigInteger, String, Float,
-    Boolean, Date, DateTime, Text, Enum, UniqueConstraint,
-    ForeignKey, Index, event
-)
-from sqlalchemy.orm import declarative_base, relationship, Session
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
 
-# Tablas principales del modelo de datos
-"""
-    tiendas        → cadenas comerciales
-    folletos       → folletos scrapeados con vigencia
-    paginas        → páginas individuales de cada folleto
-    extracciones   → entidades NLP (PRECIO, PRODUCTO, PROMO, etc.)
-    eventos_promo  → campañas (Julio Regalado, Hot Sale, etc.)
-    alertas        → monitoreo de precios por tienda/producto
-"""
-
-# Configuración de logging
 logger = logging.getLogger(__name__)
 
-# Ruta por defecto
-DB_PATH_DEFAULT = Path("data/pricescraper.db")
+_ENV_PATH    = Path(__file__).parent.parent / ".env"
+_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
-#  Tipos válidos de extracción NLP
-TIPOS_EXTRACCION = (
-    "PRODUCTO",
-    "PRECIO",
-    "PRECIO_ANTERIOR",
-    "AHORRO",
-    "PROMO",
-    "EVENTO_PROMO",
-    "ATRIBUTO",
-    "DESCARTE",
-)
-
-# Fuentes
-FUENTES = ("tiendeo", "ofertomat")
-
-# Estados de folleto
-ESTADOS_FOLLETO = ("pending", "processing", "done", "error")
-
-Base = declarative_base()
+_TABLAS_REQUERIDAS = {
+    "tiendas", "folletos", "paginas",
+    "extracciones", "eventos_promo", "alertas",
+}
 
 
-# -------------------------- Modelos ORM --------------------------
+# -- Configuracion ------------------------------------------------------------
 
-# Cada clase representa una tabla en la base de datos. Las relaciones entre tablas
-# Cadena comercial (supermercado))
-class Tienda(Base):
-    __tablename__ = "tiendas"
-
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    nombre      = Column(String(100), nullable=False)
-    slug        = Column(String(60), nullable=False, unique=True)
-    fuente_slug = Column(String(60), nullable=True)   # valor raw del scraper
-    activa      = Column(Boolean, default=True, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relaciones
-    folletos      = relationship("Folleto",      back_populates="tienda")
-    extracciones  = relationship("Extraccion",   back_populates="tienda")
-    eventos_promo = relationship("EventoPromo",  back_populates="tienda")
-    alertas       = relationship("Alerta",       back_populates="tienda")
-
-    def __repr__(self):
-        return f"<Tienda id={self.id} slug='{self.slug}'>"
-
-# Folleto scrapeado, con metadata de vigencia, URL origen, etc.
-class Folleto(Base):
-    __tablename__ = "folletos"
-    __table_args__ = (
-        UniqueConstraint("fuente", "folleto_id_fuente", name="uq_folleto_fuente_id"),
-    )
-
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    tienda_id         = Column(Integer, ForeignKey("tiendas.id"), nullable=False)
-    folleto_id_fuente = Column(String(30), nullable=False)
-    fuente            = Column(Enum(*FUENTES, name="fuente_enum"), nullable=False)
-    titulo            = Column(String(200), nullable=True)
-    fecha_inicio      = Column(Date, nullable=True)
-    fecha_fin         = Column(Date, nullable=True)   # null para Ofertomat
-    url_origen        = Column(Text, nullable=True)
-    total_paginas     = Column(Integer, default=0)
-    perfil_ocr        = Column(String(40), nullable=True)   # ej: color_normal
-    motor_ocr         = Column(String(20), nullable=True)   # ej: easyocr
-    scrapeado_at      = Column(DateTime, nullable=True)
-    estado            = Column(
-        Enum(*ESTADOS_FOLLETO, name="estado_folleto_enum"),
-        default="pending", nullable=False
-    )
-    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relaciones
-    tienda        = relationship("Tienda",      back_populates="folletos")
-    paginas       = relationship("Pagina",      back_populates="folleto",
-                                 cascade="all, delete-orphan")
-    extracciones  = relationship("Extraccion",  back_populates="folleto")
-    eventos_promo = relationship("EventoPromo", back_populates="folleto")
-
-    # Índices frecuentes para BI
-    __table_args__ = (
-        UniqueConstraint("fuente", "folleto_id_fuente", name="uq_folleto_fuente_id"),
-        Index("ix_folleto_tienda_fecha", "tienda_id", "fecha_inicio"),
-        Index("ix_folleto_fuente",       "fuente"),
-        Index("ix_folleto_estado",       "estado"),
-    )
-
-    def __repr__(self):
-        return f"<Folleto id={self.id} fuente='{self.fuente}' id_fuente='{self.folleto_id_fuente}'>"
-
-# Página individual de un folleto, con métricas de OCR y NLP para análisis de calidad.
-class Pagina(Base):
-    __tablename__ = "paginas"
-    __table_args__ = (
-        UniqueConstraint("folleto_id", "numero_pagina", name="uq_pagina_folleto_num"),
-    )
-
-    id                = Column(Integer, primary_key=True, autoincrement=True)
-    folleto_id        = Column(Integer, ForeignKey("folletos.id"), nullable=False)
-    numero_pagina     = Column(Integer, nullable=False)
-    archivo_imagen    = Column(String(100), nullable=True)   # ej: pagina_002.webp
-    # Métricas OCR
-    total_bloques_ocr = Column(Integer, default=0)
-    confianza_ocr_prom= Column(Float, nullable=True)
-    # Métricas NLP
-    total_productos   = Column(Integer, default=0)
-    total_precios     = Column(Integer, default=0)
-    total_promos      = Column(Integer, default=0)
-    total_atributos   = Column(Integer, default=0)
-    tasa_util         = Column(Float, nullable=True)
-    procesado_at      = Column(DateTime, nullable=True)
-
-    # Relaciones
-    folleto      = relationship("Folleto",     back_populates="paginas")
-    extracciones = relationship("Extraccion",  back_populates="pagina",
-                                cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<Pagina folleto={self.folleto_id} pag={self.numero_pagina}>"
-
-# Entidad extraída por el NLP de un bloque OCR
-class Extraccion(Base):
-    __tablename__ = "extracciones"
-
-    id             = Column(BigInteger().with_variant(Integer, "sqlite"),
-                            primary_key=True, autoincrement=True)
-    pagina_id      = Column(Integer, ForeignKey("paginas.id"),   nullable=False)
-    folleto_id     = Column(Integer, ForeignKey("folletos.id"),  nullable=False)
-    tienda_id      = Column(Integer, ForeignKey("tiendas.id"),   nullable=False)
-
-    # Clasificación NLP
-    tipo           = Column(Enum(*TIPOS_EXTRACCION, name="tipo_extraccion_enum"),
-                            nullable=False)
-    texto_raw      = Column(Text, nullable=False)       # texto OCR original
-    texto_norm     = Column(String(300), nullable=True) # texto limpio (post _limpiar_texto)
-    categoria_nlp  = Column(String(60), nullable=True)  # categoría del catálogo (alimentos, etc.)
-
-    # Valores numéricos
-    valor          = Column(Float, nullable=True)  # precio actual / monto ahorro
-    valor_anterior = Column(Float, nullable=True)  # precio anterior (vinculado por bbox)
-    texto_promo    = Column(String(300), nullable=True)  # texto de la promoción
-
-    # Calidad OCR
-    confianza_ocr  = Column(Float, nullable=True)  # 0.0 – 1.0
-
-    # Posición en la imagen (para asociación posicional producto→precio)
-    bbox_x         = Column(Integer, nullable=True)
-    bbox_y         = Column(Integer, nullable=True)
-    bbox_ancho     = Column(Integer, nullable=True)
-    bbox_alto      = Column(Integer, nullable=True)
-
-    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relaciones
-    pagina   = relationship("Pagina",   back_populates="extracciones")
-    folleto  = relationship("Folleto",  back_populates="extracciones")
-    tienda   = relationship("Tienda",   back_populates="extracciones")
-
-    # Índices para BI
-    __table_args__ = (
-        Index("ix_ext_tipo",              "tipo"),
-        Index("ix_ext_tienda_tipo",       "tienda_id", "tipo"),
-        Index("ix_ext_folleto_pagina",    "folleto_id", "pagina_id"),
-        Index("ix_ext_valor",             "valor"),
-        Index("ix_ext_confianza",         "confianza_ocr"),
-    )
-
-    def __repr__(self):
-        val = f" ${self.valor:.2f}" if self.valor else ""
-        return f"<Extraccion [{self.tipo}]{val} '{self.texto_norm[:30] if self.texto_norm else ''}'>"
-
-# Campaña promocional detectada en un folleto.
-class EventoPromo(Base):
-    __tablename__ = "eventos_promo"
-
-    id            = Column(Integer, primary_key=True, autoincrement=True)
-    folleto_id    = Column(Integer, ForeignKey("folletos.id"), nullable=False)
-    tienda_id     = Column(Integer, ForeignKey("tiendas.id"),  nullable=False)
-    nombre_evento = Column(String(100), nullable=False)  # normalizado: 'julio_regalado'
-    texto_raw     = Column(String(200), nullable=True)   # texto original OCR
-    # Vigencia heredada del folleto (puede refinarse si se detecta en el texto)
-    fecha_inicio  = Column(Date, nullable=True)
-    fecha_fin     = Column(Date, nullable=True)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relaciones
-    folleto = relationship("Folleto", back_populates="eventos_promo")
-    tienda  = relationship("Tienda",  back_populates="eventos_promo")
-
-    __table_args__ = (
-        UniqueConstraint("folleto_id", "nombre_evento", name="uq_evento_folleto"),
-        Index("ix_evento_nombre",    "nombre_evento"),
-        Index("ix_evento_tienda",    "tienda_id"),
-        Index("ix_evento_fechas",    "fecha_inicio", "fecha_fin"),
-    )
-
-    def __repr__(self):
-        return f"<EventoPromo '{self.nombre_evento}' tienda={self.tienda_id}>"
-
-# Alerta de monitoreo de precios por tienda y producto normalizado
-class Alerta(Base):
-    __tablename__ = "alertas"
-
-    id             = Column(Integer, primary_key=True, autoincrement=True)
-    tienda_id      = Column(Integer, ForeignKey("tiendas.id"), nullable=True)
-    slug_producto  = Column(String(200), nullable=False)
-    umbral_precio  = Column(Float, nullable=False)
-    activa         = Column(Boolean, default=True, nullable=False)
-    disparada_at   = Column(DateTime, nullable=True)
-    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relaciones
-    tienda = relationship("Tienda", back_populates="alertas")
-
-    __table_args__ = (
-        Index("ix_alerta_tienda_producto", "tienda_id", "slug_producto"),
-        Index("ix_alerta_activa",          "activa"),
-    )
-
-    def __repr__(self):
-        return f"<Alerta '{self.slug_producto}' umbral=${self.umbral_precio} activa={self.activa}>"
+def _cargar_url() -> str:
+    load_dotenv(_ENV_PATH, encoding="utf-8")
+    url = os.getenv("DATABASE_URL", "").strip()
+    if not url:
+        raise ValueError(
+            "DATABASE_URL no encontrada.\n"
+            "Crea un archivo .env con:\n"
+            "  DATABASE_URL=postgresql://pricescraper_user:123@localhost:5432/pricescraper"
+        )
+    return url
 
 
-# ------------------------ Funciones de gestión ------------------------
-# Funciones para crear el engine, crear/eliminar tablas, verificar estado, etc.
-def get_engine(db_path: Path = None, echo: bool = False):
-    
-    if db_path is None:
-        db_path = DB_PATH_DEFAULT
+# -- Conexion -----------------------------------------------------------------
 
-    db_path = Path(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+def get_connection() -> psycopg.Connection:
+    """
+    Retorna una conexion psycopg v3 a PostgreSQL.
+    En el primer uso inicializa el schema si no existe.
+    Rows retornadas como dicts.
+    """
+    url = _cargar_url()
+    try:
+        conn = psycopg.connect(url, row_factory=dict_row)
+        logger.info("[DB] Conexion PostgreSQL establecida")
+    except psycopg.OperationalError as e:
+        logger.error(f"[DB] No se pudo conectar a PostgreSQL: {e}")
+        raise
 
-    engine = create_engine(
-        f"sqlite:///{db_path}",
-        echo=echo,
-        connect_args={"check_same_thread": False},
-    )
-
-    # Activar WAL y foreign keys en SQLite para mejor concurrencia e integridad
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_conn, _):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    logger.info(f"[DB] Engine SQLite: {db_path}")
-    return engine
-
-# Funciones para crear/eliminar tablas, verificar estado, etc.
-def crear_tablas(engine) -> None:
-    Base.metadata.create_all(engine)
-    logger.info("[DB] ✅ Tablas creadas/verificadas")
-    _log_tablas(engine)
+    _inicializar_schema(conn)
+    return conn
 
 
-def eliminar_tablas(engine) -> None:
-    Base.metadata.drop_all(engine)
-    logger.info("[DB] 🗑️  Todas las tablas eliminadas")
+@contextmanager
+def get_cursor(conn: psycopg.Connection):
+    """
+    Context manager con commit/rollback automatico.
 
-#   Verifica qué tablas existen y cuántos registros tienen.
-def verificar_tablas(engine) -> dict:
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    tablas_existentes = inspector.get_table_names()
+    Uso:
+        with get_cursor(conn) as cur:
+            cur.execute("INSERT INTO tiendas ...")
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        try:
+            yield cur
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
+
+# -- Schema -------------------------------------------------------------------
+
+def _inicializar_schema(conn: psycopg.Connection) -> None:
+    tablas = _tablas_existentes(conn)
+
+    if _TABLAS_REQUERIDAS.issubset(tablas):
+        logger.info(f"[DB] Schema OK - {len(tablas)} tablas encontradas")
+        return
+
+    faltantes = _TABLAS_REQUERIDAS - tablas
+    logger.info(f"[DB] Tablas faltantes: {faltantes}")
+    logger.info(f"[DB] Inicializando schema desde {_SCHEMA_PATH.name}...")
+
+    if not _SCHEMA_PATH.exists():
+        raise FileNotFoundError(
+            f"[DB] No se encontro {_SCHEMA_PATH}\n"
+            "Asegurate de que schema.sql este en la carpeta load/"
+        )
+
+    sql = _SCHEMA_PATH.read_text(encoding="utf-8")
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        conn.commit()
+        logger.info("[DB] Schema inicializado correctamente")
+        _log_tablas(conn)
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"[DB] Error ejecutando schema.sql: {e}")
+        raise
+
+
+def _tablas_existentes(conn: psycopg.Connection) -> set:
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_type   = 'BASE TABLE'
+        """)
+        return {row["table_name"] for row in cur.fetchall()}
+
+
+# -- Utilidades ---------------------------------------------------------------
+
+def verificar_conexion() -> bool:
+    """Health-check: verifica que la conexion funciona."""
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        conn.close()
+        logger.info("[DB] Health-check OK")
+        return True
+    except Exception as e:
+        logger.error(f"[DB] Health-check fallo: {e}")
+        return False
+
+
+def resumen_bd() -> dict:
+    """Conteo de registros por tabla."""
+    tablas = ["tiendas", "folletos", "paginas", "extracciones", "eventos_promo", "alertas"]
     resultado = {}
-    modelos = [Tienda, Folleto, Pagina, Extraccion, EventoPromo, Alerta]
-
-    with Session(engine) as session:
-        for modelo in modelos:
-            nombre = modelo.__tablename__
-            if nombre in tablas_existentes:
-                count = session.execute(
-                    text(f"SELECT COUNT(*) FROM {nombre}")
-                ).scalar()
-                resultado[nombre] = count
-            else:
-                resultado[nombre] = None  # tabla no existe
-
+    try:
+        conn = get_connection()
+        with conn.cursor(row_factory=dict_row) as cur:
+            for tabla in tablas:
+                cur.execute(f"SELECT COUNT(*) AS n FROM {tabla}")
+                resultado[tabla] = cur.fetchone()["n"]
+        conn.close()
+    except Exception as e:
+        logger.error(f"[DB] Error en resumen_bd: {e}")
     return resultado
 
-# Imprime el estado de las tablas en el log
-def _log_tablas(engine) -> None:
-    estado = verificar_tablas(engine)
-    for tabla, count in estado.items():
-        if count is None:
-            logger.warning(f"[DB]   ✗ {tabla} — no existe")
-        else:
-            logger.info(f"[DB]   ✓ {tabla}: {count} registros")
 
-# Función para obtener una sesión de base de datos (context manager recomendado)
-def get_session(engine) -> Session:
-    return Session(engine)
-
-
-
-# ---------------------------- CLI interactivo ----------------------------
-
-# Menu
-def _menu() -> int:
-    print("\n" + "═" * 55)
-    print("Constructor de BD")
-    print("═" * 55)
-    print("   1 --> Crear tablas (si no existen)")
-    print("   2 --> Verificar estado de tablas")
-    print("   3 --> Eliminar TODAS las tablas")
-    print("   4 --> Recrear schema completo")
-    print("   0 --> Salir")
-    print("─" * 55)
-    try:
-        return int(input("   Selecciona una opción: ").strip())
-    except ValueError:
-        return -1
-
-# ---------------- MAIN ----------------
-def main():
-    import sys
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
-        handlers=[logging.StreamHandler()],
-    )
-
-    # Permitir ruta custom por argumento: python db_builder.py data/mi_db.db
-    db_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DB_PATH_DEFAULT
-    engine = get_engine(db_path)
-
-    while True:
-        opcion = _menu()
-
-        if opcion == 0:
-            print("\n  👋 Saliendo...\n")
-            break
-
-        elif opcion == 1:
-            crear_tablas(engine)
-            print(f"\n  Schema creado en: {db_path}")
-
-        elif opcion == 2:
-            estado = verificar_tablas(engine)
-            print(f"\n{'─'*45}")
-            print(f"  {'TABLA':<20} {'REGISTROS':>10}")
-            print(f"{'─'*45}")
-            for tabla, count in estado.items():
-                estado_str = f"{count:>10,}" if count is not None else "  NO EXISTE"
-                print(f"  {tabla:<20} {estado_str}")
-            print(f"{'─'*45}")
-
-        elif opcion == 3:
-            confirm = input("\n   Escriba 'ELIMINAR' para confirmar: ").strip()
-            if confirm == "ELIMINAR":
-                eliminar_tablas(engine)
-                print("    Tablas eliminadas.")
-            else:
-                print("  Cancelado.")
-
-        elif opcion == 4:
-            confirm = input("\n    Esto borra y recrea todo. Escriba 'RECREAR': ").strip()
-            if confirm == "RECREAR":
-                eliminar_tablas(engine)
-                crear_tablas(engine)
-                print(f"   Schema recreado en: {db_path}")
-            else:
-                print("  Cancelado.")
-
-        else:
-            print("    Opción no válida.")
-
-        try:
-            if input("\n  ¿Otra operación? (s/n): ").strip().lower() != "s":
-                print("\n  ------ Saliendo...\n")
-                break
-        except EOFError:
-            break
-
-
-if __name__ == "__main__":
-    main()
+def _log_tablas(conn: psycopg.Connection) -> None:
+    tablas = _tablas_existentes(conn)
+    for tabla in sorted(_TABLAS_REQUERIDAS):
+        estado = "OK" if tabla in tablas else "FALTA"
+        logger.info(f"[DB]   {estado}: {tabla}")

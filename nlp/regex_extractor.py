@@ -24,11 +24,6 @@ class EntidadExtraida:
     bbox:       dict = field(default_factory=dict)
     categoria:  str = ""                # Categoría del catálogo (PRODUCTO/ATRIBUTO)
 
-    
-    def __str__(self):
-        val = f" → ${self.valor:,.2f}" if self.valor else ""
-        return f"[{self.tipo}] '{self.texto_norm}'{val}"
-
 # Agrupacion de informacion extraida de una pagina completa
 @dataclass
 class ResultadoPagina:
@@ -41,12 +36,6 @@ class ResultadoPagina:
     eventos_promo:    list[EntidadExtraida] = field(default_factory=list)
     atributos:        list[EntidadExtraida] = field(default_factory=list)
     descartes:        list[EntidadExtraida] = field(default_factory=list)
-
-    @property
-    def total_entidades(self):
-        return (len(self.productos) + len(self.precios) + len(self.precios_anteriores) +
-                len(self.ahorros) + len(self.promos) + len(self.eventos_promo) +
-                len(self.atributos))
 
     def resumen(self) -> str:
         return (f"Página: {self.imagen} | "
