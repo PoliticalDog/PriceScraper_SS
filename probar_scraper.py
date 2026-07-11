@@ -46,15 +46,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 # -------------------- Menús --------------------
 
 def menu_principal() -> int:
-    print("\n" + "═" * 55)
-    print("   PriceScraper — Prueba de Scrapers")
-    print("═" * 55)
-    print("   1 → Tiendeo.com.mx  (supermercados)")
-    print("   2 → Ofertomat.mx    (supermercados)")
-    print("   3 → Ambas fuentes   (Tiendeo + Ofertomat)")
-    print("   4 → Tiendeo — Rastreo completo (tienda por tienda)")
-    print("   0 → Salir")
-    print("─" * 55)
+    print("\n" + "-" * 55)
+    print("   PriceScraper -- Prueba de Scrapers")
+    print("-" * 55)
+    print("   1 --> Tiendeo.com.mx  (supermercados)")
+    print("   2 --> Ofertomat.mx    (supermercados)")
+    print("   3 --> Ambas fuentes   (Tiendeo + Ofertomat)")
+    print("   4 --> Tiendeo -- Rastreo completo (tienda por tienda)")
+    print("   0 --> Salir")
+    print("-" * 55)
     try:
         return int(input("   Selecciona una opción: ").strip())
     except ValueError:
@@ -62,14 +62,14 @@ def menu_principal() -> int:
 
 # Menús para elegir tienda específica o todas en tiendeo
 def menu_tiendas_tiendeo() -> str:
-    print("\n" + "─" * 55)
+    print("\n" + "-" * 55)
     print("   Tiendas disponibles en Tiendeo:")
     tiendas = list(TIENDAS.keys())
     for i, t in enumerate(tiendas, 1):
         nombre = t.replace("-", " ").title()
         print(f"   {i:>2}. {nombre}")
     print(f"    0. Todas las tiendas (categoría supermercados)")
-    print("─" * 55)
+    print("-" * 55)
     try:
         idx = int(input("   Tienda específica (0 = todas): ").strip())
         if idx == 0:
@@ -80,13 +80,13 @@ def menu_tiendas_tiendeo() -> str:
 
 # Menú para elegir tienda específica o todas en ofertomat
 def menu_tiendas_ofertomat() -> str:
-    print("\n" + "─" * 55)
+    print("\n" + "-" * 55)
     print("   Tiendas disponibles en Ofertomat:")
     tiendas = list(TIENDAS_OFERTOMAT.keys())
     for i, t in enumerate(tiendas, 1):
         print(f"   {i:>2}. {t}")
     print(f"    0. Todas las tiendas")
-    print("─" * 55)
+    print("-" * 55)
     try:
         idx = int(input("   Tienda específica (0 = todas): ").strip())
         if idx == 0:
@@ -98,9 +98,9 @@ def menu_tiendas_ofertomat() -> str:
 # Función para mostrar un resumen de los folletos encontrados
 def mostrar_resumen_folletos(folletos: list[dict]):
     print(f"\n  {'TIENDA':<25} {'TÍTULO':<35} {'VIGENCIA'}")
-    print(f"  {'─'*25} {'─'*35} {'─'*20}")
+    print(f"  {'-'*25} {'-'*35} {'-'*20}")
     for f in folletos:
-        vigencia = f"{f['fecha_inicio'] or '?'} → {f['fecha_fin'] or '?'}" # Si no hay fecha, se muestra "?" para indicar desconocida
+        vigencia = f"{f['fecha_inicio'] or '?'} --> {f['fecha_fin'] or '?'}" # Si no hay fecha, se muestra "?" para indicar desconocida
         print(f"  {f['tienda']:<25} {f['titulo'][:35]:<35} {vigencia}")
 
 
@@ -134,7 +134,7 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str = "todas"):
     ya_procesados = len(folletos) - len(nuevos)
 
     if ya_procesados:
-        logger.info(f"[TIENDEO] ⏭️  {ya_procesados} folletos ya procesados → omitidos")
+        logger.info(f"[TIENDEO] ⏭️  {ya_procesados} folletos ya procesados --> omitidos")
     if not nuevos:
         logger.info("[TIENDEO] ✅ No hay folletos nuevos.")
         return
@@ -147,8 +147,8 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str = "todas"):
     
     # Descargar cada folleto nuevo
     for folleto in nuevos:
-        tienda_display = folleto['tienda'] or "X  Sin tienda (→ desconocidos)"
-        logger.info(f"\n[TIENDEO] → {tienda_display} — {folleto['titulo']}")
+        tienda_display = folleto['tienda'] or "X  Sin tienda (--> desconocidos)"
+        logger.info(f"\n[TIENDEO] --> {tienda_display} -- {folleto['titulo']}")
 
         async with TiendeoScraper(headless=True) as scraper:
             paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
@@ -173,11 +173,11 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str = "todas"):
             "fecha_fin":    folleto["fecha_fin"],
         })
 
-    logger.info(f"\n[TIENDEO] ✅ Completado — "
+    logger.info(f"\n[TIENDEO] ✅ Completado -- "
                 f"Acumulados: {registro.total_procesados('tiendeo')} folletos")
 
 
-# ------------- Tiendeo — Rastreo completo tienda por tienda -------------
+# ------------- Tiendeo -- Rastreo completo tienda por tienda -------------
 
 # Esta función recorre todas las tiendas de la categoría "supermercados" en Tiendeo, obtiene sus folletos y descarga los nuevos.
 async def scrapear_tiendeo_todas_tiendas(registro: Registro):
@@ -221,8 +221,8 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
 
         # ------------- Descargar los folletos nuevos de esta tienda -------------
         for folleto in nuevos:
-            tienda_display = folleto['tienda'] or "X  Sin tienda (→ desconocidos)"
-            logger.info(f"[TIENDEO] → {tienda_display} — {folleto['titulo']}")
+            tienda_display = folleto['tienda'] or "X  Sin tienda (--> desconocidos)"
+            logger.info(f"[TIENDEO] --> {tienda_display} -- {folleto['titulo']}")
             total_nuevos += 1
 
             try:
@@ -253,8 +253,8 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
                 logger.error(f"[TIENDEO] Error procesando folleto {folleto['folleto_id']}: {e}")
                 continue
 
-    logger.info(f"\n[TIENDEO] ✅ Rastreo completo terminado — "
-                f"{total_nuevos} folletos nuevos descargados — "
+    logger.info(f"\n[TIENDEO] ✅ Rastreo completo terminado -- "
+                f"{total_nuevos} folletos nuevos descargados -- "
                 f"Acumulados: {registro.total_procesados('tiendeo')}")
 
 
@@ -284,7 +284,7 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str = "todas",
     ya_procesados = len(folletos) - len(nuevos)
 
     if ya_procesados:
-        logger.info(f"[OFERTOMAT] ⏭️  {ya_procesados} ya procesados → omitidos")
+        logger.info(f"[OFERTOMAT] ⏭️  {ya_procesados} ya procesados --> omitidos")
     if not nuevos:
         logger.info("[OFERTOMAT] ✅ No hay folletos nuevos.")
         return
@@ -294,7 +294,7 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str = "todas",
     downloader = Downloader(max_concurrentes=2)
 
     for folleto in nuevos:
-        logger.info(f"\n[OFERTOMAT] → {folleto['tienda']} — {folleto['titulo']}")
+        logger.info(f"\n[OFERTOMAT] --> {folleto['tienda']} -- {folleto['titulo']}")
 
         async with OfertomatScraper(headless=True) as scraper:
             paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
@@ -319,7 +319,7 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str = "todas",
             "fecha_fin":    folleto["fecha_fin"],
         })
 
-    logger.info(f"\n[OFERTOMAT] ✅ Completado — "
+    logger.info(f"\n[OFERTOMAT] ✅ Completado -- "
                 f"Acumulados: {registro.total_procesados('ofertomat')} folletos")
 
 
@@ -336,7 +336,7 @@ async def main():
         opcion = menu_principal()
 
         if opcion == 0:
-            print("\n  ------------------- Saliendo...\n")
+            print("\n  ------ Saliendo...\n")
             break
 
         elif opcion == 1:
@@ -357,14 +357,14 @@ async def main():
             await scrapear_tiendeo_todas_tiendas(registro)
 
         else:
-            print("  X  Opción no válida.")
+            print("  ERROR: Opción no válida.")
 
         try:
             continuar = input("\n  ¿Hacer otra prueba? (s/n): ").strip().lower()
         except EOFError:
             break
         if continuar != "s":
-            print("\n  ------------------- Saliendo...\n")
+            print("\n  ------ Saliendo...\n")
             break
 
 
