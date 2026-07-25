@@ -9,11 +9,6 @@ from ..metodos_scraper import BaseScraper
 # inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
 
-# categoria
-CATEGORIAS = {
-    "supermercados":   "https://www.tiendeo.mx/Folletos-Catalogos/hiper-supermercados"
-}
-
 # URLs directas por cada cadena Tiendeo
 TIENDAS = {
     "bodega-aurrera":   "https://www.tiendeo.mx/ofertas-folletos/bodega-aurrera",
@@ -430,16 +425,7 @@ class TiendeoScraper(BaseScraper):
             return sorted(nivel_2, key=_extraer_numero)
         return sorted(urls_unicas, key=_extraer_numero)
 
-    # ----------------- Scrapeo por categoria o tienda -----------------
-
-    # Métodos públicos para scrapear por categoría o por tienda, que validan la entrada y llaman a obtener_folletos con la URL correspondiente
-    async def scrapear_categoria(self, nombre_categoria: str) -> list[dict]:
-        if nombre_categoria not in CATEGORIAS:
-            raise ValueError(
-                f"Categoría '{nombre_categoria}' no válida. "
-                f"Opciones: {list(CATEGORIAS.keys())}"
-            )
-        return await self.obtener_folletos(CATEGORIAS[nombre_categoria])
+    # ----------------- Scrapeo por tienda -----------------
 
     # Scraping de una tienda específica por su slug.
     async def scrapear_tienda(self, slug_tienda: str) -> list[dict]:

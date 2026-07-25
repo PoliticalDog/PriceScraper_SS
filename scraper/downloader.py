@@ -37,11 +37,21 @@ class Downloader:
         "Referer":    "https://www.tiendeo.mx/",
         "Accept":     "image/webp,image/apng,image/*,*/*;q=0.8",
     }
-    
+
+    # Referer correcto por fuente — cada CDN espera el dominio del sitio que lo sirve
+    REFERERS = {
+        "tiendeo":   "https://www.tiendeo.mx/",
+        "ofertomat": "https://www.ofertomat.mx/",
+    }
+
     # max_concurrentes: Máximo de descargas simultáneas (para veitar bloqueos)
     def __init__(self, max_concurrentes: int = 3, timeout: int = 30):
         self.max_concurrentes = max_concurrentes
         self.timeout = timeout
+
+    # Headers con el Referer correcto para la fuente (fallback al de Tiendeo)
+    def _headers_para(self, fuente: str) -> dict:
+        return {**self.HEADERS, "Referer": self.REFERERS.get(fuente, self.HEADERS["Referer"])}
 
     # Construye la ruta de destino para un folleto y crea el directorio si no existe
     def _ruta_folleto(self, fuente: str, tienda: str, folleto_id: str) -> Path:
@@ -65,7 +75,7 @@ class Downloader:
         ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
         semaforo = asyncio.Semaphore(self.max_concurrentes)
 
-        async with aiohttp.ClientSession(headers=self.HEADERS) as session:
+        async with aiohttp.ClientSession(headers=self._headers_para(fuente)) as session:
             tareas = [
                 self._descargar_una(session, semaforo, url, ruta_destino, num_pagina=i + 1)
                 for i, url in enumerate(urls_paginas)
@@ -132,7 +142,7 @@ class Downloader:
             return ruta_archivo
 
         try:
-            async with aiohttp.ClientSession(headers=self.HEADERS) as session:
+            async with aiohttp.ClientSession(headers=self._headers_para(fuente)) as session:
                 async with session.get(url_preview, timeout=aiohttp.ClientTimeout(total=15)) as r:
                     r.raise_for_status()
                     ruta_archivo.write_bytes(await r.read())

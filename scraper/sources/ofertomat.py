@@ -1,18 +1,38 @@
 """
-ofertomat.py  — v2
-Adaptador para Ofertomat.mx — versión corregida.
+ofertomat.py
+Adaptador para Ofertomat.mx.
 
-Cambios respecto a v1:
-  1. _navegar usa domcontentloaded (fix timeout)
-  2. _parsear_tarjetas filtra logos, redes sociales y basura
-  3. folleto_id extrae el número al FINAL de la URL (ej: 127756)
-  4. Páginas se construyen directamente desde el CDN de Leaflets
-     → no necesita iframe ni intercepción de red
-  5. El navegador se reutiliza dentro de cada sesión (fix Page crashed)
+Notas de diseño:
+  1. _navegar usa domcontentloaded por defecto (Ofertomat tiene requests
+     continuas de geolocalización/analytics que impiden llegar a networkidle),
+     con recreacion de pagina si crashea.
+  2. _parsear_tarjetas filtra logos, redes sociales y basura.
+  3. folleto_id se extrae del numero al FINAL de la URL (ej: 127756).
+  4. El visor carga las imagenes de las paginas de forma perezosa: solo pide
+     la imagen de la pagina actual. Por eso obtener_paginas_folleto navega
+     secuencialmente ?page=2, ?page=3, ... (ademas de la url base = pagina 1),
+     escuchando pasivamente (page.on("request")) la request al CDN que
+     dispara cada navegacion, hasta que una pagina no dispare ninguna
+     request nueva para ese folleto_id (fin del folleto -- esa ultima
+     "pagina" no tiene imagen propia, o el visor muestra miniaturas de
+     folletos recomendados en su lugar).
+  5. Las imagenes solo se sirven a traves del proxy thumbor con una URL
+     firmada (hash) que cambia por request -- no se puede adivinar/construir
+     la URL de una pagina sin que el visor la pida primero (confirmado: la
+     ruta directa al CDN sin thumbor siempre 404, y thumbor no acepta modo
+     "unsafe"). Por eso no hay atajo de solo-HTTP como Tiendeo tiene con el
+     fallback de DOM/regex -- hay que navegar con el browser si o si.
+  6. obtener_paginas_folleto usa page.on("request") (escucha pasiva), NO
+     page.route() (interceptor activo) -- confirmado con pruebas reales que
+     activar page.route(), aunque no bloquee nada, rompe la carga perezosa
+     del visor (deja de pedir la imagen de las paginas siguientes a la
+     primera). Por eso este metodo no bloquea recursos pesados (fonts,
+     analytics, etc.) como sí se podía hacer antes con page.route().
 
-CDN descubierto:
-  Portada:  na.leafletscdn.com/mx/data/1/{id}/0.jpg
-  Páginas:  na.leafletscdn.com/mx/data/1/{id}/{num_pagina}.jpg
+CDN descubierto (URL real, vía thumbor, firma omitida):
+  Portada:  na.leafletscdn.com/thumbor/<hash>/.../mx/data/{N}/{id}/0.jpg
+  Páginas:  na.leafletscdn.com/thumbor/<hash>/.../mx/data/{N}/{id}/{num}.jpg
+  (el segmento data/{N} varia por folleto, no es fijo)
 """
 
 import re
@@ -41,12 +61,20 @@ TIENDAS = {
     "7-eleven":         "https://www.ofertomat.mx/7-eleven/",
     "calimax":          "https://www.ofertomat.mx/calimax/",
     "casa-ley":         "https://www.ofertomat.mx/casa-ley/",
+    "arteli":           "https://www.ofertomat.mx/arteli/",
 }
 
-URL_SUPERMERCADOS = "https://www.ofertomat.mx/supermercados/"
+# Tiendas de interes en Ofertomat: no tienen equivalente en Tiendeo, asi que
+# son las unicas que debe tocar el rastreo masivo ("todas las tiendas") para
+# no duplicar informacion de supermercados que Tiendeo ya cubre.
+# Excluidas (ya cubiertas en Tiendeo): walmart, bodega-aurrera,
+# soriana (-> soriana-hiper/soriana-mercado en Tiendeo), chedraui, la-comer,
+# costco, heb, sams-club, oxxo, s-mart, alsuper, casa-ley.
+TIENDAS_UNICAS = ("arteli", "calimax", "7-eleven", "walmart-express")
 
-# CDN base de Leaflets para Ofertomat
-CDN_BASE = "https://na.leafletscdn.com/mx/data/1"
+# Una pagina real de folleto termina en /{numero}.jpg|webp|png — distingue
+# paginas de otros assets del mismo CDN (logo.png, banners, etc.)
+_ES_PAGINA_CDN = re.compile(r"/(\d+)\.(?:jpg|webp|png)(?:\?|$)")
 
 # Palabras que indican que una tarjeta NO es un folleto real
 PALABRAS_BASURA = {
@@ -83,7 +111,7 @@ class OfertomatScraper(BaseScraper):
                     "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
                 )
             logger.info(f"Navegando a: {url}")
-            await self.page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+            await self.page.goto(url, wait_until=esperar, timeout=45_000)
             await self.page.wait_for_timeout(3000)
             await self._delay_aleatorio()
         except Exception as e:
@@ -232,187 +260,87 @@ class OfertomatScraper(BaseScraper):
 
         return None, None
 
-    # ── Páginas del folleto — intercepción de red ────────────────────────────
+    # ── Páginas del folleto — navegación secuencial + intercepción de red ────
+
+    MAX_PAGINAS = 30
 
     async def obtener_paginas_folleto(self, url_folleto: str) -> list[str]:
         """
-        Obtiene páginas del folleto interceptando las requests de red al CDN.
+        Obtiene las páginas reales del folleto navegando secuencialmente
+        ?page=2, ?page=3, ... (la url base = página 1) y escuchando la
+        request al CDN que cada navegación dispara -- el visor solo pide la
+        imagen de la página actual (lazy), no hay atajo por HTTP puro (ver
+        docstring del módulo: las URLs del CDN están firmadas por thumbor).
 
-        El visor JS de Ofertomat es pesado y crashea el renderer con facilidad.
-        Estrategia:
-          1. Registrar el interceptor ANTES del goto para no perder requests tempranas
-          2. Bloquear agresivamente recursos innecesarios (media, fonts, analytics,
-             imágenes que no sean del CDN de folletos)
-          3. Usar wait_until="commit" — el mínimo posible para no esperar JS pesado
-          4. Esperar hasta 15s a que el visor pida imágenes al CDN
-          5. Fallback: construir URLs del CDN directamente con el folleto_id
-             (patrón conocido: CDN_BASE/{folleto_id}/0.jpg, 1.jpg, ...)
+        IMPORTANTE: se usa page.on("request") (escucha pasiva) y NO
+        page.route() (interceptor activo). Se confirmó con pruebas reales
+        que activar page.route() -- incluso sin bloquear ningún recurso --
+        rompe el mecanismo de carga perezosa del visor: a partir de la
+        segunda navegación deja de pedirse la imagen de la página nueva
+        (solo se re-pide el logo). Con on("request") pasivo el visor se
+        comporta igual que en un navegador normal y sí pide cada página.
+        Como consecuencia ya no se bloquean recursos (fonts/media/ads) en
+        este método -- el trade-off de cargar un poco más pesado es
+        preferible a que el scraping no funcione.
+
+        Se detiene en la primera página que no dispare ninguna request nueva
+        para este folleto_id: ahí termina el folleto (esa "página" no tiene
+        imagen propia, o el visor muestra miniaturas de folletos recomendados
+        en su lugar -- por eso el filtro exige que la URL sea del folleto_id
+        que estamos scrapeando, no de leafletscdn en general).
         """
-        # Extraer folleto_id de la URL para el fallback por CDN directo
         match_id = re.search(r"-(\d{5,})\/?$", url_folleto)
-        folleto_id_cdn = match_id.group(1) if match_id else None
-
-        async def _extraer():
-            urls_capturadas: set[str] = set()
-
-            async def _interceptar(route, request):
-                url = request.url
-                tipo = request.resource_type
-
-                # Capturar imágenes del CDN de folletos — dejar pasar y registrar
-                if "leafletscdn" in url and "/data/" in url:
-                    urls_capturadas.add(url)
-                    await route.continue_()
-                    return
-
-                # Bloquear todo lo que no sea esencial para cargar el visor
-                if tipo in ("media", "font"):
-                    await route.abort()
-                    return
-
-                # Bloquear imágenes que no son del CDN de folletos
-                # (logos, banners, avatares — solo agregan peso al renderer)
-                if tipo == "image" and "leafletscdn" not in url:
-                    await route.abort()
-                    return
-
-                # Bloquear analytics y scripts de terceros pesados
-                dominios_bloquear = (
-                    "googletagmanager", "google-analytics", "doubleclick",
-                    "facebook.net", "connect.facebook", "hotjar", "clarity.ms",
-                    "adnxs", "moatads", "quantserve", "criteo", "taboola",
-                )
-                if tipo in ("script", "xhr", "fetch") and any(
-                    d in url for d in dominios_bloquear
-                ):
-                    await route.abort()
-                    return
-
-                await route.continue_()
-
-            # Registrar interceptor ANTES del goto para capturar requests tempranas
-            await self.page.route("**/*", _interceptar)
-
-            try:
-                logger.info(f"Navegando a: {url_folleto}")
-                await self.page.goto(
-                    url_folleto,
-                    wait_until="commit",   # mínimo posible — no esperar JS pesado
-                    timeout=30_000,
-                )
-
-                # Esperar hasta 15s a que el visor solicite imágenes al CDN
-                for _ in range(30):
-                    if urls_capturadas:
-                        break
-                    await asyncio.sleep(0.5)
-
-            except Exception as e:
-                if "crashed" in str(e).lower():
-                    logger.warning(f"[Ofertomat] Renderer crasheó en {url_folleto} — usando fallback CDN")
-                else:
-                    raise
-            finally:
-                try:
-                    await self.page.unroute("**/*", _interceptar)
-                except Exception:
-                    pass
-
-            return self._ordenar_paginas(list(urls_capturadas))
-
-        # Intento 1: interceptación de red
-        try:
-            paginas = await self.reintentar(_extraer, intentos=2)
-        except Exception as e:
-            logger.warning(f"[Ofertomat] Intercepción fallida: {e}")
-            paginas = []
-
-        # Fallback: construir URLs del CDN directamente si no capturamos nada
-        if not paginas and folleto_id_cdn:
-            logger.info(f"[Ofertomat] Fallback CDN directo para folleto {folleto_id_cdn}")
-            paginas = await self._paginas_por_cdn(folleto_id_cdn)
-
-        logger.info(f"[Ofertomat] {len(paginas)} páginas en {url_folleto}")
-        return paginas
-
-    async def _paginas_por_cdn(self, folleto_id: str, max_paginas: int = 60) -> list[str]:
-        """
-        Construye URLs del CDN directamente sin navegar al visor.
-
-        El CDN de Leaflets tiene un patrón predecible:
-          https://na.leafletscdn.com/mx/data/1/{folleto_id}/{num_pagina}.jpg
-
-        Verifica cuántas páginas existen haciendo HEAD requests con aiohttp
-        hasta encontrar un 404 (fin del folleto).
-        """
-        import aiohttp
-
-        base = f"{CDN_BASE}/{folleto_id}"
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Referer": "https://www.ofertomat.mx/",
-        }
-
-        paginas_validas = []
-        async with aiohttp.ClientSession(headers=headers) as session:
-            for num in range(0, max_paginas):
-                url = f"{base}/{num}.jpg"
-                try:
-                    async with session.head(url, timeout=aiohttp.ClientTimeout(total=8)) as r:
-                        if r.status == 200:
-                            paginas_validas.append(url)
-                            logger.debug(f"[Ofertomat CDN] ✓ página {num}")
-                        else:
-                            # Primer 404 consecutivo indica fin del folleto
-                            logger.debug(f"[Ofertomat CDN] Fin en página {num} (status {r.status})")
-                            break
-                except Exception as e:
-                    logger.debug(f"[Ofertomat CDN] Error en página {num}: {e}")
-                    break
-
-        logger.info(f"[Ofertomat CDN] {len(paginas_validas)} páginas encontradas para folleto {folleto_id}")
-        return paginas_validas
-
-    def _extraer_paginas_html(self, html: str, url_folleto: str) -> list[str]:
-        """
-        Extrae URLs de imágenes del HTML de la página del folleto.
-        Busca en: meta og:image, elementos img con src del CDN leafletscdn.
-        """
-        soup = BeautifulSoup(html, "html.parser")
-        urls = set()
-
-        # 1. Buscar en meta og:image (portada — página 0)
-        og_image = soup.find("meta", {"property": "og:image"})
-        if og_image:
-            src = og_image.get("content", "")
-            if "leafletscdn" in src:
-                urls.add(src)
-
-        # 2. Buscar todas las imágenes del CDN en el DOM
-        for img in soup.select("img[src]"):
-            src = img.get("src", "")
-            if "leafletscdn" in src and "/data/" in src:
-                urls.add(src)
-
-        # 3. Buscar en atributos data-src (lazy loading)
-        for img in soup.select("img[data-src]"):
-            src = img.get("data-src", "")
-            if "leafletscdn" in src and "/data/" in src:
-                urls.add(src)
-
-        # 4. Buscar en el HTML completo con regex
-        patron = r'https://na\.leafletscdn\.com/[^"\' ]+/(?:mx/)?data/[^"\' ]+\.(?:jpg|webp|png)(?:\?[^"\' ]*)?'
-        for match in re.finditer(patron, html):
-            url = match.group(0)
-            if "/data/" in url:
-                urls.add(url)
-
-        if not urls:
-            logger.warning(f"[Ofertomat] Sin imágenes en HTML de {url_folleto}")
+        folleto_id = match_id.group(1) if match_id else None
+        if not folleto_id:
+            logger.warning(f"[Ofertomat] No se pudo extraer folleto_id de {url_folleto}")
             return []
 
-        # Ordenar por número de página extraído de la URL
-        return self._ordenar_paginas(list(urls))
+        patron_pagina_propia = re.compile(rf"/{folleto_id}/\d+\.(?:jpg|webp|png)(?:\?|$)")
+        urls_capturadas: set[str] = set()
+
+        def _on_request(request):
+            url = request.url
+            # Solo capturar páginas del folleto que estamos scrapeando --
+            # descarta logo.png y, sobre todo, las miniaturas de folletos
+            # recomendados de la pantalla final (llevan otro folleto_id).
+            if "leafletscdn" in url and patron_pagina_propia.search(url):
+                urls_capturadas.add(url)
+
+        async def _navegar_pagina(url_pagina: str) -> bool:
+            antes = len(urls_capturadas)
+            # commit = minimo posible, no esperar JS pesado. Pasa por
+            # _navegar (no page.goto directo) para heredar la recreación
+            # de página si el renderer crashea a mitad de la navegación.
+            await self._navegar(url_pagina, esperar="commit")
+            # Esperar a que el visor pida la imagen de esta página
+            for _ in range(8):
+                if len(urls_capturadas) > antes:
+                    break
+                await asyncio.sleep(0.5)
+            return len(urls_capturadas) > antes
+
+        self.page.on("request", _on_request)
+        try:
+            for num_pagina in range(1, self.MAX_PAGINAS + 1):
+                url_pagina = (url_folleto if num_pagina == 1
+                              else f"{url_folleto}?page={num_pagina}")
+                try:
+                    hubo_nueva = await self.reintentar(
+                        lambda u=url_pagina: _navegar_pagina(u), intentos=2
+                    )
+                except Exception as e:
+                    logger.warning(f"[Ofertomat] Error en página {num_pagina} de {url_folleto}: {e}")
+                    break
+
+                if not hubo_nueva:
+                    logger.debug(f"[Ofertomat] Fin del folleto en página {num_pagina} (sin imagen nueva)")
+                    break
+        finally:
+            self.page.remove_listener("request", _on_request)
+
+        paginas = self._ordenar_paginas(list(urls_capturadas))
+        logger.info(f"[Ofertomat] {len(paginas)} páginas en {url_folleto}")
+        return paginas
 
     def _ordenar_paginas(self, urls: list[str]) -> list[str]:
         """
@@ -424,7 +352,7 @@ class OfertomatScraper(BaseScraper):
         def _clave(url: str) -> int:
             # Extrae el número de página del último segmento antes de la extensión
             # Ej: .../131170/3.jpg → 3  |  .../0.jpg → 0
-            m = re.search(r"/(\d+)\.(?:jpg|webp|png)(?:\?|$)", url)
+            m = _ES_PAGINA_CDN.search(url)
             return int(m.group(1)) if m else 9999
 
         return sorted(urls, key=_clave)
@@ -439,9 +367,6 @@ class OfertomatScraper(BaseScraper):
         return ""
 
     # ── Métodos de conveniencia ───────────────────────────────────────────────
-
-    async def scrapear_supermercados(self) -> list[dict]:
-        return await self.obtener_folletos(URL_SUPERMERCADOS)
 
     async def scrapear_tienda(self, slug_tienda: str) -> list[dict]:
         if slug_tienda not in TIENDAS:

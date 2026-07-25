@@ -1,21 +1,21 @@
-# ── Entorno virtual ───────────────────────────────────────────────────────────
+# ------------------ Entorno virtual ------------------
 venv/
 .venv/
 env/
 .env/
 
-# ── Variables de entorno ──────────────────────────────────────────────────────
+# ------------------ Variables de entorno ------------------
 .env
 .env.local
 .env.production
 
-# ── Datalake completo (imágenes + JSONs procesados — pueden pesar varios GB) ──
+# ------------------ Datalake completo (imágenes + JSONs procesados — pueden pesar varios GB)
 data/
 
-# ── Logs ─────────────────────────────────────────────────────────────────────
+# ------------------ Logs ------------------
 logs/
 
-# ── Python ───────────────────────────────────────────────────────────────────
+# ------------------ Python ------------------
 __pycache__/
 *.py[cod]
 *.pyo
@@ -26,39 +26,38 @@ dist/
 build/
 *.egg
 .eggs/
-
-# ── Pytest ────────────────────────────────────────────────────────────────────
+# ------------------ Pytest ------------------
 .pytest_cache/
 .coverage
 htmlcov/
 
-# ── IDEs ──────────────────────────────────────────────────────────────────────
+# ------------------ IDEs ------------------
 .vscode/
 .idea/
 *.code-workspace
 
-# ── Sistema operativo ─────────────────────────────────────────────────────────
+# ------------------ Sistema operativo ------------------
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ── Jupyter ───────────────────────────────────────────────────────────────────
+# ------------------ Jupyter ------------------
 .ipynb_checkpoints/
 *.ipynb
 
-# ── PySpark temporales ────────────────────────────────────────────────────────
+# ------------------ PySpark temporales ------------------
 derby.log
 metastore_db/
 spark-warehouse/
 
-# ── Playwright (caché de navegadores descargados) ────────────────────────────
+# ------------------ Playwright (caché de navegadores descargados) ------------------
 .playwright/
 playwright-report/
 
-# ── EasyOCR (modelos descargados automáticamente — se regeneran) ──────────────
+# ------------------ EasyOCR (modelos descargados automáticamente — se regeneran) ------------------
 .EasyOCR/
 
-# -- Docxx (archivos temporales) ───────────────────────────────────────────────────
+# ------------------ Docxx (archivos temporales) ------------------
 *.docx
 
 # api, aun no estavtermiando
