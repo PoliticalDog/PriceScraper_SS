@@ -3,11 +3,20 @@
 import re
 import asyncio
 import logging
+import unicodedata
 from bs4 import BeautifulSoup
 from ..metodos_scraper import BaseScraper
 
 # inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
+
+# Normaliza texto para comparar nombre de tienda (tarjeta) contra slug esperado:
+# quita acentos, minusculas, solo alfanumerico. Ej: "Soriana Híper" y "soriana-hiper"
+# ambos dan "sorianahiper".
+def _normalizar_comparacion(texto: str) -> str:
+    sin_acentos = unicodedata.normalize("NFKD", texto)
+    sin_acentos = "".join(c for c in sin_acentos if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", sin_acentos.lower())
 
 # URLs directas por cada cadena Tiendeo
 TIENDAS = {
@@ -53,13 +62,14 @@ class TiendeoScraper(BaseScraper):
     # -------------------- Métodos principales de scraping --------------------
 
     # Obtiene los folletos listados en una categoría o tienda específica.
-    async def obtener_folletos(self, categoria_url: str) -> list[dict]:
+    # slug_esperado: si se da, descarta tarjetas de otras tiendas (ver _parsear_tarjetas).
+    async def obtener_folletos(self, categoria_url: str, slug_esperado: str | None = None) -> list[dict]:
         async def _extraer():
             # carga los metodos estadnar de navegacion y carga
             await self._navegar(categoria_url)
             await self._scroll_hasta_abajo(pasos=12) # Con 12 se logra cargar todos los folletos
             html = await self.page.content()
-            return self._parsear_tarjetas(html)
+            return self._parsear_tarjetas(html, slug_esperado)
 
         # Segunda vuelta la extracción de folletos para manejar posibles bloqueos o fallos temporales
         folletos = await self.reintentar(_extraer)
@@ -70,22 +80,37 @@ class TiendeoScraper(BaseScraper):
             "url_folleto": "...",
         """
         return folletos
-    
-    # Parsea las tarjetas de folletos en la página de categoría/tienda de html a dict con datos estructurados. 
+
+    # Parsea las tarjetas de folletos en la página de categoría/tienda de html a dict con datos estructurados.
     # se busca <a> que contiene la informacion del folleto
-    def _parsear_tarjetas(self, html: str) -> list[dict]:
+    #
+    # Cada página de categoría trae ademas de los folletos propios de la tienda un widget fijo
+    # de "folletos recomendados" con tarjetas de OTRAS tiendas (confirmado en vivo: mismo set de
+    # ~12-13 tarjetas repetido en distintas páginas de categoría). Si se da slug_esperado, se
+    # descartan las tarjetas cuya tienda no coincida (normalizada) con la tienda solicitada.
+    def _parsear_tarjetas(self, html: str, slug_esperado: str | None = None) -> list[dict]:
         soup = BeautifulSoup(html, "html.parser") # b4 interpreta html y busca eleemntos en html y css
         folletos = []
+        descartadas_otra_tienda = 0
+        slug_norm = _normalizar_comparacion(slug_esperado) if slug_esperado else None
 
         # revisa el html y halla las etioquetass <a> y evlua que tenga un id
         # Cada tarjeta de folleto es un <a> con href que incluye "/Catalogos/ID"
         for tarjeta in soup.select("a[href*='/Catalogos/']"):
             try:
                 f = self._extraer_datos_tarjeta(tarjeta) # Extrae datos de la tarjeta a un dict estructurado
-                if f:
-                    folletos.append(f)
+                if not f:
+                    continue
+                if slug_norm and _normalizar_comparacion(f["tienda"]) != slug_norm:
+                    descartadas_otra_tienda += 1
+                    continue
+                folletos.append(f)
             except Exception as e:
                 logger.warning(f"Error parseando tarjeta: {e}")
+
+        if descartadas_otra_tienda:
+            logger.debug(f"[Tiendeo] {descartadas_otra_tienda} tarjetas descartadas por "
+                         f"pertenecer a otra tienda (widget de recomendados)")
 
         # Deduplicar por URL
         vistos, unicos = set(), []
@@ -255,6 +280,21 @@ class TiendeoScraper(BaseScraper):
             self.page.on("framenavigated", _on_framenavigated)  # listener para detectar redirecciones
             try:
                 await self._navegar(url_con_pagina, esperar="networkidle")
+
+                # Si aun no conocemos el publication_id (primer bloque), leerlo del HTML.
+                # La pagina trae ademas del visor real un widget de "cross-sell" con
+                # miniaturas de otros folletos (distinto publication_id cada uno); el id
+                # del visor real siempre aparece primero en el HTML, antes que el widget
+                # -- confirmado en vivo con folletos reales. Esto evita tener que adivinar
+                # el publication_id correcto por conteo de requests capturadas (carrera
+                # contra el tiempo que puede anclarse al id equivocado).
+                nonlocal publication_id_conocido
+                if publication_id_conocido is None:
+                    html_temprano = await self.page.content()
+                    pid_dom = _publication_id(html_temprano)
+                    if pid_dom:
+                        logger.debug(f"[Tiendeo] publication_id detectado por DOM: {pid_dom}")
+                        publication_id_conocido = pid_dom
 
                 # Esperar en pasos cortos, abortando si hay redirect
                 for _ in range(5):  # 5 veces por 500 ms = 2.5 seg
@@ -435,4 +475,4 @@ class TiendeoScraper(BaseScraper):
                 f"Tienda '{slug_tienda}' no disponible. "
                 f"Opciones: {list(TIENDAS.keys())}"
             )
-        return await self.obtener_folletos(TIENDAS[slug_tienda])
+        return await self.obtener_folletos(TIENDAS[slug_tienda], slug_esperado=slug_tienda)
