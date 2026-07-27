@@ -2,6 +2,7 @@
 #       PRECIO, PRECIO_ANTERIOR, AHORRO, PROMO, EVENTO_PROMO, PRODUCTO, ATRIBUTO, DESCARTE
 
 import re
+import math
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
@@ -143,6 +144,59 @@ class RegexExtractor:
         """,
         re.VERBOSE | re.IGNORECASE
     )
+
+    # --------------- PRECIO SIN SIMBOLO ("$" perdido o mal leido por el OCR) ---------------
+    # Tipografia de "tag de oferta" (digito entero grande + centavos en superindice, sin "$"
+    # ni punto decimal como caracteres separados) hace que EasyOCR pierda el "$" por completo
+    # o lo lea como 5/6/8 (confundible con el glifo "$" en esa fuente). Confirmado empiricamente
+    # en Casa Ley, S-Mart, Soriana Hiper/Mercado, Walmart, Bodega Aurrera, HEB y Chedraui (jul 2026).
+    # Solo se activa si hay contexto de precio cerca del bloque (ver _hay_contexto_precio) --
+    # nunca se aplica a un bloque aislado, para no confundir SKUs/cantidades/paginas con precios.
+
+    # Regla A: digito espurio (el "$" mal leido) + precio ENTERO sin centavos. Ej: "8249" -> $249
+    # Remanente fijo a 3 digitos -- es lo unico validado empiricamente (299/266/249/169/229);
+    # no se generaliza a 2 o 4 digitos por falta de casos confirmados.
+    PATRON_DIGITO_ESPURIO = re.compile(r"^[568](\d{3})$")
+
+    # Regla B: digitos puros sin espurio -- ultimos 2 digitos son centavos. Ej: "999" -> $9.99
+    # Total 3-4 digitos (1-2 enteros + 2 centavos) -- es lo unico validado empiricamente.
+    # NO se generaliza a 5-6 digitos: sin la senal extra del digito espurio, un bare de
+    # esa longitud es mas probable que sea un SKU/codigo de barras que un precio real
+    # (confirmado: "541583"/"559944" cerca de contexto fuerte pero claramente no precios).
+    PATRON_BARE_DIGITOS = re.compile(r"^(\d{1,2})(\d{2})$")
+
+    # Evita interpretar un año de vigencia ("2026") como precio
+    PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
+
+    # Contexto "fuerte": palabras que solo aparecen junto a un precio, nunca junto a
+    # una cantidad/peso de producto. Suficiente por si solo para la Regla A o B.
+    PATRON_CONTEXTO_PRECIO_FUERTE = re.compile(
+        r"""
+        \b(?:
+            a\s+s[oó]lo|de\s+oferta|antes|ahorr[ao]s?|cada\s+un[oa]|paquete|c/u|c\.u\.
+        )\b
+        """,
+        re.VERBOSE | re.IGNORECASE
+    )
+
+    # Contexto "de unidad": kg/ml/g/etc tambien describen cantidades de producto
+    # ("355 ml", "100 g") sin relacion con el precio -- por si solo es ambiguo.
+    # Solo se usa para reforzar la Regla A, que ya tiene la senal extra del digito
+    # espurio; la Regla B (sin esa senal) exige contexto fuerte para no confundir
+    # cantidades con precios (confirmado: "100" cerca de "ml" NO es un precio).
+    PATRON_CONTEXTO_UNIDAD = re.compile(
+        r"\b(?:kg|kgs|gr|grs|g|ml|lt|l|pza|pzas|pieza|piezas)\b",
+        re.IGNORECASE
+    )
+
+    # Palabras que descartan la interpretacion de precio aunque haya contexto cerca
+    # (ej. "150 puntos" de tarjeta de lealtad, no un precio). El "." tolera errores
+    # de OCR de un caracter en medio (confirmado: "Puhtos" en vez de "Puntos")
+    PATRON_EXCLUSION_CONTEXTO_PRECIO = re.compile(r"\bp?u.tos?\b", re.IGNORECASE)
+
+    # Distancia maxima (px) para considerar un bloque de contexto "cercano".
+    # Asume paginas ya escaladas al ancho de produccion (~1500px, ver preprocessor.ANCHO_OBJETIVO_DEFAULT)
+    DISTANCIA_MAX_CONTEXTO_PRECIO = 220
 
     # --------------- PROMOCIONES ---------------
     PATRONES_PROMO = [
@@ -397,8 +451,9 @@ class RegexExtractor:
 
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
+        bloques_pagina = datos_pagina["bloques"]  # contexto espacial para precios sin simbolo
 
-        for bloque in datos_pagina["bloques"]:
+        for bloque in bloques_pagina:
             texto_raw = bloque["texto"]
             confianza = bloque["confianza"]
             bbox      = bloque.get("bbox", {})
@@ -410,7 +465,7 @@ class RegexExtractor:
             if not texto_limpio:
                 continue
 
-            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox)
+            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina)
 
             tipo = entidad.tipo
             if tipo == "PRECIO":
@@ -442,7 +497,7 @@ class RegexExtractor:
 
     # --------------- Clasificador ---------------
 
-    def _clasificar(self, texto, texto_raw, confianza, bbox) -> EntidadExtraida:
+    def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None) -> EntidadExtraida:
 
         # 1. Descarte rápido
         if self._es_descarte(texto):
@@ -485,6 +540,13 @@ class RegexExtractor:
         if precio_valor is not None:
             return EntidadExtraida("PRECIO", texto_raw, texto,
                                    valor=precio_valor, confianza=confianza, bbox=bbox)
+
+        # 5b. Precio sin símbolo — "$" perdido o mal leído por el OCR (tag de oferta).
+        # Solo aplica si hay contexto de precio cerca del bloque (ver PATRON_CONTEXTO_PRECIO).
+        precio_sin_simbolo = self._extraer_precio_sin_simbolo(texto, bbox, bloques_pagina)
+        if precio_sin_simbolo is not None:
+            return EntidadExtraida("PRECIO", texto_raw, texto,
+                                   valor=precio_sin_simbolo, confianza=confianza, bbox=bbox)
 
         # 6. Catálogo → PRODUCTO o ATRIBUTO
         en_catalogo, categoria, es_atributo = buscar_categoria(texto)
@@ -570,6 +632,75 @@ class RegexExtractor:
         if not match:
             return None
         return self._parsear_numero(match.group(1))
+
+    def _extraer_precio_sin_simbolo(
+        self, texto: str, bbox: dict, bloques_pagina: Optional[list[dict]]
+    ) -> Optional[float]:
+        """
+        Recupera precios cuyo "$" el OCR perdio o leyo mal (ver PATRON_DIGITO_ESPURIO /
+        PATRON_BARE_DIGITOS). Solo se activa si hay contexto de precio confirmado cerca
+        del bloque -- un bloque numerico aislado (SKU, pagina, cantidad) no cuenta.
+        """
+        if not bbox or not bloques_pagina:
+            return None
+        if self.PATRON_ANIO_PLAUSIBLE.match(texto):
+            return None
+
+        # Regla A: digito espurio + precio entero sin centavos (ej. "8249" -> $249)
+        # Contexto amplio (fuerte o de unidad) -- el digito espurio ya es una senal fuerte.
+        m = self.PATRON_DIGITO_ESPURIO.match(texto)
+        if m:
+            if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=False):
+                return None
+            return self._parsear_numero(m.group(1))
+
+        # Regla B: digitos puros -- ultimos 2 digitos son centavos (ej. "999" -> $9.99)
+        # Exige contexto FUERTE -- sin la senal del digito espurio, un bloque numerico
+        # junto a "kg"/"ml" es mas probable que sea una cantidad que un precio.
+        m = self.PATRON_BARE_DIGITOS.match(texto)
+        if m:
+            if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True):
+                return None
+            return self._parsear_numero(f"{m.group(1)}.{m.group(2)}")
+
+        return None
+
+    def _hay_contexto_precio(
+        self, bbox: dict, bloques_pagina: list[dict], requerir_fuerte: bool
+    ) -> bool:
+        """
+        True si hay un bloque de contexto de precio cerca del bbox y NINGUN bloque de
+        exclusion (ej. "puntos" de lealtad) igual de cerca -- la exclusion tiene
+        prioridad para evitar falsos positivos como "150 puntos".
+
+        Si requerir_fuerte=True, solo cuenta el contexto "fuerte" (antes/de oferta/
+        c-u/etc); el contexto de unidad (kg/ml/g) por si solo no basta porque tambien
+        describe cantidades de producto sin relacion con el precio.
+        """
+        hay_contexto = False
+        for otro in bloques_pagina:
+            otro_bbox = otro.get("bbox")
+            if not otro_bbox or otro_bbox is bbox:
+                continue
+            if self._distancia_bbox(bbox, otro_bbox) > self.DISTANCIA_MAX_CONTEXTO_PRECIO:
+                continue
+            texto_otro = otro.get("texto", "")
+            if self.PATRON_EXCLUSION_CONTEXTO_PRECIO.search(texto_otro):
+                return False
+            if self.PATRON_CONTEXTO_PRECIO_FUERTE.search(texto_otro):
+                hay_contexto = True
+            elif not requerir_fuerte and self.PATRON_CONTEXTO_UNIDAD.search(texto_otro):
+                hay_contexto = True
+        return hay_contexto
+
+    @staticmethod
+    def _distancia_bbox(bbox_a: dict, bbox_b: dict) -> float:
+        """Distancia euclidiana entre los centros de dos bbox {x,y,ancho,alto}."""
+        xa = bbox_a["x"] + bbox_a["ancho"] / 2
+        ya = bbox_a["y"] + bbox_a["alto"] / 2
+        xb = bbox_b["x"] + bbox_b["ancho"] / 2
+        yb = bbox_b["y"] + bbox_b["alto"] / 2
+        return math.hypot(xa - xb, ya - yb)
 
     def _parsear_numero(self, numero_str: str) -> Optional[float]:
         """
