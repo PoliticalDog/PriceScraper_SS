@@ -12,6 +12,8 @@
 # No toca probar_vision.py, probar_nlp.py ni load/load.py -- es solo para
 # validar la calidad de la deteccion antes de decidir si se integra al pipeline.
 
+import argparse
+import csv
 import logging
 import cv2
 from pathlib import Path
@@ -62,20 +64,60 @@ CASOS = [
 DATA_RAW = Path("data/raw/tiendeo")
 SALIDA = Path("data/processed/_benchmark_regiones")
 
+EXTENSIONES_VALIDAS = (".webp", ".jpg", ".jpeg", ".png")
+
+
+def enumerar_corpus_completo():
+    """Recorre DATA_RAW y arma la lista (tienda, folleto_id, archivo) para
+    TODAS las paginas de TODOS los folletos -- a diferencia de CASOS, que es
+    una muestra curada a mano de 29 casos / 17 tiendas."""
+    casos = []
+    for carpeta_tienda in sorted(DATA_RAW.iterdir()):
+        if not carpeta_tienda.is_dir():
+            continue
+        for carpeta_folleto in sorted(carpeta_tienda.iterdir()):
+            if not carpeta_folleto.is_dir():
+                continue
+            for archivo in sorted(carpeta_folleto.iterdir()):
+                if archivo.suffix.lower() in EXTENSIONES_VALIDAS:
+                    casos.append((carpeta_tienda.name, carpeta_folleto.name, archivo.name))
+    return casos
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Benchmark de deteccion de regiones (ROI)")
+    parser.add_argument(
+        "--full", action="store_true",
+        help="Corre sobre el corpus completo (todas las tiendas/folletos/paginas) en vez de los 29 casos curados",
+    )
+    parser.add_argument(
+        "--gpu", action="store_true",
+        help="Usa GPU para EasyOCR (requiere torch con soporte CUDA instalado)",
+    )
+    parser.add_argument(
+        "--sin-imagenes", action="store_true",
+        help="No guarda las imagenes de comparacion (recuadros verdes/rojos) -- solo el CSV de resumen. Recomendado para --full por espacio en disco y velocidad",
+    )
+    return parser.parse_args()
+
 
 def main():
+    args = parse_args()
     SALIDA.mkdir(parents=True, exist_ok=True)
     preprocesador = obtener_preprocesador("color_normal")  # mismo perfil de produccion
-    ocr = OCREngine(idiomas=["es", "en"], usar_gpu=False)  # se inicializa una sola vez
+    ocr = OCREngine(idiomas=["es", "en"], usar_gpu=args.gpu)  # se inicializa una sola vez
+
+    casos = enumerar_corpus_completo() if args.full else CASOS
+    logger.info(f"Corriendo sobre {len(casos)} paginas (modo {'CORPUS COMPLETO' if args.full else 'muestra curada'}, gpu={args.gpu})")
 
     resumen = []
-    for tienda, folleto_id, archivo in CASOS:
+    for i, (tienda, folleto_id, archivo) in enumerate(casos, start=1):
         ruta_original = DATA_RAW / tienda / folleto_id / archivo
         if not ruta_original.exists():
             logger.warning(f"No existe: {ruta_original} -- se omite")
             continue
 
-        logger.info(f"--- {tienda}/{folleto_id}/{archivo} ---")
+        logger.info(f"[{i}/{len(casos)}] --- {tienda}/{folleto_id}/{archivo} ---")
         imagen_proc = preprocesador.procesar(ruta_original)
 
         # OCR de pagina completa -- el mismo que ya corre en produccion (probar_vision.py)
@@ -92,10 +134,12 @@ def main():
             sum(r["ancho"] * r["alto"] for r in confiables) / area_total if confiables else 0.0
         )
 
-        comparacion = dibujar_regiones(imagen_proc, calificadas)
-        nombre_salida = f"{tienda}_{folleto_id}_{archivo.replace('.webp', '')}_regiones.jpg"
-        ruta_salida = SALIDA / nombre_salida
-        cv2.imwrite(str(ruta_salida), comparacion)
+        ruta_salida = ""
+        if not args.sin_imagenes:
+            comparacion = dibujar_regiones(imagen_proc, calificadas)
+            nombre_salida = f"{tienda}_{folleto_id}_{archivo.replace('.webp', '')}_regiones.jpg"
+            ruta_salida = SALIDA / nombre_salida
+            cv2.imwrite(str(ruta_salida), comparacion)
 
         resumen.append((
             tienda, folleto_id, archivo,
@@ -103,7 +147,7 @@ def main():
         ))
         logger.info(
             f"    {len(confiables)}/{len(calificadas)} regiones con precio confirmado, "
-            f"{cobertura_confiable:.1%} cobertura confiable -> {ruta_salida}"
+            f"{cobertura_confiable:.1%} cobertura confiable" + (f" -> {ruta_salida}" if ruta_salida else "")
         )
 
     print("\n" + "=" * 80)
@@ -114,8 +158,36 @@ def main():
     for tienda, folleto_id, archivo, n_cand, n_conf, cob, _ in resumen:
         estado = "confiable" if n_conf > 0 else "sin senal de precio"
         print(f"{tienda:<16} {folleto_id:<9} {archivo:<18} {n_cand:>10} {n_conf:>10} {cob:>9.1%}  [{estado}]")
-    print(f"\nImagenes de comparacion guardadas en: {SALIDA}")
-    print("Verde = region con precio confirmado | Rojo = region sin precio confirmado")
+
+    # Agregados por tienda -- util para leer el resultado de --full de un vistazo
+    if args.full:
+        por_tienda = {}
+        for tienda, _, _, n_cand, n_conf, cob, _ in resumen:
+            acc = por_tienda.setdefault(tienda, {"paginas": 0, "candidatas": 0, "confiables": 0, "cobertura": 0.0})
+            acc["paginas"] += 1
+            acc["candidatas"] += n_cand
+            acc["confiables"] += n_conf
+            acc["cobertura"] += cob
+        print("\n" + "=" * 80)
+        print("AGREGADO POR TIENDA")
+        print("=" * 80)
+        print(f"{'Tienda':<16} {'Paginas':>8} {'Candidatas':>10} {'ConPrecio':>10} {'CobPromedio':>12}")
+        print("-" * 80)
+        for tienda, acc in sorted(por_tienda.items()):
+            cob_prom = acc["cobertura"] / acc["paginas"] if acc["paginas"] else 0.0
+            print(f"{tienda:<16} {acc['paginas']:>8} {acc['candidatas']:>10} {acc['confiables']:>10} {cob_prom:>11.1%}")
+
+    ruta_csv = SALIDA / "resumen.csv"
+    with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["tienda", "folleto_id", "archivo", "candidatas", "con_precio", "cobertura_confiable", "imagen"])
+        for tienda, folleto_id, archivo, n_cand, n_conf, cob, ruta_salida in resumen:
+            writer.writerow([tienda, folleto_id, archivo, n_cand, n_conf, f"{cob:.4f}", ruta_salida])
+
+    print(f"\nCSV de resumen guardado en: {ruta_csv}")
+    if not args.sin_imagenes:
+        print(f"Imagenes de comparacion guardadas en: {SALIDA}")
+        print("Verde = region con precio confirmado | Rojo = region sin precio confirmado")
 
 
 if __name__ == "__main__":
