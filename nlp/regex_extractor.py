@@ -153,10 +153,12 @@ class RegexExtractor:
     # Solo se activa si hay contexto de precio cerca del bloque (ver _hay_contexto_precio) --
     # nunca se aplica a un bloque aislado, para no confundir SKUs/cantidades/paginas con precios.
 
-    # Regla A: digito espurio (el "$" mal leido) + precio ENTERO sin centavos. Ej: "8249" -> $249
-    # Remanente fijo a 3 digitos -- es lo unico validado empiricamente (299/266/249/169/229);
-    # no se generaliza a 2 o 4 digitos por falta de casos confirmados.
-    PATRON_DIGITO_ESPURIO = re.compile(r"^[568](\d{3})$")
+    # Regla A: caracter espurio (el "$" mal leido) + precio ENTERO sin centavos. Ej: "8249" -> $249
+    # Remanente fijo a 3 digitos -- es lo unico validado empiricamente (299/266/249/169/229/599).
+    # No se generaliza a 2 o 4 digitos por falta de casos confirmados.
+    # "s/S" se agrega ademas de 5/6/8 porque ya es un sustituto de "$" conocido y documentado
+    # (ver PATRON_PRECIO_OCR_CORRUPTO) -- confirmado en folleto de referencia: "s599" -> $599.
+    PATRON_DIGITO_ESPURIO = re.compile(r"^[568sS](\d{3})$")
 
     # Regla B: digitos puros sin espurio -- ultimos 2 digitos son centavos. Ej: "999" -> $9.99
     # Total 3-4 digitos (1-2 enteros + 2 centavos) -- es lo unico validado empiricamente.
