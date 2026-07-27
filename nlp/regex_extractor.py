@@ -318,8 +318,12 @@ class RegexExtractor:
         ),
 
         # ── Slogans y frases de campaña cross-tienda ───────────────────────────
+        # El "¡" de apertura se pierde en el OCR y queda como una "i" pegada al
+        # verbo ("iConsiente", "iRenueva"). Bug corregido: "(?:i¡)?" exigía la
+        # secuencia literal de 2 caracteres "i¡" (nunca ocurre en OCR real) en vez
+        # de "[i¡]?" -- un solo caracter opcional, "i" O "¡".
         re.compile(
-            r"^(?:i¡)?(?:consiente|encuentra|renueva|aprovecha|celebra|"
+            r"^[i¡]?(?:consiente|encuentra|renueva|aprovecha|celebra|"
             r"descubre|cuida|disfruta)\b",
             re.IGNORECASE
         ),
@@ -331,6 +335,14 @@ class RegexExtractor:
         ),
         re.compile(
             r"^(?:hasta\s+[Ii]o\s+que|hasta\s+lo\s+que)\b.{0,30}[!;]?$",
+            re.IGNORECASE
+        ),
+
+        # ── Condiciones MSI: lista de categorias separadas por coma ────────────
+        # "En Electrónica, Cómputo, Fotografía, Videojuegos..." -- condicion de
+        # letra chica de "Meses Sin Intereses", no un nombre de producto.
+        re.compile(
+            r"^en\s+\w+(?:\s+\w+)*(?:\s*,\s*\w+(?:\s+\w+)*){2,}",
             re.IGNORECASE
         ),
 
