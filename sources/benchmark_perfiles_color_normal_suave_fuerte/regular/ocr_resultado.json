@@ -1,0 +1,2795 @@
+{
+  "fuente": "tiendeo",
+  "tienda": "bodega_aurrera",
+  "folleto_id": "412322",
+  "total_paginas": 4,
+  "paginas": [
+    {
+      "pagina": "pagina_001.webp",
+      "confianza_prom": 0.509,
+      "bloques": [
+        {
+          "texto": "Aqui",
+          "confianza": 0.995,
+          "bbox": {
+            "x": 794,
+            "y": 29,
+            "ancho": 77,
+            "alto": 50
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "sí te",
+          "confianza": 0.628,
+          "bbox": {
+            "x": 861,
+            "y": 23,
+            "ancho": 156,
+            "alto": 90
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "alcanza",
+          "confianza": 0.907,
+          "bbox": {
+            "x": 662,
+            "y": 74,
+            "ancho": 421,
+            "alto": 147
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "@0",
+          "confianza": 0.145,
+          "bbox": {
+            "x": 1067,
+            "y": 165,
+            "ancho": 75,
+            "alto": 44
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Dfaazcladios",
+          "confianza": 0.179,
+          "bbox": {
+            "x": 684,
+            "y": 198,
+            "ancho": 450,
+            "alto": 98
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Vigencia del 13 de abril al 12 de mayo de 2026",
+          "confianza": 0.709,
+          "bbox": {
+            "x": 579,
+            "y": 311,
+            "ancho": 658,
+            "alto": 38
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$299",
+          "confianza": 0.68,
+          "bbox": {
+            "x": 432,
+            "y": 503,
+            "ancho": 228,
+            "alto": 99
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "5249",
+          "confianza": 0.368,
+          "bbox": {
+            "x": 1040,
+            "y": 503,
+            "ancho": 231,
+            "alto": 98
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "c/u",
+          "confianza": 0.721,
+          "bbox": {
+            "x": 655,
+            "y": 549,
+            "ancho": 66,
+            "alto": 40
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "c/u",
+          "confianza": 0.44,
+          "bbox": {
+            "x": 1255,
+            "y": 545,
+            "ancho": 68,
+            "alto": 44
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Baslc@",
+          "confianza": 0.879,
+          "bbox": {
+            "x": 436,
+            "y": 602,
+            "ancho": 144,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.67,
+          "bbox": {
+            "x": 1058,
+            "y": 602,
+            "ancho": 142,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Vestido campesino",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 438,
+            "y": 624,
+            "ancho": 184,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Vestido camisero",
+          "confianza": 0.873,
+          "bbox": {
+            "x": 1060,
+            "y": 624,
+            "ancho": 168,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EEG",
+          "confianza": 0.85,
+          "bbox": {
+            "x": 436,
+            "y": 648,
+            "ancho": 146,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EEG",
+          "confianza": 0.89,
+          "bbox": {
+            "x": 1058,
+            "y": 648,
+            "ancho": 146,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$249c/",
+          "confianza": 0.407,
+          "bbox": {
+            "x": 85,
+            "y": 1174,
+            "ancho": 289,
+            "alto": 101
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Basic 0",
+          "confianza": 0.579,
+          "bbox": {
+            "x": 372,
+            "y": 1166,
+            "ancho": 142,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Blusa manga corta",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 374,
+            "y": 1188,
+            "ancho": 180,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "8249c",
+          "confianza": 0.624,
+          "bbox": {
+            "x": 753,
+            "y": 1184,
+            "ancho": 289,
+            "alto": 99
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Simply Basic 0",
+          "confianza": 0.572,
+          "bbox": {
+            "x": 1035,
+            "y": 1195,
+            "ancho": 143,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "FonaolaneseG",
+          "confianza": 0.309,
+          "bbox": {
+            "x": 372,
+            "y": 1212,
+            "ancho": 136,
+            "alto": 50
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Blusa cuello V",
+          "confianza": 0.66,
+          "bbox": {
+            "x": 1035,
+            "y": 1220,
+            "ancho": 137,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EG",
+          "confianza": 0.613,
+          "bbox": {
+            "x": 1036,
+            "y": 1244,
+            "ancho": 132,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "5249c",
+          "confianza": 0.313,
+          "bbox": {
+            "x": 1037,
+            "y": 1448,
+            "ancho": 287,
+            "alto": 104
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Simply Basic @",
+          "confianza": 0.486,
+          "bbox": {
+            "x": 1047,
+            "y": 1533,
+            "ancho": 141,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Set de pijama",
+          "confianza": 0.825,
+          "bbox": {
+            "x": 1048,
+            "y": 1558,
+            "ancho": 134,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "estampado",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 1048,
+            "y": 1582,
+            "ancho": 112,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EG",
+          "confianza": 0.992,
+          "bbox": {
+            "x": 1048,
+            "y": 1604,
+            "ancho": 132,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "8249/ =",
+          "confianza": 0.196,
+          "bbox": {
+            "x": 99,
+            "y": 1628,
+            "ancho": 289,
+            "alto": 101
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Baslc @",
+          "confianza": 0.621,
+          "bbox": {
+            "x": 381,
+            "y": 1639,
+            "ancho": 143,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Blusa mc olanes",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 382,
+            "y": 1664,
+            "ancho": 156,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EG",
+          "confianza": 0.894,
+          "bbox": {
+            "x": 382,
+            "y": 1686,
+            "ancho": 132,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$239",
+          "confianza": 0.631,
+          "bbox": {
+            "x": 1044,
+            "y": 1843,
+            "ancho": 225,
+            "alto": 97
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$229",
+          "confianza": 0.571,
+          "bbox": {
+            "x": 375,
+            "y": 1882,
+            "ancho": 230,
+            "alto": 101
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "clu",
+          "confianza": 0.666,
+          "bbox": {
+            "x": 1259,
+            "y": 1889,
+            "ancho": 64,
+            "alto": 38
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "clu",
+          "confianza": 0.911,
+          "bbox": {
+            "x": 589,
+            "y": 1925,
+            "ancho": 66,
+            "alto": 42
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Simply Basic %",
+          "confianza": 0.925,
+          "bbox": {
+            "x": 1053,
+            "y": 1937,
+            "ancho": 145,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Baslc %",
+          "confianza": 0.719,
+          "bbox": {
+            "x": 379,
+            "y": 1979,
+            "ancho": 145,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Balerinas",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 1054,
+            "y": 1962,
+            "ancho": 92,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: 22-26",
+          "confianza": 0.775,
+          "bbox": {
+            "x": 1053,
+            "y": 1983,
+            "ancho": 125,
+            "alto": 27
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Camison",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 380,
+            "y": 2004,
+            "ancho": 88,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EG",
+          "confianza": 0.789,
+          "bbox": {
+            "x": 382,
+            "y": 2028,
+            "ancho": 132,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Vigencia del 13 de abril al 12 de mayo de 2026",
+          "confianza": 0.912,
+          "bbox": {
+            "x": 261,
+            "y": 2172,
+            "ancho": 830,
+            "alto": 43
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Durango",
+          "confianza": 0.657,
+          "bbox": {
+            "x": 299,
+            "y": 2235,
+            "ancho": 76,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Valdo en",
+          "confianza": 0.221,
+          "bbox": {
+            "x": 303,
+            "y": 2223,
+            "ancho": 68,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Estado De",
+          "confianza": 0.278,
+          "bbox": {
+            "x": 387,
+            "y": 2233,
+            "ancho": 84,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Guanauato",
+          "confianza": 0.209,
+          "bbox": {
+            "x": 539,
+            "y": 2235,
+            "ancho": 104,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Nidalgo",
+          "confianza": 0.486,
+          "bbox": {
+            "x": 745,
+            "y": 2235,
+            "ancho": 68,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Jalisco",
+          "confianza": 0.335,
+          "bbox": {
+            "x": 825,
+            "y": 2235,
+            "ancho": 62,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Michoacan",
+          "confianza": 0.616,
+          "bbox": {
+            "x": 895,
+            "y": 2233,
+            "ancho": 92,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "CdMx",
+          "confianza": 0.319,
+          "bbox": {
+            "x": 923,
+            "y": 2223,
+            "ancho": 44,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Chiapas",
+          "confianza": 0.552,
+          "bbox": {
+            "x": 977,
+            "y": 2223,
+            "ancho": 68,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "HORElos",
+          "confianza": 0.28,
+          "bbox": {
+            "x": 995,
+            "y": 2235,
+            "ancho": 74,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Nucvo",
+          "confianza": 0.185,
+          "bbox": {
+            "x": 1153,
+            "y": 2233,
+            "ancho": 54,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "c/a 168",
+          "confianza": 0.253,
+          "bbox": {
+            "x": 33,
+            "y": 2241,
+            "ancho": 70,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Ca puebua",
+          "confianza": 0.238,
+          "bbox": {
+            "x": 479,
+            "y": 2247,
+            "ancho": 82,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "queretaro",
+          "confianza": 0.243,
+          "bbox": {
+            "x": 570,
+            "y": 2246,
+            "ancho": 90,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "quintana Roo",
+          "confianza": 0.335,
+          "bbox": {
+            "x": 670,
+            "y": 2246,
+            "ancho": 115,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "SanlUs POIOS I",
+          "confianza": 0.123,
+          "bbox": {
+            "x": 795,
+            "y": 2247,
+            "ancho": 118,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "YUCATAN",
+          "confianza": 0.154,
+          "bbox": {
+            "x": 857,
+            "y": 2259,
+            "ancho": 68,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sinalon",
+          "confianza": 0.21,
+          "bbox": {
+            "x": 919,
+            "y": 2247,
+            "ancho": 64,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "ZACAIECAS",
+          "confianza": 0.593,
+          "bbox": {
+            "x": 937,
+            "y": 2258,
+            "ancho": 86,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sohorn",
+          "confianza": 0.208,
+          "bbox": {
+            "x": 991,
+            "y": 2247,
+            "ancho": 62,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tabasco",
+          "confianza": 0.328,
+          "bbox": {
+            "x": 1063,
+            "y": 2247,
+            "ancho": 68,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Con el inicio de Migcncia de €ste",
+          "confianza": 0.11,
+          "bbox": {
+            "x": 35,
+            "y": 2265,
+            "ancho": 212,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Iycr quodon rcvochdoslor volnntcs",
+          "confianza": 0.114,
+          "bbox": {
+            "x": 35,
+            "y": 2279,
+            "ancho": 238,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tamauupas",
+          "confianza": 0.252,
+          "bbox": {
+            "x": 587,
+            "y": 2261,
+            "ancho": 90,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Ilaxcala",
+          "confianza": 0.454,
+          "bbox": {
+            "x": 685,
+            "y": 2261,
+            "ancho": 76,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "VeracRUZ",
+          "confianza": 0.15,
+          "bbox": {
+            "x": 769,
+            "y": 2261,
+            "ancho": 78,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "publicodos con @nterioridod",
+          "confianza": 0.536,
+          "bbox": {
+            "x": 34,
+            "y": 2293,
+            "ancho": 187,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Po1",
+          "confianza": 0.253,
+          "bbox": {
+            "x": 233,
+            "y": 2297,
+            "ancho": 26,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Esumado clentc",
+          "confianza": 0.271,
+          "bbox": {
+            "x": 323,
+            "y": 2285,
+            "ancho": 114,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "en cata lollato etn culelos",
+          "confianza": 0.104,
+          "bbox": {
+            "x": 325,
+            "y": 2297,
+            "ancho": 190,
+            "alto": 19
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "disponlonidod cn nendas",
+          "confianza": 0.128,
+          "bbox": {
+            "x": 524,
+            "y": 2298,
+            "ancho": 171,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "S ordculos",
+          "confianza": 0.106,
+          "bbox": {
+            "x": 971,
+            "y": 2285,
+            "ancho": 72,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Todoslosauculos que",
+          "confianza": 0.212,
+          "bbox": {
+            "x": 1047,
+            "y": 2285,
+            "ancho": 156,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "tusordenes atetelono",
+          "confianza": 0.117,
+          "bbox": {
+            "x": 1127,
+            "y": 2299,
+            "ancho": 156,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "publican",
+          "confianza": 0.228,
+          "bbox": {
+            "x": 1224,
+            "y": 2283,
+            "ancho": 63,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "de atencion",
+          "confianza": 0.307,
+          "bbox": {
+            "x": 341,
+            "y": 2313,
+            "ancho": 82,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "cmprcsas Hllales",
+          "confianza": 0.148,
+          "bbox": {
+            "x": 869,
+            "y": 2327,
+            "ancho": 116,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        }
+      ]
+    },
+    {
+      "pagina": "pagina_002.webp",
+      "confianza_prom": 0.617,
+      "bloques": [
+        {
+          "texto": "iConsiente a mamá, con",
+          "confianza": 0.75,
+          "bbox": {
+            "x": 319,
+            "y": 23,
+            "ancho": 669,
+            "alto": 84
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Io mejor en tecnología!",
+          "confianza": 0.877,
+          "bbox": {
+            "x": 330,
+            "y": 98,
+            "ancho": 658,
+            "alto": 80
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "810,9990",
+          "confianza": 0.416,
+          "bbox": {
+            "x": 165,
+            "y": 207,
+            "ancho": 395,
+            "alto": 104
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "814,997",
+          "confianza": 0.409,
+          "bbox": {
+            "x": 804,
+            "y": 207,
+            "ancho": 342,
+            "alto": 105
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "6.7\"",
+          "confianza": 0.952,
+          "bbox": {
+            "x": 473,
+            "y": 347,
+            "ancho": 88,
+            "alto": 40
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "6.19",
+          "confianza": 0.741,
+          "bbox": {
+            "x": 1129,
+            "y": 347,
+            "ancho": 84,
+            "alto": 40
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "SAMSUNG",
+          "confianza": 0.884,
+          "bbox": {
+            "x": 197,
+            "y": 385,
+            "ancho": 174,
+            "alto": 36
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Galaxy",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 212,
+            "y": 436,
+            "ancho": 143,
+            "alto": 53
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "iPhone",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 858,
+            "y": 422,
+            "ancho": 150,
+            "alto": 48
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "A56",
+          "confianza": 0.948,
+          "bbox": {
+            "x": 223,
+            "y": 487,
+            "ancho": 128,
+            "alto": 62
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "50+12+5 Mpx",
+          "confianza": 0.909,
+          "bbox": {
+            "x": 436,
+            "y": 492,
+            "ancho": 160,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "14",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 896,
+            "y": 498,
+            "ancho": 76,
+            "alto": 56
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "12Mpx",
+          "confianza": 0.881,
+          "bbox": {
+            "x": 1121,
+            "y": 487,
+            "ancho": 93,
+            "alto": 38
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "1Mpxfrental",
+          "confianza": 0.434,
+          "bbox": {
+            "x": 446,
+            "y": 524,
+            "ancho": 140,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "1Mpxfrental",
+          "confianza": 0.552,
+          "bbox": {
+            "x": 1098,
+            "y": 524,
+            "ancho": 140,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "8 GB RAM",
+          "confianza": 0.459,
+          "bbox": {
+            "x": 454,
+            "y": 556,
+            "ancho": 122,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "6 GBRAM",
+          "confianza": 0.916,
+          "bbox": {
+            "x": 1105,
+            "y": 555,
+            "ancho": 124,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "baft",
+          "confianza": 0.229,
+          "bbox": {
+            "x": 233,
+            "y": 569,
+            "ancho": 93,
+            "alto": 49
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "256 GB ROM",
+          "confianza": 0.66,
+          "bbox": {
+            "x": 440,
+            "y": 590,
+            "ancho": 152,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "128 GB ROM",
+          "confianza": 0.895,
+          "bbox": {
+            "x": 1094,
+            "y": 590,
+            "ancho": 148,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "atat",
+          "confianza": 0.766,
+          "bbox": {
+            "x": 278,
+            "y": 634,
+            "ancho": 54,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "'Colores disponlbles:",
+          "confianza": 0.568,
+          "bbox": {
+            "x": 414,
+            "y": 638,
+            "ancho": 204,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "'Colores disponibles:",
+          "confianza": 0.704,
+          "bbox": {
+            "x": 1068,
+            "y": 638,
+            "ancho": 202,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "telcel",
+          "confianza": 0.947,
+          "bbox": {
+            "x": 250,
+            "y": 677,
+            "ancho": 94,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "telcel",
+          "confianza": 0.994,
+          "bbox": {
+            "x": 904,
+            "y": 677,
+            "ancho": 94,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "\"Sujato a disponibilldad",
+          "confianza": 0.593,
+          "bbox": {
+            "x": 419,
+            "y": 699,
+            "ancho": 193,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "~Sujato a disponibllidad",
+          "confianza": 0.422,
+          "bbox": {
+            "x": 1072,
+            "y": 699,
+            "ancho": 191,
+            "alto": 25
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "56,490",
+          "confianza": 0.448,
+          "bbox": {
+            "x": 331,
+            "y": 842,
+            "ancho": 320,
+            "alto": 110
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$999",
+          "confianza": 0.421,
+          "bbox": {
+            "x": 1016,
+            "y": 876,
+            "ancho": 225,
+            "alto": 93
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes: $8,490",
+          "confianza": 0.889,
+          "bbox": {
+            "x": 386,
+            "y": 954,
+            "ancho": 188,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Daewoo@ Boclna Bluetooth",
+          "confianza": 0.758,
+          "bbox": {
+            "x": 1024,
+            "y": 974,
+            "ancho": 268,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "DW2OOB",
+          "confianza": 0.434,
+          "bbox": {
+            "x": 1024,
+            "y": 998,
+            "ancho": 94,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "webOS",
+          "confianza": 0.997,
+          "bbox": {
+            "x": 701,
+            "y": 1016,
+            "ancho": 173,
+            "alto": 56
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sonido Potente y definido",
+          "confianza": 0.797,
+          "bbox": {
+            "x": 1038,
+            "y": 1019,
+            "ancho": 250,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "50\"",
+          "confianza": 0.407,
+          "bbox": {
+            "x": 79,
+            "y": 1031,
+            "ancho": 84,
+            "alto": 38
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Luces RGB multicolores",
+          "confianza": 0.995,
+          "bbox": {
+            "x": 1038,
+            "y": 1044,
+            "ancho": 229,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Bateria recargable",
+          "confianza": 0.997,
+          "bbox": {
+            "x": 1038,
+            "y": 1068,
+            "ancho": 180,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "AK UHD",
+          "confianza": 0.682,
+          "bbox": {
+            "x": 314,
+            "y": 1124,
+            "ancho": 304,
+            "alto": 76
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "LG",
+          "confianza": 0.996,
+          "bbox": {
+            "x": 481,
+            "y": 1235,
+            "ancho": 130,
+            "alto": 88
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Mod. 5OUR78OO",
+          "confianza": 0.497,
+          "bbox": {
+            "x": 344,
+            "y": 1358,
+            "ancho": 246,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "3,6,9",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 1,
+            "y": 1588,
+            "ancho": 181,
+            "alto": 88
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Pagando con",
+          "confianza": 0.753,
+          "bbox": {
+            "x": 548,
+            "y": 1588,
+            "ancho": 144,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "BBVA , Banamer tarcta CrediBodega brodescard , Wolmart INvEX Sam's Club InvEX,",
+          "confianza": 0.119,
+          "bbox": {
+            "x": 741,
+            "y": 1581,
+            "ancho": 574,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Inbursa Bodco",
+          "confianza": 0.529,
+          "bbox": {
+            "x": 741,
+            "y": 1599,
+            "ancho": 110,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Auicio",
+          "confianza": 0.21,
+          "bbox": {
+            "x": 855,
+            "y": 1599,
+            "ancho": 52,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Inbur",
+          "confianza": 0.77,
+          "bbox": {
+            "x": 913,
+            "y": 1599,
+            "ancho": 52,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Inburaa",
+          "confianza": 0.43,
+          "bbox": {
+            "x": 1045,
+            "y": 1599,
+            "ancho": 54,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sam ?",
+          "confianza": 0.324,
+          "bbox": {
+            "x": 1103,
+            "y": 1599,
+            "ancho": 40,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Club,",
+          "confianza": 0.161,
+          "bbox": {
+            "x": 1147,
+            "y": 1599,
+            "ancho": 36,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Amcrican Erorces",
+          "confianza": 0.144,
+          "bbox": {
+            "x": 1189,
+            "y": 1598,
+            "ancho": 124,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Meses Sin",
+          "confianza": 0.764,
+          "bbox": {
+            "x": 194,
+            "y": 1612,
+            "ancho": 270,
+            "alto": 50
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tarjetas de Crédito",
+          "confianza": 0.786,
+          "bbox": {
+            "x": 516,
+            "y": 1612,
+            "ancho": 210,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Banore Smntarder",
+          "confianza": 0.262,
+          "bbox": {
+            "x": 741,
+            "y": 1613,
+            "ancho": 124,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Banicrchto HSBC, Inbursa, Scotlabank.Invex Banco, Banbajo. Banco",
+          "confianza": 0.269,
+          "bbox": {
+            "x": 871,
+            "y": 1612,
+            "ancho": 444,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Imr",
+          "confianza": 0.677,
+          "bbox": {
+            "x": 991,
+            "y": 1601,
+            "ancho": 38,
+            "alto": 12
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Animc Bonroaio Hcy Banco",
+          "confianza": 0.153,
+          "bbox": {
+            "x": 741,
+            "y": 1627,
+            "ancho": 190,
+            "alto": 18
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "8anco",
+          "confianza": 0.18,
+          "bbox": {
+            "x": 935,
+            "y": 1629,
+            "ancho": 44,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "rcco, Klor RappiCard Platacoro; NUy Konlio",
+          "confianza": 0.166,
+          "bbox": {
+            "x": 989,
+            "y": 1625,
+            "ancho": 304,
+            "alto": 21
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "y 12",
+          "confianza": 0.908,
+          "bbox": {
+            "x": 20,
+            "y": 1657,
+            "ancho": 136,
+            "alto": 84
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Intereses",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 192,
+            "y": 1658,
+            "ancho": 276,
+            "alto": 52
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "En Electrónica, Cómputo; Fotografía, Videojuegos, Telefonía Celular, Línea Blanca,",
+          "confianza": 0.523,
+          "bbox": {
+            "x": 562,
+            "y": 1642,
+            "ancho": 728,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Electrodomésticos, Motocicletas, Colchones, Joyería, Muebles, Alres Acondicionados,",
+          "confianza": 0.77,
+          "bbox": {
+            "x": 547,
+            "y": 1664,
+            "ancho": 757,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Juguetes, Juguetes para bebés, Trampolines; Aparatos de Ejerciclo y Garantía Extendida.",
+          "confianza": 0.702,
+          "bbox": {
+            "x": 532,
+            "y": 1688,
+            "ancho": 788,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "81000 0o",
+          "confianza": 0.232,
+          "bbox": {
+            "x": 879,
+            "y": 1719,
+            "ancho": 68,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "3036 (oro",
+          "confianza": 0.336,
+          "bbox": {
+            "x": 767,
+            "y": 1721,
+            "ancho": 74,
+            "alto": 12
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Po",
+          "confianza": 0.107,
+          "bbox": {
+            "x": 968,
+            "y": 1722,
+            "ancho": 38,
+            "alto": 8
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Co1",
+          "confianza": 0.117,
+          "bbox": {
+            "x": 1015,
+            "y": 1721,
+            "ancho": 36,
+            "alto": 12
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "4mnunoa",
+          "confianza": 0.104,
+          "bbox": {
+            "x": 1178,
+            "y": 1722,
+            "ancho": 42,
+            "alto": 8
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "(006o",
+          "confianza": 0.199,
+          "bbox": {
+            "x": 1233,
+            "y": 1721,
+            "ancho": 62,
+            "alto": 12
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "1",
+          "confianza": 0.94,
+          "bbox": {
+            "x": 1075,
+            "y": 1907,
+            "ancho": 156,
+            "alto": 232
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "8359",
+          "confianza": 0.451,
+          "bbox": {
+            "x": 109,
+            "y": 2270,
+            "ancho": 228,
+            "alto": 101
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$359/u",
+          "confianza": 0.357,
+          "bbox": {
+            "x": 792,
+            "y": 2268,
+            "ancho": 284,
+            "alto": 101
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Slmply Baslc %",
+          "confianza": 0.553,
+          "bbox": {
+            "x": 1071,
+            "y": 2279,
+            "ancho": 143,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Simply Basic €",
+          "confianza": 0.428,
+          "bbox": {
+            "x": 388,
+            "y": 2282,
+            "ancho": 144,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "clu Tallas: CH-EG",
+          "confianza": 0.566,
+          "bbox": {
+            "x": 321,
+            "y": 2315,
+            "ancho": 202,
+            "alto": 42
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sudadera con cierre",
+          "confianza": 0.959,
+          "bbox": {
+            "x": 391,
+            "y": 2309,
+            "ancho": 192,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Pants pierna ancha",
+          "confianza": 0.968,
+          "bbox": {
+            "x": 1072,
+            "y": 2304,
+            "ancho": 184,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tallas: CH-EG",
+          "confianza": 0.972,
+          "bbox": {
+            "x": 1072,
+            "y": 2326,
+            "ancho": 132,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        }
+      ]
+    },
+    {
+      "pagina": "pagina_003.webp",
+      "confianza_prom": 0.811,
+      "bloques": [
+        {
+          "texto": "iEncuentra Io que necesita y",
+          "confianza": 0.861,
+          "bbox": {
+            "x": 260,
+            "y": 26,
+            "ancho": 786,
+            "alto": 78
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "hasta Io que le gustaría!",
+          "confianza": 0.593,
+          "bbox": {
+            "x": 313,
+            "y": 94,
+            "ancho": 683,
+            "alto": 85
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$299",
+          "confianza": 0.467,
+          "bbox": {
+            "x": 1004,
+            "y": 263,
+            "ancho": 230,
+            "alto": 96
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "c/u",
+          "confianza": 0.694,
+          "bbox": {
+            "x": 1221,
+            "y": 307,
+            "ancho": 66,
+            "alto": 42
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Taurus@ Ivory",
+          "confianza": 0.998,
+          "bbox": {
+            "x": 1015,
+            "y": 359,
+            "ancho": 139,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Licuadora",
+          "confianza": 0.703,
+          "bbox": {
+            "x": 1030,
+            "y": 384,
+            "ancho": 100,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Batidora de inmersión",
+          "confianza": 0.763,
+          "bbox": {
+            "x": 1030,
+            "y": 408,
+            "ancho": 213,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tostador",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 1030,
+            "y": 432,
+            "ancho": 92,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Quesadillera",
+          "confianza": 0.973,
+          "bbox": {
+            "x": 1030,
+            "y": 454,
+            "ancho": 124,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sandwichera",
+          "confianza": 0.908,
+          "bbox": {
+            "x": 1030,
+            "y": 478,
+            "ancho": 128,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Cafetera",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 1030,
+            "y": 502,
+            "ancho": 88,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "s999",
+          "confianza": 0.589,
+          "bbox": {
+            "x": 735,
+            "y": 1054,
+            "ancho": 233,
+            "alto": 103
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$199cu",
+          "confianza": 0.348,
+          "bbox": {
+            "x": 106,
+            "y": 1111,
+            "ancho": 271,
+            "alto": 97
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Taurus@ Aqua",
+          "confianza": 0.991,
+          "bbox": {
+            "x": 390,
+            "y": 1110,
+            "ancho": 142,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "TFal@ Combo 3 elementos",
+          "confianza": 0.608,
+          "bbox": {
+            "x": 1014,
+            "y": 1108,
+            "ancho": 264,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Parrila electrica",
+          "confianza": 0.683,
+          "bbox": {
+            "x": 404,
+            "y": 1134,
+            "ancho": 154,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Cafetera",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 1028,
+            "y": 1130,
+            "ancho": 88,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Batidora de mano",
+          "confianza": 0.998,
+          "bbox": {
+            "x": 406,
+            "y": 1156,
+            "ancho": 174,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes: $1,390",
+          "confianza": 0.993,
+          "bbox": {
+            "x": 767,
+            "y": 1158,
+            "ancho": 183,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Licuadora",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 1027,
+            "y": 1153,
+            "ancho": 102,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Exprimidor",
+          "confianza": 0.781,
+          "bbox": {
+            "x": 1027,
+            "y": 1177,
+            "ancho": 114,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Exprimidor",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 406,
+            "y": 1180,
+            "ancho": 112,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "84,490",
+          "confianza": 0.556,
+          "bbox": {
+            "x": 167,
+            "y": 1304,
+            "ancho": 326,
+            "alto": 110
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "87,990",
+          "confianza": 0.41,
+          "bbox": {
+            "x": 757,
+            "y": 1302,
+            "ancho": 312,
+            "alto": 112
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes: $5,490",
+          "confianza": 0.457,
+          "bbox": {
+            "x": 235,
+            "y": 1414,
+            "ancho": 190,
+            "alto": 38
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes: $8,990",
+          "confianza": 0.919,
+          "bbox": {
+            "x": 827,
+            "y": 1415,
+            "ancho": 190,
+            "alto": 36
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "209",
+          "confianza": 0.546,
+          "bbox": {
+            "x": 57,
+            "y": 1641,
+            "ancho": 90,
+            "alto": 42
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "30\"",
+          "confianza": 0.995,
+          "bbox": {
+            "x": 615,
+            "y": 1651,
+            "ancho": 86,
+            "alto": 40
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "mabe",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 197,
+            "y": 1842,
+            "ancho": 257,
+            "alto": 96
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Koblenz",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 855,
+            "y": 1859,
+            "ancho": 237,
+            "alto": 74
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Mabe € Estufa",
+          "confianza": 0.409,
+          "bbox": {
+            "x": 197,
+            "y": 1961,
+            "ancho": 126,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Koblonz8 Estufa",
+          "confianza": 0.338,
+          "bbox": {
+            "x": 771,
+            "y": 1961,
+            "ancho": 150,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "4 quemadores sellados",
+          "confianza": 0.934,
+          "bbox": {
+            "x": 212,
+            "y": 1982,
+            "ancho": 224,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "6 quemadores",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 788,
+            "y": 1984,
+            "ancho": 142,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Convertible a gas natural",
+          "confianza": 0.899,
+          "bbox": {
+            "x": 212,
+            "y": 2004,
+            "ancho": 240,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Capelo de Cristal Templado",
+          "confianza": 0.97,
+          "bbox": {
+            "x": 785,
+            "y": 2005,
+            "ancho": 269,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Encendido manual",
+          "confianza": 0.961,
+          "bbox": {
+            "x": 212,
+            "y": 2028,
+            "ancho": 182,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Encendido electrónico",
+          "confianza": 0.968,
+          "bbox": {
+            "x": 786,
+            "y": 2030,
+            "ancho": 218,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tecnologia Perfect Cook",
+          "confianza": 0.978,
+          "bbox": {
+            "x": 212,
+            "y": 2052,
+            "ancho": 238,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Jaladera en Horno EasyHandle",
+          "confianza": 0.996,
+          "bbox": {
+            "x": 786,
+            "y": 2054,
+            "ancho": 294,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Termocontrol en Horno",
+          "confianza": 0.976,
+          "bbox": {
+            "x": 786,
+            "y": 2076,
+            "ancho": 228,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        }
+      ]
+    },
+    {
+      "pagina": "pagina_004.webp",
+      "confianza_prom": 0.702,
+      "bloques": [
+        {
+          "texto": "iRenueva el espacio de mamá,",
+          "confianza": 0.952,
+          "bbox": {
+            "x": 227,
+            "y": 23,
+            "ancho": 854,
+            "alto": 86
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "sin gastar de más!",
+          "confianza": 0.857,
+          "bbox": {
+            "x": 393,
+            "y": 94,
+            "ancho": 519,
+            "alto": 86
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$299",
+          "confianza": 0.601,
+          "bbox": {
+            "x": 355,
+            "y": 315,
+            "ancho": 224,
+            "alto": 92
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvlo homea",
+          "confianza": 0.285,
+          "bbox": {
+            "x": 362,
+            "y": 411,
+            "ancho": 134,
+            "alto": 25
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvo",
+          "confianza": 0.218,
+          "bbox": {
+            "x": 247,
+            "y": 421,
+            "ancho": 52,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Ucuadora personal",
+          "confianza": 0.837,
+          "bbox": {
+            "x": 362,
+            "y": 433,
+            "ancho": 188,
+            "alto": 27
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "(r",
+          "confianza": 0.985,
+          "bbox": {
+            "x": 603,
+            "y": 903,
+            "ancho": 36,
+            "alto": 16
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$599",
+          "confianza": 0.587,
+          "bbox": {
+            "x": 484,
+            "y": 1029,
+            "ancho": 225,
+            "alto": 98
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes:$699",
+          "confianza": 0.923,
+          "bbox": {
+            "x": 540,
+            "y": 1136,
+            "ancho": 152,
+            "alto": 30
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "$369",
+          "confianza": 0.503,
+          "bbox": {
+            "x": 102,
+            "y": 1187,
+            "ancho": 229,
+            "alto": 98
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Oster? Llcuadora",
+          "confianza": 0.824,
+          "bbox": {
+            "x": 492,
+            "y": 1189,
+            "ancho": 173,
+            "alto": 25
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Potencla pico de 800 Watts",
+          "confianza": 0.549,
+          "bbox": {
+            "x": 508,
+            "y": 1214,
+            "ancho": 270,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "clu",
+          "confianza": 0.63,
+          "bbox": {
+            "x": 315,
+            "y": 1235,
+            "ancho": 66,
+            "alto": 44
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Perilla selectora de",
+          "confianza": 0.938,
+          "bbox": {
+            "x": 508,
+            "y": 1238,
+            "ancho": 184,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "velocidades",
+          "confianza": 0.996,
+          "bbox": {
+            "x": 506,
+            "y": 1259,
+            "ancho": 122,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvlohome @ Llcuadora",
+          "confianza": 0.944,
+          "bbox": {
+            "x": 112,
+            "y": 1280,
+            "ancho": 232,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "2 velocidades y una función",
+          "confianza": 0.861,
+          "bbox": {
+            "x": 510,
+            "y": 1284,
+            "ancho": 264,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "de pulso",
+          "confianza": 0.959,
+          "bbox": {
+            "x": 506,
+            "y": 1306,
+            "ancho": 88,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Meses Sin",
+          "confianza": 0.756,
+          "bbox": {
+            "x": 185,
+            "y": 1479,
+            "ancho": 271,
+            "alto": 55
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Pagando con",
+          "confianza": 0.997,
+          "bbox": {
+            "x": 545,
+            "y": 1475,
+            "ancho": 151,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "BBVA",
+          "confianza": 0.84,
+          "bbox": {
+            "x": 739,
+            "y": 1470,
+            "ancho": 155,
+            "alto": 61
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "3",
+          "confianza": 0.891,
+          "bbox": {
+            "x": 35,
+            "y": 1485,
+            "ancho": 92,
+            "alto": 108
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Tarjetas de Crédito",
+          "confianza": 0.893,
+          "bbox": {
+            "x": 514,
+            "y": 1500,
+            "ancho": 216,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Intereses'",
+          "confianza": 0.95,
+          "bbox": {
+            "x": 182,
+            "y": 1523,
+            "ancho": 279,
+            "alto": 62
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "16oo",
+          "confianza": 0.312,
+          "bbox": {
+            "x": 1117,
+            "y": 1527,
+            "ancho": 32,
+            "alto": 14
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "9",
+          "confianza": 0.591,
+          "bbox": {
+            "x": 1184,
+            "y": 1524,
+            "ancho": 54,
+            "alto": 30
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Sscons",
+          "confianza": 0.281,
+          "bbox": {
+            "x": 1226,
+            "y": 1538,
+            "ancho": 46,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "En toda la tienda",
+          "confianza": 0.93,
+          "bbox": {
+            "x": 613,
+            "y": 1559,
+            "ancho": 362,
+            "alto": 42
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "40e",
+          "confianza": 0.116,
+          "bbox": {
+            "x": 1194,
+            "y": 1596,
+            "ancho": 22,
+            "alto": 8
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "81,190",
+          "confianza": 0.467,
+          "bbox": {
+            "x": 39,
+            "y": 1678,
+            "ancho": 276,
+            "alto": 112
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "81,790",
+          "confianza": 0.632,
+          "bbox": {
+            "x": 703,
+            "y": 1682,
+            "ancho": 292,
+            "alto": 110
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvlo home & Horno de",
+          "confianza": 0.432,
+          "bbox": {
+            "x": 1002,
+            "y": 1698,
+            "ancho": 224,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "mScroondsarestablecidos",
+          "confianza": 0.442,
+          "bbox": {
+            "x": 1000,
+            "y": 1720,
+            "ancho": 246,
+            "alto": 52
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvlo home % Horno de mlcroondas",
+          "confianza": 0.902,
+          "bbox": {
+            "x": 316,
+            "y": 1740,
+            "ancho": 337,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "6 menus de cocción automática",
+          "confianza": 0.785,
+          "bbox": {
+            "x": 328,
+            "y": 1764,
+            "ancho": 304,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Funcion de Descongelado",
+          "confianza": 0.981,
+          "bbox": {
+            "x": 1016,
+            "y": 1768,
+            "ancho": 250,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes:$1,690",
+          "confianza": 0.977,
+          "bbox": {
+            "x": 104,
+            "y": 1794,
+            "ancho": 172,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "10 niveles de potencia",
+          "confianza": 0.928,
+          "bbox": {
+            "x": 328,
+            "y": 1785,
+            "ancho": 214,
+            "alto": 27
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Antes:$1,990",
+          "confianza": 0.998,
+          "bbox": {
+            "x": 766,
+            "y": 1798,
+            "ancho": 174,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Boton de un toque de 30",
+          "confianza": 0.966,
+          "bbox": {
+            "x": 1016,
+            "y": 1792,
+            "ancho": 240,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "segundos",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 1015,
+            "y": 1814,
+            "ancho": 99,
+            "alto": 29
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "9",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 704,
+            "y": 1904,
+            "ancho": 32,
+            "alto": 34
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Pies",
+          "confianza": 0.296,
+          "bbox": {
+            "x": 44,
+            "y": 1934,
+            "ancho": 52,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "pios",
+          "confianza": 0.592,
+          "bbox": {
+            "x": 688,
+            "y": 1934,
+            "ancho": 54,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "Atvo",
+          "confianza": 0.223,
+          "bbox": {
+            "x": 551,
+            "y": 1977,
+            "ancho": 46,
+            "alto": 20
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "[28",
+          "confianza": 0.267,
+          "bbox": {
+            "x": 1196,
+            "y": 1982,
+            "ancho": 58,
+            "alto": 24
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "'204",
+          "confianza": 0.305,
+          "bbox": {
+            "x": 546,
+            "y": 2000,
+            "ancho": 66,
+            "alto": 32
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "ATVIO",
+          "confianza": 0.84,
+          "bbox": {
+            "x": 773,
+            "y": 2020,
+            "ancho": 331,
+            "alto": 100
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "ATVIO",
+          "confianza": 0.983,
+          "bbox": {
+            "x": 104,
+            "y": 2044,
+            "ancho": 336,
+            "alto": 120
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "H 0 M €",
+          "confianza": 0.458,
+          "bbox": {
+            "x": 868,
+            "y": 2112,
+            "ancho": 126,
+            "alto": 26
+          },
+          "motor": "easyocr"
+        },
+        {
+          "texto": "\" 0 M €",
+          "confianza": 0.318,
+          "bbox": {
+            "x": 204,
+            "y": 2136,
+            "ancho": 126,
+            "alto": 28
+          },
+          "motor": "easyocr"
+        }
+      ]
+    }
+  ],
+  "confianza_global": 0.66,
+  "total_bloques": 251
+}

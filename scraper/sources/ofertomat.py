@@ -241,6 +241,34 @@ class OfertomatScraper(BaseScraper):
             "fecha_fin":    None,  # Ofertomat no expone fecha_fin en URL
         }
 
+    # Fallback para fecha_fin (y validacion cruzada de fecha_inicio): la pagina de
+    # DETALLE del folleto siempre trae la frase "durante los dias DD/MM/YYYY -
+    # DD/MM/YYYY" en el cuerpo (confirmado en Walmart, Bodega Aurrera, Calimax,
+    # Walmart Express -- a diferencia del <title>, que varia de formato por tienda
+    # y muchas veces solo trae la fecha de inicio). _extraer_fechas_url() nunca
+    # obtiene fecha_fin desde la URL (Ofertomat no la expone ahi).
+    def _extraer_fechas_detalle(self, html: str) -> tuple[str | None, str | None]:
+        soup = BeautifulSoup(html, "html.parser")
+        patron = re.compile(
+            r"durante los d[ií]as (\d{2})/(\d{2})/(\d{4})\s*-\s*(\d{2})/(\d{2})/(\d{4})"
+        )
+        match = patron.search(soup.get_text(" ", strip=True))
+        if not match:
+            return None, None
+        d1, m1, y1, d2, m2, y2 = match.groups()
+        return f"{y1}-{m1}-{d1}", f"{y2}-{m2}-{d2}"
+
+    # Navega a la pagina de detalle del folleto y extrae las fechas de vigencia
+    # (ver _extraer_fechas_detalle). Uso: solo cuando fecha_fin vino None del
+    # listado -- es una navegacion dedicada, no se reutiliza la de
+    # obtener_paginas_folleto porque esa usa esperar="commit" (carga minima
+    # para no romper el mecanismo de paginacion perezosa) y no siempre alcanza
+    # a renderizar el texto que necesitamos.
+    async def obtener_fechas_detalle(self, url_folleto: str) -> tuple[str | None, str | None]:
+        await self._navegar(url_folleto, esperar="domcontentloaded")
+        html = await self.page.content()
+        return self._extraer_fechas_detalle(html)
+
     def _extraer_fechas_url(self, href: str) -> tuple[str | None, str | None]:
         """
         Extrae fecha de inicio desde la URL del folleto.
