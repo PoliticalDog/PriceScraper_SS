@@ -193,6 +193,19 @@ class TiendeoScraper(BaseScraper):
             return match.group(1), match.group(2)
         return None, None
 
+    # Extrae fechas de vigencia desde la barra de titulo de la pagina de DETALLE del folleto
+    # (tiendeo.mx/Catalogos/ID). A diferencia del alt de la tarjeta de listado (que a veces no
+    # trae fechas), esta barra siempre esta presente en cualquier categoria -- formato:
+    # "Catalogo <Tienda> - <Titulo> (DD/MM/YY - DD/MM/YY)". Se usa como fallback.
+    def _extraer_fechas_detalle(self, html: str) -> tuple[str | None, str | None]:
+        soup = BeautifulSoup(html, "html.parser")
+        patron = r"\((\d{2})/(\d{2})/(\d{2})\s*-\s*(\d{2})/(\d{2})/(\d{2})\)"
+        match = re.search(patron, soup.get_text())
+        if not match:
+            return None, None
+        d1, m1, y1, d2, m2, y2 = match.groups()
+        return f"20{y1}-{m1}-{d1}", f"20{y2}-{m2}-{d2}"
+
     # Extrae la URL de la imagen del folleto a partir de la tarjeta
     def _extraer_url_imagen(self, tarjeta, folleto_id: str) -> str:
         for img in tarjeta.select("img"):
@@ -208,11 +221,15 @@ class TiendeoScraper(BaseScraper):
     # ------------------ Páginas internas del folleto — bloques con flyerPage ------------------
 
     # El visor carga las páginas en bloques usando el parámetro flyerPage=N, se navega por bloques
+    # Tras llamar a este metodo, self.fechas_fallback trae las fechas de vigencia leidas de la
+    # barra de detalle (ver _extraer_fechas_detalle), como (fecha_inicio, fecha_fin) -- pueden
+    # ser None si no matchea. Se usan como fallback cuando la tarjeta de listado no trajo fechas.
     async def obtener_paginas_folleto(self, url_folleto: str) -> list[str]:
         # se captura desde la paghina 1
         todas_urls: set[str] = set()
         pagina_inicio = 1
         publication_id: str | None = None
+        self.fechas_fallback: tuple[str | None, str | None] = (None, None)
 
         # Se itera sobre los bloques de páginas (flyerPage=1, 6, 11, ...)
         while pagina_inicio <= MAX_PAGINAS:
@@ -295,6 +312,7 @@ class TiendeoScraper(BaseScraper):
                     if pid_dom:
                         logger.debug(f"[Tiendeo] publication_id detectado por DOM: {pid_dom}")
                         publication_id_conocido = pid_dom
+                    self.fechas_fallback = self._extraer_fechas_detalle(html_temprano)
 
                 # Esperar en pasos cortos, abortando si hay redirect
                 for _ in range(5):  # 5 veces por 500 ms = 2.5 seg

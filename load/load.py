@@ -19,6 +19,7 @@ from .db_builder import get_connection, get_cursor
 logger = logging.getLogger(__name__)
 
 DATA_PROCESSED = Path("data/processed")
+RUTA_REGISTRO_SCRAPER = Path("data/folletos_procesados.json")
 
 CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {
     ("tiendeo", "walmart"): ("soriana", "Soriana"),
@@ -68,7 +69,7 @@ class Loader:
         fuente     = nlp.get("fuente", "")
         slug_raw   = nlp.get("tienda", "")
         folleto_id = nlp.get("folleto_id", "")
-        meta       = metadata or self._leer_metadata(ruta_nlp.parent)
+        meta       = metadata or self._leer_metadata(fuente, folleto_id)
         slug, nombre_tienda = self._corregir_tienda(fuente, slug_raw)
 
         logger.info(f"[Load] -- {fuente}/{slug}/{folleto_id} --")
@@ -431,22 +432,26 @@ class Loader:
         except Exception:
             return False
 
-    def _leer_metadata(self, carpeta: Path) -> dict:
-        for candidato in [
-            carpeta.parent / "folletos_procesados.json",
-            carpeta / "metadata.json",
-        ]:
-            if candidato.exists():
-                try:
-                    with open(candidato, encoding="utf-8") as f:
-                        data = json.load(f)
-                    folleto_id = carpeta.name
-                    if isinstance(data, list):
-                        for item in data:
-                            if item.get("folleto_id") == folleto_id:
-                                return item
-                    elif isinstance(data, dict):
-                        return data
-                except Exception:
-                    pass
-        return {}
+    # Lee la metadata (titulo, vigencia, url) del registro del scraper (data/folletos_procesados.json,
+    # ver scraper/registro.py), keyed por "fuente:folleto_id". "procesado_at" ahi es el momento
+    # del scrape (no confundir con paginas.procesado_at en la BD, que es el momento del OCR).
+    def _leer_metadata(self, fuente: str, folleto_id: str) -> dict:
+        if not RUTA_REGISTRO_SCRAPER.exists():
+            return {}
+        try:
+            with open(RUTA_REGISTRO_SCRAPER, encoding="utf-8") as f:
+                registro = json.load(f)
+        except Exception:
+            return {}
+
+        entrada = registro.get(f"{fuente}:{folleto_id}")
+        if not entrada:
+            return {}
+
+        return {
+            "titulo":       entrada.get("titulo"),
+            "fecha_inicio": entrada.get("fecha_inicio"),
+            "fecha_fin":    entrada.get("fecha_fin"),
+            "scrapeado_at": entrada.get("procesado_at"),
+            "url_origen":   entrada.get("url_folleto"),
+        }

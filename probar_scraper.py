@@ -136,7 +136,7 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str):
         logger.info("[TIENDEO] ✅ No hay folletos nuevos.")
         return
 
-    logger.info(f"[TIENDEO] 🆕 {len(nuevos)} folletos nuevos a descargar")
+    logger.info(f"[TIENDEO] {len(nuevos)} folletos nuevos a descargar")
 
     # ------------- Paso 2 y 3: Descargar páginas -------------
     
@@ -149,6 +149,13 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str):
 
         async with TiendeoScraper(headless=True) as scraper:
             paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
+            fechas_fallback = scraper.fechas_fallback
+
+        # La tarjeta de listado no siempre trae vigencia (alt de imagen incompleto);
+        # la barra de la pagina de detalle si siempre la trae -- se usa como fallback
+        if not folleto["fecha_inicio"] and fechas_fallback[0]:
+            logger.info(f"[TIENDEO] Vigencia recuperada por fallback de detalle: {fechas_fallback}")
+            folleto["fecha_inicio"], folleto["fecha_fin"] = fechas_fallback
 
         logger.info(f"[TIENDEO] {len(paginas)} páginas encontradas")
 
@@ -161,14 +168,19 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str):
             )
             logger.info(f"[TIENDEO] ✅ {len(rutas)}/{len(paginas)} páginas descargadas")
             for r in rutas:
-                print(f"    💾 {r}")
+                logger.debug(f"    💾 {r}")
 
         registro.marcar_procesado("tiendeo", folleto["folleto_id"], {
             "tienda":       folleto["tienda"],
             "titulo":       folleto["titulo"],
             "fecha_inicio": folleto["fecha_inicio"],
             "fecha_fin":    folleto["fecha_fin"],
+            "url_folleto":  folleto["url_folleto"],
         })
+
+    # Re-escribir el JSON de la tienda con las vigencias corregidas por el fallback
+    with open(f"data/{nombre_json}", "w", encoding="utf-8") as f:
+        json.dump(folletos, f, ensure_ascii=False, indent=2)
 
     logger.info(f"\n[TIENDEO] ✅ Completado -- "
                 f"Acumulados: {registro.total_procesados('tiendeo')} folletos")
@@ -225,6 +237,13 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
             try:
                 async with TiendeoScraper(headless=True) as scraper:
                     paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
+                    fechas_fallback = scraper.fechas_fallback
+
+                # La tarjeta de listado no siempre trae vigencia (alt de imagen incompleto);
+                # la barra de la pagina de detalle si siempre la trae -- se usa como fallback
+                if not folleto["fecha_inicio"] and fechas_fallback[0]:
+                    logger.info(f"[TIENDEO] Vigencia recuperada por fallback de detalle: {fechas_fallback}")
+                    folleto["fecha_inicio"], folleto["fecha_fin"] = fechas_fallback
 
                 logger.info(f"[TIENDEO] {len(paginas)} páginas encontradas")
 
@@ -237,13 +256,14 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
                     )
                     logger.info(f"[TIENDEO] ✅ {len(rutas)}/{len(paginas)} páginas descargadas")
                     for r in rutas:
-                        print(f"    💾 {r}")
+                        logger.debug(f"    💾 {r}")
 
                 registro.marcar_procesado("tiendeo", folleto["folleto_id"], {
                     "tienda":       folleto["tienda"],
                     "titulo":       folleto["titulo"],
                     "fecha_inicio": folleto["fecha_inicio"],
                     "fecha_fin":    folleto["fecha_fin"],
+                    "url_folleto":  folleto["url_folleto"],
                 })
 
             except Exception as e:
@@ -282,7 +302,7 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str):
         logger.info("[OFERTOMAT] ✅ No hay folletos nuevos.")
         return
 
-    logger.info(f"[OFERTOMAT] 🆕 {len(nuevos)} folletos nuevos")
+    logger.info(f"[OFERTOMAT] {len(nuevos)} folletos nuevos")
 
     downloader = Downloader(max_concurrentes=2)
 
@@ -291,6 +311,14 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str):
 
         async with OfertomatScraper(headless=True) as scraper:
             paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
+
+            # Ofertomat nunca trae fecha_fin desde el listado -- fallback a la
+            # pagina de detalle (ver OfertomatScraper.obtener_fechas_detalle)
+            if not folleto["fecha_fin"]:
+                _, fecha_fin_detalle = await scraper.obtener_fechas_detalle(folleto["url_folleto"])
+                if fecha_fin_detalle:
+                    logger.info(f"[OFERTOMAT] Vigencia recuperada por fallback de detalle: fecha_fin={fecha_fin_detalle}")
+                    folleto["fecha_fin"] = fecha_fin_detalle
 
         logger.info(f"[OFERTOMAT] {len(paginas)} páginas encontradas")
 
@@ -303,14 +331,19 @@ async def scrapear_ofertomat(registro: Registro, slug_tienda: str):
             )
             logger.info(f"[OFERTOMAT] ✅ {len(rutas)} páginas descargadas")
             for r in rutas:
-                print(f"    💾 {r}")
+                logger.debug(f"    💾 {r}")
 
         registro.marcar_procesado("ofertomat", folleto["folleto_id"], {
             "tienda":       folleto["tienda"],
             "titulo":       folleto["titulo"],
             "fecha_inicio": folleto["fecha_inicio"],
             "fecha_fin":    folleto["fecha_fin"],
+            "url_folleto":  folleto["url_folleto"],
         })
+
+    # Re-escribir el JSON de la tienda con las vigencias corregidas por el fallback
+    with open(f"data/{nombre_json}", "w", encoding="utf-8") as f:
+        json.dump(folletos, f, ensure_ascii=False, indent=2)
 
     logger.info(f"\n[OFERTOMAT] ✅ Completado -- "
                 f"Acumulados: {registro.total_procesados('ofertomat')} folletos")
@@ -369,6 +402,14 @@ async def scrapear_ofertomat_todas_tiendas(registro: Registro):
                 async with OfertomatScraper(headless=True) as scraper:
                     paginas = await scraper.obtener_paginas_folleto(folleto["url_folleto"])
 
+                    # Ofertomat nunca trae fecha_fin desde el listado -- fallback a la
+                    # pagina de detalle (ver OfertomatScraper.obtener_fechas_detalle)
+                    if not folleto["fecha_fin"]:
+                        _, fecha_fin_detalle = await scraper.obtener_fechas_detalle(folleto["url_folleto"])
+                        if fecha_fin_detalle:
+                            logger.info(f"[OFERTOMAT] Vigencia recuperada por fallback de detalle: fecha_fin={fecha_fin_detalle}")
+                            folleto["fecha_fin"] = fecha_fin_detalle
+
                 logger.info(f"[OFERTOMAT] {len(paginas)} páginas encontradas")
 
                 if paginas:
@@ -380,13 +421,14 @@ async def scrapear_ofertomat_todas_tiendas(registro: Registro):
                     )
                     logger.info(f"[OFERTOMAT] ✅ {len(rutas)}/{len(paginas)} páginas descargadas")
                     for r in rutas:
-                        print(f"    💾 {r}")
+                        logger.debug(f"    💾 {r}")
 
                 registro.marcar_procesado("ofertomat", folleto["folleto_id"], {
                     "tienda":       folleto["tienda"],
                     "titulo":       folleto["titulo"],
                     "fecha_inicio": folleto["fecha_inicio"],
                     "fecha_fin":    folleto["fecha_fin"],
+                    "url_folleto":  folleto["url_folleto"],
                 })
 
             except Exception as e:
