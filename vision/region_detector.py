@@ -25,6 +25,15 @@ AREA_MIN_FRACCION = 0.001   # descarta ruido muy pequeno (iconos, letras sueltas
 AREA_MAX_FRACCION = 0.5     # descarta contenedores casi del tamano de la pagina completa
 RECTANGULARIDAD_MIN = 0.6   # area_contorno / area_bbox -- que tan "rectangular" es la forma
 
+# Proporcion maxima (lado largo / lado corto) para aceptar una candidata. Una
+# caja de producto individual (incluyendo banners de precio anchos, ej. "Precio
+# bajo todos los dias") normalmente cae debajo de esto; una fila de 2+ cajas
+# fusionadas por el fondo continuo entre ellas (revision manual de desacuerdos
+# ROI vs distancia, jul 2026 -- ver sources/vision/05) es notablemente mas
+# ancha/alta que una celda real, y produce asociaciones producto-precio
+# incorrectas si se deja pasar.
+PROPORCION_MAX = 3.0
+
 # Cualquiera de estos patrones dentro de la region cuenta como "hay precio aqui"
 _PATRONES_PRECIO = (
     RegexExtractor.PATRON_PRECIO,
@@ -36,6 +45,13 @@ _PATRONES_PRECIO = (
 # Fraccion minima del area del bbox de OCR que debe caer dentro de la region
 # para considerar que ese bloque de texto "pertenece" a la region
 SOLAPE_MIN_FRACCION = 0.5
+
+# Si los productos candidatos dentro de una region confiable estan dispersos
+# horizontalmente mas alla de esta fraccion del ancho de la region, la region
+# probablemente fusiona 2+ celdas de producto (ver PROPORCION_MAX arriba) y no
+# hay forma confiable de saber a cual de los candidatos pertenece el precio --
+# mejor no asociar por ROI que asociar con el vecino equivocado.
+DISPERSION_MAX_FRACCION = 0.5
 
 
 def detectar_regiones(imagen: np.ndarray) -> list[dict]:
@@ -86,6 +102,12 @@ def detectar_regiones(imagen: np.ndarray) -> list[dict]:
         perimetro = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * perimetro, True)
         if not (4 <= len(approx) <= 8):
+            continue
+
+        # descarta cajas desproporcionadamente anchas o altas -- tipicamente
+        # dos o mas celdas de producto fusionadas por falta de borde entre ellas
+        proporcion = max(w, h) / min(w, h) if min(w, h) > 0 else float("inf")
+        if proporcion > PROPORCION_MAX:
             continue
 
         candidatas.append({"x": x, "y": y, "ancho": w, "alto": h})
@@ -168,6 +190,62 @@ def _quitar_anidadas(regiones: list[dict]) -> list[dict]:
         if not any(solapan(r, otra) for otra in resultado):
             resultado.append(r)
     return resultado
+
+
+def _centro_dentro_de_region(bbox: dict, region: dict) -> bool:
+    """True si el centro del bbox cae dentro de la region (contencion simple,
+    no solape parcial -- para decidir a que "contenedor visual" pertenece
+    un bloque, no si un texto se lee dentro de un recuadro)."""
+    if not bbox:
+        return False
+    cx = bbox.get("x", 0) + bbox.get("ancho", 0) / 2
+    cy = bbox.get("y", 0) + bbox.get("alto", 0) / 2
+    return (
+        region["x"] <= cx <= region["x"] + region["ancho"]
+        and region["y"] <= cy <= region["y"] + region["alto"]
+    )
+
+
+def asociar_producto_por_region(precio: dict, productos: list[dict], regiones: list[dict]) -> dict | None:
+    """
+    Asocia un precio a un producto usando el contenedor visual (ROI) en vez de
+    distancia bbox: busca la region que contiene al precio, y dentro de esa
+    MISMA region busca un producto. Si el precio no cae en ninguna region, o
+    la region no contiene ningun producto, retorna None -- el llamador debe
+    hacer fallback al metodo de distancia (load.py._asociar_producto).
+
+    Si hay mas de un producto candidato en la region, se toma el mas cercano
+    verticalmente arriba del precio (mismo criterio que el metodo de
+    distancia, para no introducir un desempate distinto).
+    """
+    precio_bbox = precio.get("bbox", {})
+    region_del_precio = next(
+        (r for r in regiones if _centro_dentro_de_region(precio_bbox, r)), None
+    )
+    if region_del_precio is None:
+        return None
+
+    candidatos = [p for p in productos if _centro_dentro_de_region(p.get("bbox", {}), region_del_precio)]
+    if not candidatos:
+        return None
+    if len(candidatos) == 1:
+        return candidatos[0]
+
+    centros_x = [p.get("bbox", {}).get("x", 0) + p.get("bbox", {}).get("ancho", 0) / 2 for p in candidatos]
+    dispersion = (max(centros_x) - min(centros_x)) / region_del_precio["ancho"] if region_del_precio["ancho"] else 0
+    if dispersion > DISPERSION_MAX_FRACCION:
+        logger.debug("[RegionDetector] Candidatos dispersos en la region (posible fusion) -- se descarta ROI para este precio")
+        return None
+
+    precio_y = precio_bbox.get("y", 0)
+    mejor, menor_dist = None, float("inf")
+    for prod in candidatos:
+        prod_y = prod.get("bbox", {}).get("y", 0)
+        diff_y = precio_y - prod_y
+        if 0 < diff_y < menor_dist:
+            menor_dist = diff_y
+            mejor = prod
+    return mejor or candidatos[0]
 
 
 def dibujar_regiones(imagen: np.ndarray, regiones: list[dict]) -> np.ndarray:

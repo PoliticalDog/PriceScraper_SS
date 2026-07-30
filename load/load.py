@@ -14,16 +14,37 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
 
+from vision.preprocessor import obtener_preprocesador
+from vision.region_detector import detectar_regiones, calificar_regiones, asociar_producto_por_region
+
 from .db_builder import get_connection, get_cursor
 
 logger = logging.getLogger(__name__)
 
 DATA_PROCESSED = Path("data/processed")
+DATA_RAW = Path("data/raw")
 RUTA_REGISTRO_SCRAPER = Path("data/folletos_procesados.json")
 
 CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {
     ("tiendeo", "walmart"): ("soriana", "Soriana"),
 }
+
+# Tiendas donde el benchmark hibrido (sources/vision/06_hibrido_roi_asociacion_producto_precio.md)
+# confirmo mejora real sin regresion: usa el slug CRUDO de scraping (tal como
+# aparece en data/raw/<fuente>/<slug>/), no el slug corregido de CORRECCION_TIENDAS.
+# NO agregar tiendas aqui sin correr antes probar_hibrido_roi.py -- fuera de
+# estas 4, ROI no detecta suficientes regiones confiables para ser util
+# (ver sources/vision/05_benchmark_roi_deteccion_regiones.md).
+TIENDAS_ROI_HIBRIDO = {"walmart", "chedraui", "soriana_hiper", "soriana_mercado"}
+
+_preprocesador_roi = None
+
+
+def _obtener_preprocesador_roi():
+    global _preprocesador_roi
+    if _preprocesador_roi is None:
+        _preprocesador_roi = obtener_preprocesador("color_normal")
+    return _preprocesador_roi
 
 
 class Loader:
@@ -87,7 +108,8 @@ class Loader:
 
                 for pag_data in nlp.get("paginas", []):
                     try:
-                        r = self._procesar_pagina(cur, tienda_id, folleto_id_bd, pag_data)
+                        regiones_confiables = self._detectar_regiones_pagina(fuente, slug_raw, folleto_id, pag_data)
+                        r = self._procesar_pagina(cur, tienda_id, folleto_id_bd, pag_data, regiones_confiables)
                         resumen["extracciones_insertadas"] += r["extracciones"]
                         resumen["precios_sin_producto"]    += r["sin_producto"]
                         resumen["eventos_insertados"]      += r["eventos"]
@@ -150,7 +172,35 @@ class Loader:
 
     # -- Procesamiento de pagina ----------------------------------------------
 
-    def _procesar_pagina(self, cur, tienda_id: int, folleto_id: int, pag_data: dict) -> dict:
+    def _detectar_regiones_pagina(self, fuente: str, slug_raw: str, folleto_id: str, pag_data: dict) -> list[dict] | None:
+        """
+        Corre deteccion ROI solo para las tiendas grid-friendly validadas
+        (TIENDAS_ROI_HIBRIDO). Devuelve None si la tienda no aplica, si no
+        existe la imagen original, o si algo falla -- en todos esos casos el
+        llamador debe hacer fallback puro al metodo de distancia (mismo
+        comportamiento que antes de esta integracion).
+        """
+        if slug_raw not in TIENDAS_ROI_HIBRIDO:
+            return None
+
+        nombre_pag = pag_data.get("pagina", "")
+        ruta_imagen = DATA_RAW / fuente / slug_raw / folleto_id / nombre_pag
+        if not ruta_imagen.exists():
+            return None
+
+        try:
+            imagen_proc = _obtener_preprocesador_roi().procesar(ruta_imagen)
+            candidatas = detectar_regiones(imagen_proc)
+            precios = pag_data.get("precios", [])
+            bloques_precio = [{"texto": p.get("texto", ""), "bbox": p.get("bbox", {})} for p in precios]
+            regiones = calificar_regiones(candidatas, bloques_precio)
+            return [r for r in regiones if r["tiene_precio"]]
+        except Exception as e:
+            logger.warning(f"[Load] ROI fallo en {slug_raw}/{folleto_id}/{nombre_pag}: {e} -- fallback a distancia")
+            return None
+
+    def _procesar_pagina(self, cur, tienda_id: int, folleto_id: int, pag_data: dict,
+                         regiones_confiables: list[dict] | None = None) -> dict:
         nombre_pag = pag_data.get("pagina", "")
         num_pagina = self._extraer_numero_pagina(nombre_pag)
         pagina_id  = self._upsert_pagina(cur, folleto_id, num_pagina, nombre_pag)
@@ -166,7 +216,11 @@ class Loader:
 
         # Precios
         for precio in precios:
-            producto_match = self._asociar_producto(precio, productos)
+            producto_match = None
+            if regiones_confiables:
+                producto_match = asociar_producto_por_region(precio, productos, regiones_confiables)
+            if producto_match is None:
+                producto_match = self._asociar_producto(precio, productos)
             precio_ant_val = self._buscar_precio_anterior(precio, precios_ant)
             texto_norm     = self._texto_normalizado(producto_match)
             texto_raw_prod = producto_match.get("texto", "") if producto_match else ""

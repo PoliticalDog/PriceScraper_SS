@@ -62,7 +62,7 @@ CASOS = [
 ]
 
 DATA_RAW = Path("data/raw/tiendeo")
-SALIDA = Path("data/processed/_benchmark_regiones")
+SALIDA = Path("data/processed/_v5_regiones_dataparcial")
 
 EXTENSIONES_VALIDAS = (".webp", ".jpg", ".jpeg", ".png")
 
