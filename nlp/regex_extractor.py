@@ -466,6 +466,7 @@ class RegexExtractor:
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
         bloques_pagina = datos_pagina["bloques"]  # contexto espacial para precios sin simbolo
+        hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina)
 
         for bloque in bloques_pagina:
             texto_raw = bloque["texto"]
@@ -479,7 +480,7 @@ class RegexExtractor:
             if not texto_limpio:
                 continue
 
-            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina)
+            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina, hay_precio_en_pagina)
 
             tipo = entidad.tipo
             if tipo == "PRECIO":
@@ -511,7 +512,8 @@ class RegexExtractor:
 
     # --------------- Clasificador ---------------
 
-    def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None) -> EntidadExtraida:
+    def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None,
+                    hay_precio_en_pagina: bool = True) -> EntidadExtraida:
 
         # 1. Descarte rápido
         if self._es_descarte(texto):
@@ -535,7 +537,12 @@ class RegexExtractor:
 
         # 3. Ahorro ("Ahorras $X") — verificar ANTES que no sea paquete Nx$Y
         # Si el texto contiene patrón de paquete (1x$33 3x$67), va como PROMO
-        if self._es_promo(texto):
+        # Exige que la PAGINA tenga al menos un precio real -- una promo (%, 2x1,
+        # etc.) sin ningun precio en toda la pagina es casi siempre un banner
+        # publicitario aislado (ej. "hasta 40%" en una portada sin productos con
+        # precio), no una promocion real de producto. Las promos bancarias/MSI ya
+        # se descartan antes, en PATRONES_DESCARTE -- esto no las afecta.
+        if self._es_promo(texto) and hay_precio_en_pagina:
             return EntidadExtraida("PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
@@ -742,6 +749,27 @@ class RegexExtractor:
     def _es_promo(self, texto: str) -> bool:
         for patron in self.PATRONES_PROMO:
             if patron.search(texto):
+                return True
+        return False
+
+    def _pagina_tiene_precio(self, bloques_pagina: list[dict]) -> bool:
+        """
+        Escaneo liviano previo a la clasificacion: True si algun bloque de la
+        pagina contiene un precio real (con o sin simbolo). Se usa para exigir
+        contexto de precio antes de aceptar una PROMO (ver _clasificar, paso 3)
+        -- evita insertar promos huerfanas de paginas puramente publicitarias
+        sin ningun producto con precio (ej. banners de portada).
+        """
+        for bloque in bloques_pagina:
+            confianza = bloque.get("confianza", 0)
+            if confianza < self.confianza_minima:
+                continue
+            texto = self._limpiar_texto(bloque.get("texto", ""))
+            if not texto:
+                continue
+            if self._extraer_precio(texto) is not None:
+                return True
+            if self._extraer_precio_sin_simbolo(texto, bloque.get("bbox", {}), bloques_pagina) is not None:
                 return True
         return False
 
