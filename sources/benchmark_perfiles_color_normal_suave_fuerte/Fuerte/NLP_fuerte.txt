@@ -1,0 +1,137 @@
+═══════════════════════════════════════════════════════
+   PriceScraper MX — Módulo NLP (Regex)
+═══════════════════════════════════════════════════════
+   1 → Procesar carpeta específica  (modo prueba)
+   2 → Procesar todo data/processed/ (modo batch)
+   0 → Salir
+───────────────────────────────────────────────────────
+   Selecciona una opción: 1
+
+────────────────────────────────────────────────────────────
+   Folletos con OCR disponible:
+     #  RUTA                                           ESTADO NLP
+────────────────────────────────────────────────────────────
+     1. tiendeo\bodega_aurrera\412322                  pendiente
+────────────────────────────────────────────────────────────
+
+   Número de carpeta: 1
+23:20:44 [INFO] nlp: 
+[NLP] Procesando: tiendeo\bodega_aurrera\412322
+23:20:44 [INFO] nlp.regex_extractor: Página: pagina_001.webp | Productos: 12 | Precios: 3 | Promos: 0 | Descartes: 31
+23:20:44 [INFO] nlp.regex_extractor: Página: pagina_002.webp | Productos: 13 | Precios: 3 | Promos: 0 | Descartes: 38
+23:20:44 [INFO] nlp.regex_extractor: Página: pagina_003.webp | Productos: 0 | Precios: 4 | Promos: 0 | Descartes: 24
+23:20:44 [INFO] nlp.regex_extractor: Página: pagina_004.webp | Productos: 9 | Precios: 3 | Promos: 0 | Descartes: 29
+
+═════════════════════════════════════════════════════════════════
+  pagina_001.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (12):
+      Glmply Baslco                                           [37%]
+      Slmply Baslco                                           [78%]
+      Blusa manga corta                                       [95%]
+      Slmply Baslco                                           [58%]
+      Blusa cuello V                                          [87%]
+      Slmply Baslco                                           [76%]
+      Set de plJama                                           [65%]
+      slmply Baslco                                           [97%]
+      Blusa mc olänes                                         [99%]
+      Slmply Baslcô                                           [47%]
+      Slmply Baslco                                           [81%]
+      CAPUEBLY                                                [60%]
+
+  * PRECIOS (3):
+      $    249.00  ←  '$249'
+      $    249.00  ←  '$249'
+      $     29.00  ←  '$29u'
+
+  *  Descartes: 31 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_002.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (13):
+      LBGBROM                                                 [34%]
+      Daewooo Boclna Bluetooth                                [77%]
+      Sonldo Potente y deflnldo                               [81%]
+      Luces RGB multlcolores                                  [63%]
+      Bateria recargable                                      [100%]
+      AKUHD                                                   [16%]
+      Pagando con                                             [100%]
+      Inbura Bodego Aunera_                                   [19%]
+      Tarjetas de Crédito                                     [76%]
+      Sanisndor; Bonfercho HSBC                               [30%]
+      Slmply Baslco                                           [63%]
+      Slmply Baslco                                           [94%]
+      Pants plerna ancha                                      [99%]
+
+  * PRECIOS (3):
+      $  6,490.00  ←  '$6,490'
+      $  8,490.00  ←  'Antes: $8,490'
+      $    359.00  ←  '$359'
+
+  *  Descartes: 38 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_003.webp
+═════════════════════════════════════════════════════════════════
+
+  * PRECIOS (4):
+      $  1,390.00  ←  'Antes: $1,390'
+      $  4,490.00  ←  '$4,490'
+      $  5,490.00  ←  'Antes:: $5,490'
+      $  8,990.00  ←  'Antes: $8,990'
+
+  *  Descartes: 24 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_004.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (9):
+      Meses Sin                                               [99%]
+      Tarjeagsnqo credito                                     [26%]
+      BBVA                                                    [100%]
+      Atvlo homeo Homno de                                    [96%]
+      Atvlo homco Homno d0 mlcroondas                         [53%]
+      6 menus de cocclón automátlca                           [58%]
+      Funciön de Descongelado                                 [95%]
+      10 nlveles de potencla                                  [85%]
+      Botòn de un toque de 30                                 [81%]
+
+  * PRECIOS (3):
+      $    699.00  ←  'Antes:$699'
+      $  1,690.00  ←  'Antes:$1,690'
+      $  1,990.00  ←  'Antes:$1,990'
+
+  *  Descartes: 29 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+23:20:44 [INFO] nlp: [NLP] ✅ tiendeo\bodega_aurrera\412322 → prod:34 prec:13 promo:0 desc:122 | tasa útil: 28%
+23:20:44 [INFO] nlp: [NLP] 💾 Guardado: data\processed\tiendeo\bodega_aurrera\412322\nlp_resultado.json
+
+───────────────────────────────────────────────────────
+  Folleto:     bodega_aurrera / 412322
+  Páginas:     4
+───────────────────────────────────────────────────────
+  * Productos:   34
+  * Precios:     13
+  * Descartes:   122
+  * Tasa útil:   28%
+  * Promociones: 0
+───────────────────────────────────────────────────────
+
+  ⚠️  Tasa útil baja (28%)
+     Revisar: calidad del OCR, keywords de producto,
+     o umbrales de confianza en regex_extractor.py
+
+  ¿Hacer otra operación? (s/n): n
+
+  👋 Saliendo...

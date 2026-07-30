@@ -1,0 +1,187 @@
+═══════════════════════════════════════════════════════
+   PriceScraper MX — Módulo NLP (Regex)
+═══════════════════════════════════════════════════════
+   1 → Procesar carpeta específica  (modo prueba)
+   2 → Procesar todo data/processed/ (modo batch)
+   0 → Salir
+───────────────────────────────────────────────────────
+   Selecciona una opción: 1
+
+────────────────────────────────────────────────────────────
+   Folletos con OCR disponible:
+     #  RUTA                                           ESTADO NLP
+────────────────────────────────────────────────────────────
+     1. tiendeo\bodega_aurrera\412322                  pendiente
+────────────────────────────────────────────────────────────
+
+   Número de carpeta: 1
+23:17:54 [INFO] nlp: 
+[NLP] Procesando: tiendeo\bodega_aurrera\412322
+23:17:54 [INFO] nlp.regex_extractor: Página: pagina_001.webp | Productos: 20 | Precios: 4 | Promos: 0 | Descartes: 48
+23:17:54 [INFO] nlp.regex_extractor: Página: pagina_002.webp | Productos: 23 | Precios: 3 | Promos: 0 | Descartes: 47
+23:17:54 [INFO] nlp.regex_extractor: Página: pagina_003.webp | Productos: 17 | Precios: 5 | Promos: 0 | Descartes: 19
+23:17:54 [INFO] nlp.regex_extractor: Página: pagina_004.webp | Productos: 21 | Precios: 6 | Promos: 0 | Descartes: 23
+
+═════════════════════════════════════════════════════════════════
+  pagina_001.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (20):
+      Slmply Baslco                                           [88%]
+      Slmply Baslco                                           [67%]
+      Vestido campesino                                       [100%]
+      Vestido camisero                                        [87%]
+      Slmply Basic 0                                          [58%]
+      Blusa manga corta                                       [100%]
+      Simply Basic 0                                          [57%]
+      Blusa cuello V                                          [66%]
+      Simply Basic o                                          [49%]
+      Set de pijama                                           [82%]
+      Slmply Baslc o                                          [62%]
+      Blusa mc olanes                                         [100%]
+      Simply Basic %                                          [92%]
+      Slmply Baslc %                                          [72%]
+      quintana Roo                                            [34%]
+      YUCATAN                                                 [15%]
+      ZACAIECAS                                               [59%]
+      publicodos con onterioridod                             [54%]
+      Esumado clentc                                          [27%]
+      Todoslosauculos que                                     [21%]
+
+  * PRECIOS (4):
+      $    299.00  ←  '$299'
+      $    249.00  ←  '$249c/'
+      $    239.00  ←  '$239'
+      $    229.00  ←  '$229'
+
+  *  Descartes: 48 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_002.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (23):
+      iConsiente a mamá, con                                  [75%]
+      SAMSUNG                                                 [88%]
+      8 GB RAM                                                [46%]
+      6 GBRAM                                                 [92%]
+      256 GB ROM                                              [66%]
+      128 GB ROM                                              [90%]
+      Daewooo Boclna Bluetooth                                [76%]
+      Sonido Potente y definido                               [80%]
+      Luces RGB multicolores                                  [100%]
+      Bateria recargable                                      [100%]
+      AK UHD                                                  [68%]
+      Pagando con                                             [75%]
+      Inbursa Bodco                                           [53%]
+      Meses Sin                                               [76%]
+      Tarjetas de Crédito                                     [79%]
+      Banore Smntarder                                        [26%]
+      Banicrchto HSBC, Inbursa, Scotlabank.Invex Banco, Banba [27%]
+      Animc Bonroaio Hcy Banco                                [15%]
+      rcco, Klor RappiCard Platacoro; NUy Konlio              [17%]
+      Slmply Baslc %                                          [55%]
+      Simply Basic €                                          [43%]
+      Sudadera con cierre                                     [96%]
+      Pants pierna ancha                                      [97%]
+
+  * PRECIOS (3):
+      $    999.00  ←  '$999'
+      $  8,490.00  ←  'Antes: $8,490'
+      $    359.00  ←  '$359/u'
+
+  *  Descartes: 47 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_003.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (17):
+      iEncuentra Io que necesita y                            [86%]
+      hasta Io que le gustaría!                               [59%]
+      Tauruso Ivory                                           [100%]
+      Batidora de inmersión                                   [76%]
+      Tauruso Aqua                                            [99%]
+      TFalo Combo 3 elementos                                 [61%]
+      Parrila electrica                                       [68%]
+      Batidora de mano                                        [100%]
+      Mabe € Estufa                                           [41%]
+      4 quemadores sellados                                   [93%]
+      Convertible a gas natural                               [90%]
+      Capelo de Cristal Templado                              [97%]
+      Encendido manual                                        [96%]
+      Encendido electrónico                                   [97%]
+      Tecnologia Perfect Cook                                 [98%]
+      Jaladera en Horno EasyHandle                            [100%]
+      Termocontrol en Horno                                   [98%]
+
+  * PRECIOS (5):
+      $    299.00  ←  '$299'
+      $    199.00  ←  '$199cu'
+      $  1,390.00  ←  'Antes: $1,390'
+      $  5,490.00  ←  'Antes: $5,490'
+      $  8,990.00  ←  'Antes: $8,990'
+
+  *  Descartes: 19 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+
+═════════════════════════════════════════════════════════════════
+  pagina_004.webp
+═════════════════════════════════════════════════════════════════
+
+  *  PRODUCTOS (21):
+      iRenueva el espacio de mamá,                            [95%]
+      sin gastar de más!                                      [86%]
+      Atvlo homea                                             [28%]
+      Ucuadora personal                                       [84%]
+      Potencla pico de 800 Watts                              [55%]
+      Perilla selectora de                                    [94%]
+      Atvlohome o Llcuadora                                   [94%]
+      2 velocidades y una función                             [86%]
+      Meses Sin                                               [76%]
+      Pagando con                                             [100%]
+      BBVA                                                    [84%]
+      Tarjetas de Crédito                                     [89%]
+      En toda la tienda                                       [93%]
+      Atvlo home & Horno de                                   [43%]
+      Atvlo home % Horno de mlcroondas                        [90%]
+      6 menus de cocción automática                           [78%]
+      Funcion de Descongelado                                 [98%]
+      10 niveles de potencia                                  [93%]
+      Boton de un toque de 30                                 [97%]
+      ATVIO                                                   [84%]
+      ATVIO                                                   [98%]
+
+  * PRECIOS (6):
+      $    299.00  ←  '$299'
+      $    599.00  ←  '$599'
+      $    699.00  ←  'Antes:$699'
+      $    369.00  ←  '$369'
+      $  1,690.00  ←  'Antes:$1,690'
+      $  1,990.00  ←  'Antes:$1,990'
+
+  *  Descartes: 23 bloques filtrados
+─────────────────────────────────────────────────────────────────
+
+23:17:54 [INFO] nlp: [NLP] ✅ tiendeo\bodega_aurrera\412322 → prod:81 prec:18 promo:0 desc:137 | tasa útil: 42%
+23:17:54 [INFO] nlp: [NLP] 💾 Guardado: data\processed\tiendeo\bodega_aurrera\412322\nlp_resultado.json
+
+───────────────────────────────────────────────────────
+  Folleto:     bodega_aurrera / 412322
+  Páginas:     4
+───────────────────────────────────────────────────────
+  * Productos:   81
+  * Precios:     18
+  * Descartes:   137
+  * Tasa útil:   42%
+  * Promociones: 0
+───────────────────────────────────────────────────────
+
+  ¿Hacer otra operación? (s/n): n
+
+  👋 Saliendo...

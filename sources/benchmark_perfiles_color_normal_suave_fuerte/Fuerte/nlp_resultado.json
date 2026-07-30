@@ -1,0 +1,529 @@
+{
+  "fuente": "tiendeo",
+  "tienda": "bodega_aurrera",
+  "folleto_id": "412322",
+  "total_paginas": 4,
+  "resumen": {
+    "total_productos": 34,
+    "total_precios": 13,
+    "total_promos": 0,
+    "total_descartes": 122,
+    "tasa_util": 0.278
+  },
+  "paginas": [
+    {
+      "pagina": "pagina_001.webp",
+      "productos": [
+        {
+          "texto": "Glmply Baslco",
+          "confianza": 0.37,
+          "bbox": {
+            "x": 1056,
+            "y": 598,
+            "ancho": 150,
+            "alto": 32
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.783,
+          "bbox": {
+            "x": 374,
+            "y": 1164,
+            "ancho": 142,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Blusa manga corta",
+          "confianza": 0.948,
+          "bbox": {
+            "x": 374,
+            "y": 1188,
+            "ancho": 180,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.582,
+          "bbox": {
+            "x": 1035,
+            "y": 1195,
+            "ancho": 145,
+            "alto": 30
+          }
+        },
+        {
+          "texto": "Blusa cuello V",
+          "confianza": 0.871,
+          "bbox": {
+            "x": 1038,
+            "y": 1220,
+            "ancho": 134,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.758,
+          "bbox": {
+            "x": 1047,
+            "y": 1533,
+            "ancho": 143,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Set de plJama",
+          "confianza": 0.653,
+          "bbox": {
+            "x": 1048,
+            "y": 1558,
+            "ancho": 134,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "slmply Baslco",
+          "confianza": 0.97,
+          "bbox": {
+            "x": 381,
+            "y": 1639,
+            "ancho": 145,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Blusa mc olänes",
+          "confianza": 0.994,
+          "bbox": {
+            "x": 384,
+            "y": 1664,
+            "ancho": 154,
+            "alto": 24
+          }
+        },
+        {
+          "texto": "Slmply Baslcô",
+          "confianza": 0.466,
+          "bbox": {
+            "x": 1053,
+            "y": 1937,
+            "ancho": 145,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.811,
+          "bbox": {
+            "x": 380,
+            "y": 1980,
+            "ancho": 144,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "CAPUEBLY",
+          "confianza": 0.605,
+          "bbox": {
+            "x": 475,
+            "y": 2245,
+            "ancho": 96,
+            "alto": 20
+          }
+        }
+      ],
+      "precios": [
+        {
+          "texto": "$249",
+          "valor": 249.0,
+          "confianza": 0.574,
+          "bbox": {
+            "x": 86,
+            "y": 1174,
+            "ancho": 286,
+            "alto": 99
+          }
+        },
+        {
+          "texto": "$249",
+          "valor": 249.0,
+          "confianza": 0.577,
+          "bbox": {
+            "x": 755,
+            "y": 1184,
+            "ancho": 287,
+            "alto": 99
+          }
+        },
+        {
+          "texto": "$29u",
+          "valor": 29.0,
+          "confianza": 0.656,
+          "bbox": {
+            "x": 1039,
+            "y": 1452,
+            "ancho": 285,
+            "alto": 93
+          }
+        }
+      ],
+      "promos": []
+    },
+    {
+      "pagina": "pagina_002.webp",
+      "productos": [
+        {
+          "texto": "LBGBROM",
+          "confianza": 0.339,
+          "bbox": {
+            "x": 1091,
+            "y": 587,
+            "ancho": 152,
+            "alto": 32
+          }
+        },
+        {
+          "texto": "Daewooo Boclna Bluetooth",
+          "confianza": 0.767,
+          "bbox": {
+            "x": 1024,
+            "y": 974,
+            "ancho": 267,
+            "alto": 24
+          }
+        },
+        {
+          "texto": "Sonldo Potente y deflnldo",
+          "confianza": 0.809,
+          "bbox": {
+            "x": 1038,
+            "y": 1020,
+            "ancho": 250,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Luces RGB multlcolores",
+          "confianza": 0.634,
+          "bbox": {
+            "x": 1040,
+            "y": 1046,
+            "ancho": 226,
+            "alto": 24
+          }
+        },
+        {
+          "texto": "Bateria recargable",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 1038,
+            "y": 1068,
+            "ancho": 180,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "AKUHD",
+          "confianza": 0.16,
+          "bbox": {
+            "x": 311,
+            "y": 1120,
+            "ancho": 312,
+            "alto": 84
+          }
+        },
+        {
+          "texto": "Pagando con",
+          "confianza": 0.999,
+          "bbox": {
+            "x": 547,
+            "y": 1585,
+            "ancho": 147,
+            "alto": 30
+          }
+        },
+        {
+          "texto": "Inbura Bodego Aunera_",
+          "confianza": 0.191,
+          "bbox": {
+            "x": 741,
+            "y": 1599,
+            "ancho": 164,
+            "alto": 16
+          }
+        },
+        {
+          "texto": "Tarjetas de Crédito",
+          "confianza": 0.759,
+          "bbox": {
+            "x": 516,
+            "y": 1612,
+            "ancho": 210,
+            "alto": 28
+          }
+        },
+        {
+          "texto": "Sanisndor; Bonfercho HSBC",
+          "confianza": 0.295,
+          "bbox": {
+            "x": 797,
+            "y": 1606,
+            "ancho": 189,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.629,
+          "bbox": {
+            "x": 1070,
+            "y": 2278,
+            "ancho": 146,
+            "alto": 30
+          }
+        },
+        {
+          "texto": "Slmply Baslco",
+          "confianza": 0.937,
+          "bbox": {
+            "x": 389,
+            "y": 2280,
+            "ancho": 143,
+            "alto": 31
+          }
+        },
+        {
+          "texto": "Pants plerna ancha",
+          "confianza": 0.992,
+          "bbox": {
+            "x": 1074,
+            "y": 2304,
+            "ancho": 182,
+            "alto": 26
+          }
+        }
+      ],
+      "precios": [
+        {
+          "texto": "$6,490",
+          "valor": 6490.0,
+          "confianza": 0.559,
+          "bbox": {
+            "x": 330,
+            "y": 841,
+            "ancho": 311,
+            "alto": 112
+          }
+        },
+        {
+          "texto": "Antes: $8,490",
+          "valor": 8490.0,
+          "confianza": 0.681,
+          "bbox": {
+            "x": 386,
+            "y": 954,
+            "ancho": 186,
+            "alto": 32
+          }
+        },
+        {
+          "texto": "$359",
+          "valor": 359.0,
+          "confianza": 0.777,
+          "bbox": {
+            "x": 110,
+            "y": 2270,
+            "ancho": 225,
+            "alto": 99
+          }
+        }
+      ],
+      "promos": []
+    },
+    {
+      "pagina": "pagina_003.webp",
+      "productos": [],
+      "precios": [
+        {
+          "texto": "Antes: $1,390",
+          "valor": 1390.0,
+          "confianza": 0.785,
+          "bbox": {
+            "x": 767,
+            "y": 1159,
+            "ancho": 183,
+            "alto": 33
+          }
+        },
+        {
+          "texto": "$4,490",
+          "valor": 4490.0,
+          "confianza": 0.7,
+          "bbox": {
+            "x": 168,
+            "y": 1305,
+            "ancho": 314,
+            "alto": 103
+          }
+        },
+        {
+          "texto": "Antes:: $5,490",
+          "valor": 5490.0,
+          "confianza": 0.562,
+          "bbox": {
+            "x": 237,
+            "y": 1414,
+            "ancho": 186,
+            "alto": 38
+          }
+        },
+        {
+          "texto": "Antes: $8,990",
+          "valor": 8990.0,
+          "confianza": 0.987,
+          "bbox": {
+            "x": 829,
+            "y": 1415,
+            "ancho": 188,
+            "alto": 36
+          }
+        }
+      ],
+      "promos": []
+    },
+    {
+      "pagina": "pagina_004.webp",
+      "productos": [
+        {
+          "texto": "Meses Sin",
+          "confianza": 0.988,
+          "bbox": {
+            "x": 185,
+            "y": 1478,
+            "ancho": 271,
+            "alto": 56
+          }
+        },
+        {
+          "texto": "Tarjeagsnqo credito",
+          "confianza": 0.26,
+          "bbox": {
+            "x": 511,
+            "y": 1473,
+            "ancho": 222,
+            "alto": 60
+          }
+        },
+        {
+          "texto": "BBVA",
+          "confianza": 1.0,
+          "bbox": {
+            "x": 741,
+            "y": 1473,
+            "ancho": 152,
+            "alto": 54
+          }
+        },
+        {
+          "texto": "Atvlo homeo Homno de",
+          "confianza": 0.963,
+          "bbox": {
+            "x": 1002,
+            "y": 1696,
+            "ancho": 224,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "Atvlo homco Homno d0 mlcroondas",
+          "confianza": 0.53,
+          "bbox": {
+            "x": 316,
+            "y": 1738,
+            "ancho": 338,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "6 menus de cocclón automátlca",
+          "confianza": 0.579,
+          "bbox": {
+            "x": 332,
+            "y": 1762,
+            "ancho": 300,
+            "alto": 26
+          }
+        },
+        {
+          "texto": "Funciön de Descongelado",
+          "confianza": 0.948,
+          "bbox": {
+            "x": 1016,
+            "y": 1767,
+            "ancho": 250,
+            "alto": 30
+          }
+        },
+        {
+          "texto": "10 nlveles de potencla",
+          "confianza": 0.852,
+          "bbox": {
+            "x": 328,
+            "y": 1785,
+            "ancho": 214,
+            "alto": 27
+          }
+        },
+        {
+          "texto": "Botòn de un toque de 30",
+          "confianza": 0.808,
+          "bbox": {
+            "x": 1016,
+            "y": 1790,
+            "ancho": 240,
+            "alto": 29
+          }
+        }
+      ],
+      "precios": [
+        {
+          "texto": "Antes:$699",
+          "valor": 699.0,
+          "confianza": 0.488,
+          "bbox": {
+            "x": 540,
+            "y": 1136,
+            "ancho": 152,
+            "alto": 30
+          }
+        },
+        {
+          "texto": "Antes:$1,690",
+          "valor": 1690.0,
+          "confianza": 0.938,
+          "bbox": {
+            "x": 104,
+            "y": 1794,
+            "ancho": 170,
+            "alto": 32
+          }
+        },
+        {
+          "texto": "Antes:$1,990",
+          "valor": 1990.0,
+          "confianza": 0.807,
+          "bbox": {
+            "x": 767,
+            "y": 1795,
+            "ancho": 172,
+            "alto": 36
+          }
+        }
+      ],
+      "promos": []
+    }
+  ]
+}
