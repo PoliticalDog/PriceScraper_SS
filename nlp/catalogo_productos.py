@@ -99,6 +99,17 @@ CATALOGO = {
         ]
     },
 
+    # ----------------------- Frutas y verduras frescas -----------------------
+    "frutas_verduras": {
+        "nombre": "Frutas y Verduras",
+        "keywords": [
+            "melon", "melón", "sandia", "sandía", "papa", "jicama", "jícama",
+            "chile", "cebolla", "tomate", "jitomate", "aguacate", "limon", "limón",
+            "zanahoria", "elote", "brocoli", "brócoli", "lechuga", "pepino",
+            "manzana", "platano", "plátano", "naranja", "granel",
+        ]
+    },
+
     # ----------------------- Despensa y limpieza del hogar -----------------------
     "limpieza": {
         "nombre": "Limpieza del Hogar",

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 DATA_PROCESSED = Path("data/processed")
 DATA_RAW = Path("data/raw")
-RUTA_REGISTRO_SCRAPER = Path("data/folletos_procesados.json")
+RUTA_REGISTRO_SCRAPER = Path("data/registro_folletos_scrapeados.json")
 
 CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {
     ("tiendeo", "walmart"): ("soriana", "Soriana"),
@@ -486,7 +486,7 @@ class Loader:
         except Exception:
             return False
 
-    # Lee la metadata (titulo, vigencia, url) del registro del scraper (data/folletos_procesados.json,
+    # Lee la metadata (titulo, vigencia, url) del registro del scraper (data/registro_folletos_scrapeados.json,
     # ver scraper/registro.py), keyed por "fuente:folleto_id". "procesado_at" ahi es el momento
     # del scrape (no confundir con paginas.procesado_at en la BD, que es el momento del OCR).
     def _leer_metadata(self, fuente: str, folleto_id: str) -> dict:

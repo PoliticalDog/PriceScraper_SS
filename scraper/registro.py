@@ -11,7 +11,7 @@ from .downloader import ruta_folleto
 logger = logging.getLogger(__name__)
 
 # Ruta por defecto para el registro de folletos procesados
-RUTA_REGISTRO = Path("data/folletos_procesados.json")
+RUTA_REGISTRO = Path("data/registro_folletos_scrapeados.json")
 
 # Registro de folletos procesados
 class Registro:
