@@ -158,14 +158,53 @@ class RegexExtractor:
     # No se generaliza a 2 o 4 digitos por falta de casos confirmados.
     # "s/S" se agrega ademas de 5/6/8 porque ya es un sustituto de "$" conocido y documentado
     # (ver PATRON_PRECIO_OCR_CORRUPTO) -- confirmado en folleto de referencia: "s599" -> $599.
-    PATRON_DIGITO_ESPURIO = re.compile(r"^[568sS](\d{3})$")
+    # Sufijo opcional tolerado despues del digito espurio + 3 digitos: unidades/cortes
+    # de OCR pegados directo al numero (ej. "5199c/u" -> $199 c/u, confirmado en
+    # bodega_aurrera). No participa en el valor extraido, solo se tolera para no
+    # romper el anclaje ^...$.
+    PATRON_DIGITO_ESPURIO = re.compile(r"^[568sS](\d{3})(?:c/u|c\.u\.|[a-zA-Z]{1,4})?$")
+
+    # Regla A2: digito espurio + numero que YA trae su propio punto decimal + sufijo
+    # opcional de unidad (ej. "824.95k6" -> $24.95/kg, confirmado en HEB -- el sufijo
+    # tolera digitos porque el OCR confunde "kg" con "k6"). Se separa de la Regla A
+    # porque esta no sintetiza centavos -- el decimal ya viene explicito.
+    PATRON_DIGITO_ESPURIO_DECIMAL = re.compile(r"^[568sS](\d{1,3}[.,]\d{2})[a-zA-Z0-9]{0,4}$")
+
+    # Regla A-miles: digito espurio + remanente con coma de miles (ej. "58,999" ->
+    # $8,999, "53,999" -> $3,999 -- verificado contra la imagen real: el "5" inicial
+    # SI era el "$" corrompido, no un digito real del precio). Tiene prioridad sobre
+    # la Regla C cuando el string empieza con un digito espurio valido, porque en los
+    # casos reales verificados esa interpretacion fue siempre la correcta.
+    PATRON_DIGITO_ESPURIO_MILES = re.compile(r"^[568sS](\d{1,3},\d{3})[a-zA-Z]{0,4}$")
+
+    # Regla C: numero suelto con coma de miles que NO empieza con un digito espurio
+    # valido -- aqui no hay ambiguedad posible con un "$" corrompido, se lee completo.
+    # El formato "N,NNN" ya es una senal fuerte por si solo (SKUs/codigos de barra que
+    # lee el OCR no vienen agrupados con coma), por eso esta regla NO exige contexto
+    # de precio cercano a diferencia de A/A2/B.
+    PATRON_BARE_MILES = re.compile(r"^(\d{1,3},\d{3})[a-zA-Z]{0,4}$")
 
     # Regla B: digitos puros sin espurio -- ultimos 2 digitos son centavos. Ej: "999" -> $9.99
     # Total 3-4 digitos (1-2 enteros + 2 centavos) -- es lo unico validado empiricamente.
     # NO se generaliza a 5-6 digitos: sin la senal extra del digito espurio, un bare de
     # esa longitud es mas probable que sea un SKU/codigo de barras que un precio real
     # (confirmado: "541583"/"559944" cerca de contexto fuerte pero claramente no precios).
-    PATRON_BARE_DIGITOS = re.compile(r"^(\d{1,2})(\d{2})$")
+    # A proposito SIN sufijo tolerado (a diferencia de la Regla A): permitirlo abriria
+    # de nuevo ese mismo hueco de SKU de 5-6 digitos (ej. "541583" pasaria como
+    # "54"+"15"+sufijo"83"). Sin evidencia real de un caso que lo necesite, se deja
+    # anclado estricto.
+    #
+    # Separada en 3 vs 4 digitos (07-ago-2026) tras medir contra el dataset de
+    # etiquetado manual: de los bloques bare-digit que coincidian con un precio
+    # REAL y COMPLETO del ground truth, 92/93 eran de 4 digitos y solo 1 de 3.
+    # Los de 3 digitos casi siempre son una lectura TRUNCADA del OCR -- a esta
+    # tipografia (precio entero grande + centavos en superindice chico) le suele
+    # faltar un digito del superindice (ej. "199" leido en vez de "1990" para
+    # $19.90) -- por eso 3 digitos exige contexto fuerte (ver mas abajo, sin
+    # cambios); aceptarlo con contexto de producto solamente produciria un VALOR
+    # incorrecto (ej. $1.99 en vez de $19.90), peor que no extraerlo.
+    PATRON_BARE_DIGITOS_3 = re.compile(r"^(\d{1})(\d{2})$")
+    PATRON_BARE_DIGITOS_4 = re.compile(r"^(\d{2})(\d{2})$")
 
     # Evita interpretar un año de vigencia ("2026") como precio
     PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
@@ -201,13 +240,15 @@ class RegexExtractor:
     DISTANCIA_MAX_CONTEXTO_PRECIO = 220
 
     # --------------- PROMOCIONES ---------------
-    PATRONES_PROMO = [
+    # Separadas en "fuerte" (mecanica de promo especifica e inequivoca -- casi nunca
+    # aparece si no hay una promocion real detras, ej. "4x3") vs "debil" (ambigua,
+    # puede ser un banner suelto de portada sin ninguna promo/producto real cerca,
+    # ej. "hasta 40%"). Ver uso en _clasificar: la fuerte no exige que la pagina
+    # tenga un precio en pesos, la debil si (gate agregado para evitar banners
+    # publicitarios aislados -- ver PATRONES_PROMO_DEBIL).
+    PATRONES_PROMO_FUERTE = [
         re.compile(r"\d+\s*[xX×]\s*(?:\$\s*)?\d+", re.IGNORECASE),
-        re.compile(r"\d+\s*%\s*(?:off|desc(?:uento)?|de\s+desc)?", re.IGNORECASE),
         re.compile(r"\$\s*\d+\s*por\s*cada\s*\$\s*\d+", re.IGNORECASE),
-        re.compile(r"\b(?:te\s+regalamos|lleva|paga|gratis|bonificaci[oó]n)\b", re.IGNORECASE),
-        re.compile(r"precio\s+(?:ya\s+)?con\s+(?:la\s+)?promo", re.IGNORECASE),
-        re.compile(r"\b(?:hasta|descuento\s+de)\s+\d+\s*%", re.IGNORECASE),
         # "compra uno y llévate el segundo a mitad de precio"
         re.compile(r"mitad\s+de\s+precio", re.IGNORECASE),
         re.compile(r"segunda?\s+a\s+mitad", re.IGNORECASE),
@@ -216,6 +257,16 @@ class RegexExtractor:
         # Detecta el patrón Nx$Y repetido — es mecánica de paquete, no precio simple
         re.compile(r"\d+\s*[xX×]\s*[\$5s]\s*\d+[\.,]\d+\s+\d+\s*[xX×]", re.IGNORECASE),
     ]
+
+    PATRONES_PROMO_DEBIL = [
+        re.compile(r"\d+\s*%\s*(?:off|desc(?:uento)?|de\s+desc)?", re.IGNORECASE),
+        re.compile(r"\b(?:te\s+regalamos|lleva|paga|gratis|bonificaci[oó]n)\b", re.IGNORECASE),
+        re.compile(r"precio\s+(?:ya\s+)?con\s+(?:la\s+)?promo", re.IGNORECASE),
+        re.compile(r"\b(?:hasta|descuento\s+de)\s+\d+\s*%", re.IGNORECASE),
+    ]
+
+    # Compatibilidad: union de ambos grupos, usada donde no importa la distincion
+    PATRONES_PROMO = PATRONES_PROMO_FUERTE + PATRONES_PROMO_DEBIL
 
     # --------------- EVENTOS PROMOCIONALES ---------------
     # Campañas, eventos comerciales y etiquetas de oferta que NO son mecánica de precio.
@@ -318,6 +369,10 @@ class RegexExtractor:
             r"walmart|invex|liverpool|coppel)\b",
             re.IGNORECASE
         ),
+        # Monto minimo de compra a meses/financiamiento (ej. "$6,000 MN." de Costco
+        # Banamex) -- "MN." (moneda nacional) es una notacion que casi nunca aparece
+        # en un precio de producto real del folleto, solo en letra chica financiera.
+        re.compile(r"^\$\s*[\d,]+\s*MN\.?$", re.IGNORECASE),
 
         # ── Slogans y frases de campaña cross-tienda ───────────────────────────
         # El "¡" de apertura se pierde en el OCR y queda como una "i" pegada al
@@ -351,8 +406,10 @@ class RegexExtractor:
         # ── Slogans específicos de tienda detectados en análisis ───────────────
         re.compile(
             r"^(?:"
-            r"en\s+tienda\s*y\s+en\s+l[ií]nea|s[oó]lo\s+en\s+tienda|"
-            r"en\s+tienda\s*\+\s*en\s*l[ií]nea|en\s+tienda\s+y\s+en\s*l[ií]nea|"
+            # tolera espacios totalmente fundidos por el OCR (ej. "Entiendayen inea",
+            # "En tiendayen linea") y la "l" leida como "(" (ej. "en tienda y en (inea")
+            r"en\s*tienda\s*y\s*en\s*[l(]?[ií]nea|s[oó]lo\s+en\s+tienda|"
+            r"en\s+tienda\s*\+\s*en\s*l[ií]nea|"
             r"en\s*tienda[y\s]+en\s+l[ií]nea|"
             r"en\s+tienda|en\s+linea|en\s+l[ií]nea|"       # solos sin contexto
             r"enlinea|enl[ií]nea|"                          # fusiones OCR costco
@@ -425,6 +482,11 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
+        # ── Slogan "precio bajo" de Bodega Aurrera ──────────────────────────────
+        # El OCR nunca lee "precio bodega" limpio en este folleto -- variantes
+        # garbled confirmadas: "PREçIQ"/"BGDEGA", "PREçO"/"DEGA", "PREçI".
+        re.compile(r"^(?:precio\s*bodega|pre[cç][ií]?[oq]?|bgdega|dega)$", re.IGNORECASE),
+
         # ── Ruido OCR puro (consonantes sin vocales) ───────────────────────────
         re.compile(
             r"^(?:[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}\s+){1,3}"
@@ -468,7 +530,25 @@ class RegexExtractor:
         bloques_pagina = datos_pagina["bloques"]  # contexto espacial para precios sin simbolo
         hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina)
 
+        # Pre-paso: precios repartidos en 2 bloques adyacentes (entero + centavos,
+        # ver _detectar_precios_fusionados). Va ANTES del loop normal porque un
+        # entero de 1-2 digitos nunca llegaria a clasificarse por si solo.
+        bloques_consumidos = set()
+        for bloque_entero, bloque_centavos, valor in self._detectar_precios_fusionados(bloques_pagina):
+            resultado.precios.append(EntidadExtraida(
+                "PRECIO",
+                f"{bloque_entero['texto']}+{bloque_centavos['texto']}",
+                f"{bloque_entero['texto']}.{bloque_centavos['texto']}",
+                valor=valor,
+                confianza=min(bloque_entero["confianza"], bloque_centavos["confianza"]),
+                bbox=bloque_entero["bbox"],
+            ))
+            bloques_consumidos.add(id(bloque_entero))
+
         for bloque in bloques_pagina:
+            if id(bloque) in bloques_consumidos:
+                continue
+
             texto_raw = bloque["texto"]
             confianza = bloque["confianza"]
             bbox      = bloque.get("bbox", {})
@@ -537,12 +617,15 @@ class RegexExtractor:
 
         # 3. Ahorro ("Ahorras $X") — verificar ANTES que no sea paquete Nx$Y
         # Si el texto contiene patrón de paquete (1x$33 3x$67), va como PROMO
-        # Exige que la PAGINA tenga al menos un precio real -- una promo (%, 2x1,
-        # etc.) sin ningun precio en toda la pagina es casi siempre un banner
-        # publicitario aislado (ej. "hasta 40%" en una portada sin productos con
-        # precio), no una promocion real de producto. Las promos bancarias/MSI ya
-        # se descartan antes, en PATRONES_DESCARTE -- esto no las afecta.
-        if self._es_promo(texto) and hay_precio_en_pagina:
+        # Mecanica "fuerte" (NxM, "compra uno y llevate", etc.) es lo bastante
+        # inequivoca para aceptarse aunque la pagina no tenga ningun precio en
+        # pesos (ej. "4x3" en categoria de llantas, sin precio unitario visible).
+        # Mecanica "debil" (%, "hasta X%") SI exige que la PAGINA tenga al menos
+        # un precio real -- sin eso es casi siempre un banner publicitario aislado
+        # (ej. "hasta 40%" en una portada sin productos con precio), no una
+        # promocion real de producto. Las promos bancarias/MSI ya se descartan
+        # antes, en PATRONES_DESCARTE -- esto no las afecta.
+        if self._es_promo_fuerte(texto) or (self._es_promo_debil(texto) and hay_precio_en_pagina):
             return EntidadExtraida("PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
@@ -649,6 +732,12 @@ class RegexExtractor:
                 return float(f"{m_ocr.group(1)}.{m_ocr.group(2)}")
             except ValueError:
                 pass
+        # Corrige "O"/"o" leida como cero dentro de un precio (ej. "$4OO" -> "$400").
+        # Sin esto, PATRON_PRECIO solo captura los digitos antes de la "O" ("4") y el
+        # resto se pierde en silencio -- bug confirmado en costco ($400 -> 4.0). Solo
+        # se aplica si el bloque ya contiene "$", para no tocar texto no relacionado.
+        if "$" in texto:
+            texto = re.sub(r"(?<=\d)[Oo]+", lambda m: "0" * len(m.group()), texto)
         match = self.PATRON_PRECIO.search(texto)
         if not match:
             return None
@@ -659,26 +748,66 @@ class RegexExtractor:
     ) -> Optional[float]:
         """
         Recupera precios cuyo "$" el OCR perdio o leyo mal (ver PATRON_DIGITO_ESPURIO /
-        PATRON_BARE_DIGITOS). Solo se activa si hay contexto de precio confirmado cerca
-        del bloque -- un bloque numerico aislado (SKU, pagina, cantidad) no cuenta.
+        PATRON_BARE_DIGITOS_3 / PATRON_BARE_DIGITOS_4). Solo se activa si hay contexto
+        de precio confirmado cerca del bloque -- un bloque numerico aislado (SKU,
+        pagina, cantidad) no cuenta.
         """
         if not bbox or not bloques_pagina:
             return None
         if self.PATRON_ANIO_PLAUSIBLE.match(texto):
             return None
 
-        # Regla A: digito espurio + precio entero sin centavos (ej. "8249" -> $249)
-        # Contexto amplio (fuerte o de unidad) -- el digito espurio ya es una senal fuerte.
+        # Regla A-miles: digito espurio + remanente con coma de miles (ej. "58,999" ->
+        # $8,999). Verificado contra la imagen real -- ver comentario en la constante.
+        # Va ANTES que la Regla C para que gane esta interpretacion cuando el string
+        # empieza con un digito espurio valido.
+        m = self.PATRON_DIGITO_ESPURIO_MILES.match(texto)
+        if m:
+            return self._parsear_numero(m.group(1))
+
+        # Regla C: numero suelto con coma de miles que NO empieza con digito espurio
+        # -- sin ambiguedad posible, se lee completo. No exige contexto cercano.
+        m = self.PATRON_BARE_MILES.match(texto)
+        if m:
+            return self._parsear_numero(m.group(1))
+
+        # Regla A2: digito espurio + numero que ya trae su propio punto decimal
+        # (ej. "824.95k6" -> $24.95). El decimal explicito ya es una senal tan fuerte
+        # como el digito espurio mismo -- no se exige contexto cercano.
+        m = self.PATRON_DIGITO_ESPURIO_DECIMAL.match(texto)
+        if m:
+            return self._parsear_numero(m.group(1))
+
+        # Regla A: digito espurio + precio entero sin centavos (ej. "8249" -> $249,
+        # "5199c/u" -> $199 c/u). Si el sufijo pegado es "c/u"/"c.u." -- una senal de
+        # contexto fuerte igual de valida que si viniera en un bloque separado -- no
+        # se exige contexto externo. Sin ese sufijo, contexto amplio (fuerte o de
+        # unidad) porque el digito espurio ya es una senal fuerte por si solo.
         m = self.PATRON_DIGITO_ESPURIO.match(texto)
         if m:
-            if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=False):
+            sufijo_fuerte = bool(re.search(r"c/u|c\.u\.", texto, re.IGNORECASE))
+            if not sufijo_fuerte and not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=False):
                 return None
             return self._parsear_numero(m.group(1))
 
-        # Regla B: digitos puros -- ultimos 2 digitos son centavos (ej. "999" -> $9.99)
-        # Exige contexto FUERTE -- sin la senal del digito espurio, un bloque numerico
-        # junto a "kg"/"ml" es mas probable que sea una cantidad que un precio.
-        m = self.PATRON_BARE_DIGITOS.match(texto)
+        # Regla B-4: 4 digitos puros -- ultimos 2 son centavos (ej. "3990" -> $39.90).
+        # Acepta contexto FUERTE (como antes) O un producto reconocido cerca -- ver
+        # _hay_producto_cerca y el comentario de PATRON_BARE_DIGITOS_4/_3 mas arriba
+        # para la evidencia (07-ago-2026) de por que esto es seguro solo a 4 digitos.
+        m = self.PATRON_BARE_DIGITOS_4.match(texto)
+        if m:
+            if not (
+                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True)
+                or self._hay_producto_cerca(bbox, bloques_pagina)
+            ):
+                return None
+            return self._parsear_numero(f"{m.group(1)}.{m.group(2)}")
+
+        # Regla B-3: 3 digitos puros (ej. "999" -> $9.99). Exige contexto FUERTE
+        # unicamente -- SIN relajar con "producto cerca" (ver comentario arriba:
+        # a 3 digitos, un bloque bare-digit casi siempre es una lectura truncada,
+        # no un precio completo, y "producto cerca" no distingue eso).
+        m = self.PATRON_BARE_DIGITOS_3.match(texto)
         if m:
             if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True):
                 return None
@@ -714,6 +843,97 @@ class RegexExtractor:
                 hay_contexto = True
         return hay_contexto
 
+    def _hay_producto_cerca(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+        """
+        True si hay un bloque vecino (dentro de DISTANCIA_MAX_CONTEXTO_PRECIO) que
+        el catalogo o la heuristica reconocen como PRODUCTO/ATRIBUTO, y NINGUN
+        bloque de exclusion (ej. "puntos" de lealtad) igual de cerca.
+
+        Senal nueva (07-ago-2026) para la Regla B-4 (ver PATRON_BARE_DIGITOS_4):
+        en estos folletos el precio va pegado al nombre del producto que etiqueta,
+        asi que un precio "normal" (sin palabra de oferta cerca) casi siempre tiene
+        un producto al lado. Validado contra el dataset manual: cubre 230/236
+        (97%) de los precios recuperables reales.
+        """
+        for otro in bloques_pagina:
+            otro_bbox = otro.get("bbox")
+            if not otro_bbox or otro_bbox is bbox:
+                continue
+            if self._distancia_bbox(bbox, otro_bbox) > self.DISTANCIA_MAX_CONTEXTO_PRECIO:
+                continue
+            texto_otro = otro.get("texto", "")
+            if self.PATRON_EXCLUSION_CONTEXTO_PRECIO.search(texto_otro):
+                return False
+            texto_limpio = self._limpiar_texto(texto_otro)
+            en_catalogo, _, _ = buscar_categoria(texto_limpio)
+            if en_catalogo or self._es_probable_producto(texto_limpio):
+                return True
+        return False
+
+    def _detectar_precios_fusionados(
+        self, bloques_pagina: list[dict]
+    ) -> list[tuple[dict, dict, float]]:
+        """
+        Detecta precios repartidos en 2 bloques OCR adyacentes -- precio entero
+        grande + centavos en superindice chico, cada uno como su propio bloque
+        (ej. "99" + "90" en vez de "9990"). Confirmado empiricamente 07-ago-2026
+        contra alsuper/416306/pagina_002.webp: el bloque de centavos aparece justo
+        a la derecha del entero, con menor altura de bbox (superindice) y alineado
+        hacia la mitad superior del entero.
+
+        Se corre como pre-paso ANTES del loop normal de clasificacion (ver
+        procesar_pagina) porque un entero de 1-2 digitos ("99") nunca llegaria a
+        _extraer_precio_sin_simbolo por si solo -- _es_descarte lo descarta de
+        entrada por longitud (<=2 caracteres), igual que al bloque de centavos.
+
+        Restringido a enteros de 1-2 digitos a proposito: un entero de 3 digitos
+        ya tiene su propio camino via Regla B-3/B-4 en el loop normal -- no se
+        toca ese camino para no arriesgar una fusion incorrecta con un bloque
+        vecino no relacionado.
+
+        Solo fusiona cuando hay EXACTAMENTE UN candidato a centavos valido para
+        un entero dado -- ambiguedad (mas de un candidato) no se fusiona, para no
+        arriesgar un emparejamiento incorrecto en paginas densas.
+
+        Retorna una lista de (bloque_entero, bloque_centavos, valor_fusionado).
+        """
+        GAP_HORIZONTAL_MIN = -30
+        GAP_HORIZONTAL_MAX = 60
+
+        candidatos_enteros = [
+            b for b in bloques_pagina
+            if b.get("bbox") and re.match(r"^\d{1,2}$", b.get("texto", ""))
+        ]
+        candidatos_centavos = [
+            b for b in bloques_pagina
+            if b.get("bbox") and re.match(r"^\d{2}$", b.get("texto", ""))
+        ]
+
+        fusionados = []
+        for entero in candidatos_enteros:
+            bbox_e = entero["bbox"]
+            emparejados = []
+            for centavos in candidatos_centavos:
+                if centavos is entero:
+                    continue
+                bbox_c = centavos["bbox"]
+                gap = bbox_c["x"] - (bbox_e["x"] + bbox_e["ancho"])
+                if not (GAP_HORIZONTAL_MIN <= gap <= GAP_HORIZONTAL_MAX):
+                    continue
+                if bbox_c["alto"] >= bbox_e["alto"]:
+                    continue  # el centavo debe ser visualmente mas chico (superindice)
+                if bbox_c["y"] > bbox_e["y"] + bbox_e["alto"] * 0.5:
+                    continue  # alineado hacia la mitad superior del entero
+                emparejados.append(centavos)
+
+            if len(emparejados) == 1:
+                centavos = emparejados[0]
+                valor = self._parsear_numero(f"{entero['texto']}.{centavos['texto']}")
+                if valor is not None:
+                    fusionados.append((entero, centavos, valor))
+
+        return fusionados
+
     @staticmethod
     def _distancia_bbox(bbox_a: dict, bbox_b: dict) -> float:
         """Distancia euclidiana entre los centros de dos bbox {x,y,ancho,alto}."""
@@ -746,11 +966,14 @@ class RegexExtractor:
         except (ValueError, IndexError):
             return None
 
+    def _es_promo_fuerte(self, texto: str) -> bool:
+        return any(patron.search(texto) for patron in self.PATRONES_PROMO_FUERTE)
+
+    def _es_promo_debil(self, texto: str) -> bool:
+        return any(patron.search(texto) for patron in self.PATRONES_PROMO_DEBIL)
+
     def _es_promo(self, texto: str) -> bool:
-        for patron in self.PATRONES_PROMO:
-            if patron.search(texto):
-                return True
-        return False
+        return self._es_promo_fuerte(texto) or self._es_promo_debil(texto)
 
     def _pagina_tiene_precio(self, bloques_pagina: list[dict]) -> bool:
         """
