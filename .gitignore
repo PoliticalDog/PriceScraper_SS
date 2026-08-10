@@ -57,6 +57,9 @@ playwright-report/
 # ------------------ EasyOCR (modelos descargados automáticamente — se regeneran) ------------------
 .EasyOCR/
 
+# ------------------ Tesseract (paquetes de idioma descargados — se regeneran) ------------------
+tessdata/
+
 # ------------------ Docxx (archivos temporales) ------------------
 *.docx
 

@@ -1000,7 +1000,14 @@ class RegexExtractor:
         if len(texto) < 4:
             return False
         texto_norm = texto.lstrip("'\"'")
-        palabras = [p for p in texto_norm.split()
+        # El OCR suele pegar puntuacion al final de la palabra ("Suavitel?",
+        # "Rosita*", "Blancatel\"", "HUGGiES:") que rompe el .isalpha() de abajo
+        # y hace que la palabra completa desaparezca del heuristico -- se
+        # despoja por palabra antes de evaluarla (no afecta texto_norm, que es
+        # lo que se guarda). Confirmado 07-ago-2026 via evaluar_nlp.py
+        # fallos_producto (ocr_encontrado=True, nlp_clasificado=False).
+        palabras = [p.strip("'\"?!;:,.*_()[]") for p in texto_norm.split()]
+        palabras = [p for p in palabras
                     if len(p) >= 3 and
                     p.replace("é","e").replace("á","a").replace("ó","o")
                      .replace("í","i").replace("ú","u").replace("ñ","n").isalpha()]
@@ -1010,7 +1017,13 @@ class RegexExtractor:
             return True
         if texto_norm.isupper() and 4 <= len(texto_norm) <= 60:
             return True
-        if len(palabras) == 1 and len(palabras[0]) >= 5:
+        # Palabra unica de 4+ caracteres (antes exigia 5+): confirmado
+        # 07-ago-2026 contra fragmentos reales de nombres largos que el OCR
+        # corta en bloques independientes (ej. "Ciel"/"Amor"/"Ropa"/"Tela"/
+        # "Saba" de "Agua Ciel", "Suavizante Amor Suavitel", "Shampoo...Vel
+        # Rosita", "Tela Multiusos", "Toalla Femenina Saba") -- ver
+        # evaluar_nlp.py fallos_producto con ocr_encontrado=True.
+        if len(palabras) == 1 and len(palabras[0]) >= 4:
             return True
         if 4 <= len(texto_norm) <= 80 and len(palabras) >= 2:
             return True
