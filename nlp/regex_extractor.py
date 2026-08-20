@@ -236,8 +236,22 @@ class RegexExtractor:
     PATRON_EXCLUSION_CONTEXTO_PRECIO = re.compile(r"\bp?u.tos?\b", re.IGNORECASE)
 
     # Distancia maxima (px) para considerar un bloque de contexto "cercano".
-    # Asume paginas ya escaladas al ancho de produccion (~1500px, ver preprocessor.ANCHO_OBJETIVO_DEFAULT)
+    # Calibrada contra paginas escaladas a ANCHO_REFERENCIA_UMBRALES (ver mas abajo).
+    # Si la pagina se proceso a un ancho distinto, procesar_pagina() calcula un
+    # factor_escala y esta distancia se multiplica por el antes de usarse -- ver
+    # _hay_contexto_precio / _hay_producto_cerca. Sin esto, subir la resolucion de
+    # OCR (ej. 1500->2500px) reduce el alcance EFECTIVO de este umbral en la misma
+    # proporcion, porque las distancias reales entre bloques crecen con la imagen
+    # pero el umbral se queda fijo -- confirmado empiricamente 11-ago-2026 (prioridad
+    # 6 del plan de mejora): PRECIOS en alsuper cayo ~9pts en promedio al subir a
+    # 2500px sin este fix, mientras que PROD se mantuvo plano (no es un problema de
+    # OCR, es este umbral quedandose corto).
     DISTANCIA_MAX_CONTEXTO_PRECIO = 220
+
+    # Ancho (px) contra el que estan calibrados DISTANCIA_MAX_CONTEXTO_PRECIO y
+    # GAP_HORIZONTAL_MIN/MAX de _detectar_precios_fusionados -- debe coincidir con
+    # preprocessor.ANCHO_OBJETIVO_DEFAULT (el estandar historico de produccion).
+    ANCHO_REFERENCIA_UMBRALES = 1500
 
     # --------------- PROMOCIONES ---------------
     # Separadas en "fuerte" (mecanica de promo especifica e inequivoca -- casi nunca
@@ -528,13 +542,21 @@ class RegexExtractor:
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
         bloques_pagina = datos_pagina["bloques"]  # contexto espacial para precios sin simbolo
-        hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina)
+
+        # Factor de escala de los umbrales de distancia en px (ver
+        # ANCHO_REFERENCIA_UMBRALES). "ancho_pagina" es opcional -- si el OCR no lo
+        # trae (datos generados antes de este campo), se asume el ancho de
+        # referencia y el factor queda en 1.0 (comportamiento identico al anterior).
+        ancho_pagina = datos_pagina.get("ancho_pagina") or self.ANCHO_REFERENCIA_UMBRALES
+        factor_escala = ancho_pagina / self.ANCHO_REFERENCIA_UMBRALES
+
+        hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina, factor_escala)
 
         # Pre-paso: precios repartidos en 2 bloques adyacentes (entero + centavos,
         # ver _detectar_precios_fusionados). Va ANTES del loop normal porque un
         # entero de 1-2 digitos nunca llegaria a clasificarse por si solo.
         bloques_consumidos = set()
-        for bloque_entero, bloque_centavos, valor in self._detectar_precios_fusionados(bloques_pagina):
+        for bloque_entero, bloque_centavos, valor in self._detectar_precios_fusionados(bloques_pagina, factor_escala):
             resultado.precios.append(EntidadExtraida(
                 "PRECIO",
                 f"{bloque_entero['texto']}+{bloque_centavos['texto']}",
@@ -560,7 +582,8 @@ class RegexExtractor:
             if not texto_limpio:
                 continue
 
-            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina, hay_precio_en_pagina)
+            entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina,
+                                       hay_precio_en_pagina, factor_escala)
 
             tipo = entidad.tipo
             if tipo == "PRECIO":
@@ -593,7 +616,7 @@ class RegexExtractor:
     # --------------- Clasificador ---------------
 
     def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None,
-                    hay_precio_en_pagina: bool = True) -> EntidadExtraida:
+                    hay_precio_en_pagina: bool = True, factor_escala: float = 1.0) -> EntidadExtraida:
 
         # 1. Descarte rápido
         if self._es_descarte(texto):
@@ -647,7 +670,7 @@ class RegexExtractor:
 
         # 5b. Precio sin símbolo — "$" perdido o mal leído por el OCR (tag de oferta).
         # Solo aplica si hay contexto de precio cerca del bloque (ver PATRON_CONTEXTO_PRECIO).
-        precio_sin_simbolo = self._extraer_precio_sin_simbolo(texto, bbox, bloques_pagina)
+        precio_sin_simbolo = self._extraer_precio_sin_simbolo(texto, bbox, bloques_pagina, factor_escala)
         if precio_sin_simbolo is not None:
             return EntidadExtraida("PRECIO", texto_raw, texto,
                                    valor=precio_sin_simbolo, confianza=confianza, bbox=bbox)
@@ -744,7 +767,8 @@ class RegexExtractor:
         return self._parsear_numero(match.group(1))
 
     def _extraer_precio_sin_simbolo(
-        self, texto: str, bbox: dict, bloques_pagina: Optional[list[dict]]
+        self, texto: str, bbox: dict, bloques_pagina: Optional[list[dict]],
+        factor_escala: float = 1.0
     ) -> Optional[float]:
         """
         Recupera precios cuyo "$" el OCR perdio o leyo mal (ver PATRON_DIGITO_ESPURIO /
@@ -786,7 +810,7 @@ class RegexExtractor:
         m = self.PATRON_DIGITO_ESPURIO.match(texto)
         if m:
             sufijo_fuerte = bool(re.search(r"c/u|c\.u\.", texto, re.IGNORECASE))
-            if not sufijo_fuerte and not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=False):
+            if not sufijo_fuerte and not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=False, factor_escala=factor_escala):
                 return None
             return self._parsear_numero(m.group(1))
 
@@ -797,8 +821,8 @@ class RegexExtractor:
         m = self.PATRON_BARE_DIGITOS_4.match(texto)
         if m:
             if not (
-                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True)
-                or self._hay_producto_cerca(bbox, bloques_pagina)
+                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
             ):
                 return None
             return self._parsear_numero(f"{m.group(1)}.{m.group(2)}")
@@ -809,14 +833,15 @@ class RegexExtractor:
         # no un precio completo, y "producto cerca" no distingue eso).
         m = self.PATRON_BARE_DIGITOS_3.match(texto)
         if m:
-            if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True):
+            if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala):
                 return None
             return self._parsear_numero(f"{m.group(1)}.{m.group(2)}")
 
         return None
 
     def _hay_contexto_precio(
-        self, bbox: dict, bloques_pagina: list[dict], requerir_fuerte: bool
+        self, bbox: dict, bloques_pagina: list[dict], requerir_fuerte: bool,
+        factor_escala: float = 1.0
     ) -> bool:
         """
         True si hay un bloque de contexto de precio cerca del bbox y NINGUN bloque de
@@ -827,12 +852,13 @@ class RegexExtractor:
         c-u/etc); el contexto de unidad (kg/ml/g) por si solo no basta porque tambien
         describe cantidades de producto sin relacion con el precio.
         """
+        distancia_max = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
         hay_contexto = False
         for otro in bloques_pagina:
             otro_bbox = otro.get("bbox")
             if not otro_bbox or otro_bbox is bbox:
                 continue
-            if self._distancia_bbox(bbox, otro_bbox) > self.DISTANCIA_MAX_CONTEXTO_PRECIO:
+            if self._distancia_bbox(bbox, otro_bbox) > distancia_max:
                 continue
             texto_otro = otro.get("texto", "")
             if self.PATRON_EXCLUSION_CONTEXTO_PRECIO.search(texto_otro):
@@ -843,7 +869,8 @@ class RegexExtractor:
                 hay_contexto = True
         return hay_contexto
 
-    def _hay_producto_cerca(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+    def _hay_producto_cerca(self, bbox: dict, bloques_pagina: list[dict],
+                            factor_escala: float = 1.0) -> bool:
         """
         True si hay un bloque vecino (dentro de DISTANCIA_MAX_CONTEXTO_PRECIO) que
         el catalogo o la heuristica reconocen como PRODUCTO/ATRIBUTO, y NINGUN
@@ -855,11 +882,12 @@ class RegexExtractor:
         un producto al lado. Validado contra el dataset manual: cubre 230/236
         (97%) de los precios recuperables reales.
         """
+        distancia_max = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
         for otro in bloques_pagina:
             otro_bbox = otro.get("bbox")
             if not otro_bbox or otro_bbox is bbox:
                 continue
-            if self._distancia_bbox(bbox, otro_bbox) > self.DISTANCIA_MAX_CONTEXTO_PRECIO:
+            if self._distancia_bbox(bbox, otro_bbox) > distancia_max:
                 continue
             texto_otro = otro.get("texto", "")
             if self.PATRON_EXCLUSION_CONTEXTO_PRECIO.search(texto_otro):
@@ -871,7 +899,7 @@ class RegexExtractor:
         return False
 
     def _detectar_precios_fusionados(
-        self, bloques_pagina: list[dict]
+        self, bloques_pagina: list[dict], factor_escala: float = 1.0
     ) -> list[tuple[dict, dict, float]]:
         """
         Detecta precios repartidos en 2 bloques OCR adyacentes -- precio entero
@@ -897,8 +925,9 @@ class RegexExtractor:
 
         Retorna una lista de (bloque_entero, bloque_centavos, valor_fusionado).
         """
-        GAP_HORIZONTAL_MIN = -30
-        GAP_HORIZONTAL_MAX = 60
+        # Calibrados a ANCHO_REFERENCIA_UMBRALES, igual que DISTANCIA_MAX_CONTEXTO_PRECIO.
+        GAP_HORIZONTAL_MIN = -30 * factor_escala
+        GAP_HORIZONTAL_MAX = 60 * factor_escala
 
         candidatos_enteros = [
             b for b in bloques_pagina
@@ -975,7 +1004,8 @@ class RegexExtractor:
     def _es_promo(self, texto: str) -> bool:
         return self._es_promo_fuerte(texto) or self._es_promo_debil(texto)
 
-    def _pagina_tiene_precio(self, bloques_pagina: list[dict]) -> bool:
+    def _pagina_tiene_precio(self, bloques_pagina: list[dict],
+                             factor_escala: float = 1.0) -> bool:
         """
         Escaneo liviano previo a la clasificacion: True si algun bloque de la
         pagina contiene un precio real (con o sin simbolo). Se usa para exigir
@@ -992,7 +1022,7 @@ class RegexExtractor:
                 continue
             if self._extraer_precio(texto) is not None:
                 return True
-            if self._extraer_precio_sin_simbolo(texto, bloque.get("bbox", {}), bloques_pagina) is not None:
+            if self._extraer_precio_sin_simbolo(texto, bloque.get("bbox", {}), bloques_pagina, factor_escala) is not None:
                 return True
         return False
 

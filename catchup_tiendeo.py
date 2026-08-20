@@ -23,6 +23,15 @@ DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 FUENTE         = "tiendeo"
 
+# Resolucion de escalado por tienda -- ver investigacion completa en
+# sources/vision/08_experimento_resolucion_ocr_por_tienda.md. De las 16
+# tiendas, casa_ley es la UNICA donde subir resolucion mejora el OCR
+# (PROD_OCR 50.4%->81.8% a 2500px, fuente nativa ~15px). En el resto no ayuda
+# (walmart/bodega_aurrera/merco/s-mart quedan planas) o empeora (alsuper,
+# por fragmentacion de texto de EasyOCR). Tiendas no listadas usan el default
+# de Preprocessor (1500px, ver ANCHO_OBJETIVO_DEFAULT).
+RESOLUCION_POR_TIENDA = {"casa_ley": 2500}
+
 
 def catchup_vision():
     carpetas = sorted([
@@ -41,10 +50,20 @@ def catchup_vision():
 
     ocr           = OCREngine(idiomas=["es", "en"], usar_gpu=False)
     nombre_perfil = "color_normal"
-    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=None)
+    # Un preprocesador por ancho_objetivo distinto (cache), en vez de uno solo
+    # para todo el batch, porque casa_ley usa una resolucion distinta al resto.
+    preprocesadores = {}
+
+    def preprocesador_para(tienda: str):
+        ancho = RESOLUCION_POR_TIENDA.get(tienda)
+        if ancho not in preprocesadores:
+            preprocesadores[ancho] = obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
+        return preprocesadores[ancho]
 
     procesados, total_bloques, errores = 0, 0, 0
     for i, carpeta in enumerate(pendientes, 1):
+        tienda = carpeta.relative_to(DATA_RAW / FUENTE).parts[0]
+        preprocessor = preprocesador_para(tienda)
         logger.info(f"[Vision/{FUENTE}] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_RAW)}")
         try:
             r = probar_vision.procesar_carpeta(

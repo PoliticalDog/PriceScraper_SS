@@ -233,6 +233,7 @@ def procesar_carpeta(
 
         resultado_folleto["paginas"].append({
             "pagina":         ruta_pagina.name,
+            "ancho_pagina":   imagen_np.shape[1],  # px reales tras preprocesar -- usado por RegexExtractor para escalar umbrales de distancia
             "confianza_prom": round(conf_prom, 3),
             "bloques": [
                 {

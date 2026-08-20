@@ -131,9 +131,11 @@ def procesar_carpeta(
         return None
 
     # Adaptar formato para RegexExtractor
-    # procesar_json_ocr espera: [{"imagen": ..., "bloques": [...]}]
+    # procesar_json_ocr espera: [{"imagen": ..., "bloques": [...], "ancho_pagina": ...}]
+    # "ancho_pagina" es opcional (paginas de antes de este campo no lo traen; el
+    # extractor asume el ancho de referencia y no cambia su comportamiento).
     datos_para_extractor = [
-        {"imagen": p["pagina"], "bloques": p["bloques"]}
+        {"imagen": p["pagina"], "bloques": p["bloques"], "ancho_pagina": p.get("ancho_pagina")}
         for p in paginas_ocr
     ]
 
