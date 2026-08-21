@@ -206,6 +206,26 @@ class RegexExtractor:
     PATRON_BARE_DIGITOS_3 = re.compile(r"^(\d{1})(\d{2})$")
     PATRON_BARE_DIGITOS_4 = re.compile(r"^(\d{2})(\d{2})$")
 
+    # Regla B-2: precio entero <$100 SIN centavos (ej. "15" -> $15, "69" -> $69).
+    # Frecuente en tiendas_3b/bodega_aurrera. Es el mas ambiguo de todos (facil
+    # de confundir con cantidades "2 pzas", pesos, fragmentos de SKU) -- por eso
+    # exige el gate MAS estricto disponible: solo contexto fuerte, igual que la
+    # Regla de 3 digitos, nunca el OR con "producto cerca" que usa la de 4.
+    # Agregado 19-ago-2026 tras medir contra el dataset manual: 293 precios que
+    # el bloque OCR lee completo y correcto no se extraian por falta de este
+    # patron (ver sources/nlp/04_cobertura_bare_digits_2_5.md).
+    PATRON_BARE_DIGITOS_2 = re.compile(r"^(\d{2})$")
+
+    # Regla B-5: precio >=$100 CON centavos (ej. "15490" -> $154.90). Frecuente
+    # en casa_ley (productos de bulto/carton, precios altos). RIESGO YA
+    # DOCUMENTADO arriba (Regla B): un bare de 5-6 digitos se probo y se
+    # rechazo en jul-2026 por confundirse con SKU/codigo de barras
+    # ("541583"/"559944"). Para reabrir 5 digitos sin repetir ese problema, el
+    # gate es el mas estricto posible: contexto fuerte Y producto cerca A LA
+    # VEZ (no OR como la Regla de 4 digitos). Agregado 19-ago-2026, ver
+    # sources/nlp/04_cobertura_bare_digits_2_5.md.
+    PATRON_BARE_DIGITOS_5 = re.compile(r"^(\d{3})(\d{2})$")
+
     # Evita interpretar un año de vigencia ("2026") como precio
     PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
 
@@ -310,8 +330,14 @@ class RegexExtractor:
 
     # --------------- DESCARTE ---------------
     PATRONES_DESCARTE = [
-        # 1-2 caracteres
-        re.compile(r"^.{1,2}$"),
+        # 1-2 caracteres -- EXCEPTO 2 digitos puros ("15", "69"), que pueden
+        # ser un precio entero sin centavos (ver PATRON_BARE_DIGITOS_2/Regla
+        # B-2 mas abajo). Sin esta excepcion, este descarte corria ANTES que
+        # Regla B-2 en _clasificar y la dejaba inalcanzable siempre -- bug
+        # encontrado al medir 0 extracciones via B-2 en todo el corpus
+        # (19-ago-2026). La decision de aceptarlo como precio sigue
+        # dependiendo del gate de contexto de B-2, no de esta linea.
+        re.compile(r"^(?!\d{2}$).{1,2}$"),
         # Solo símbolos
         re.compile(r"^[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\$]+$"),
         # URLs
@@ -802,6 +828,30 @@ class RegexExtractor:
         if m:
             return self._parsear_numero(m.group(1))
 
+        # Regla B-4 vs Regla A: ambigueedad real y documentada para texto de 4
+        # digitos puros SIN sufijo -- "6990" puede ser un precio real con
+        # centavos (69.90, Regla B-4, validada con 92/93 casos del dataset
+        # manual) o un "$" mal leido + precio entero (249, Regla A, validada
+        # con 6 casos confirmados en jul-2026: 299/266/249/169/229/599,
+        # NINGUNO termina en 0). Antes, Regla A se evaluaba primero con un
+        # gate mas debil y, si fallaba, mataba la funcion entera sin darle
+        # oportunidad a Regla B-4 -- bug encontrado el 19-ago-2026 midiendo
+        # contra el dataset manual: precios reales terminados en ".90" (69.90,
+        # 59.90, 64.90, 89.90...) se estaban descartando por esto. Fix: para
+        # texto sin sufijo se intenta primero Regla B-4 (mejor validada); solo
+        # si su gate falla, se intenta Regla A como alternativa. Si el texto
+        # SI trae sufijo (letras/c-u pegado) el comportamiento no cambia --
+        # Regla B-4 esta anclada estricta sin sufijo, nunca lo matchea. Ver
+        # sources/nlp/04_cobertura_bare_digits_2_5.md.
+        m_b4 = self.PATRON_BARE_DIGITOS_4.match(texto)
+        if m_b4:
+            if (
+                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
+            ):
+                return self._parsear_numero(f"{m_b4.group(1)}.{m_b4.group(2)}")
+            # Gate de B-4 fallo -- probar Regla A como alternativa antes de descartar.
+
         # Regla A: digito espurio + precio entero sin centavos (ej. "8249" -> $249,
         # "5199c/u" -> $199 c/u). Si el sufijo pegado es "c/u"/"c.u." -- una senal de
         # contexto fuerte igual de valida que si viniera en un bloque separado -- no
@@ -814,11 +864,17 @@ class RegexExtractor:
                 return None
             return self._parsear_numero(m.group(1))
 
-        # Regla B-4: 4 digitos puros -- ultimos 2 son centavos (ej. "3990" -> $39.90).
-        # Acepta contexto FUERTE (como antes) O un producto reconocido cerca -- ver
-        # _hay_producto_cerca y el comentario de PATRON_BARE_DIGITOS_4/_3 mas arriba
-        # para la evidencia (07-ago-2026) de por que esto es seguro solo a 4 digitos.
-        m = self.PATRON_BARE_DIGITOS_4.match(texto)
+        # Regla B-5: 5 digitos puros -- ultimos 2 son centavos (ej. "15490" ->
+        # $154.90). Empezo con gate AND (contexto fuerte Y producto cerca) por
+        # el riesgo de SKU ya documentado en PATRON_BARE_DIGITOS_4 -- pero
+        # medido (19-ago-2026), el AND dejaba pasar casi nada: 0/62 casos
+        # reales del dataset manual tenian contexto fuerte (igual que B-2/B-4,
+        # un precio de grid normal no trae "antes/oferta" cerca). El riesgo de
+        # SKU documentado era sobre 6 digitos ("541583"/"559944"), nunca se
+        # probo 5 por separado. Gate: mismo OR que B-2/B-4, validado con
+        # evaluar_nlp.py (precios_mal_clasificados + revision manual de
+        # muestra). Ver sources/nlp/04_cobertura_bare_digits_2_5.md.
+        m = self.PATRON_BARE_DIGITOS_5.match(texto)
         if m:
             if not (
                 self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
@@ -836,6 +892,28 @@ class RegexExtractor:
             if not self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala):
                 return None
             return self._parsear_numero(f"{m.group(1)}.{m.group(2)}")
+
+        # Regla B-2: 2 digitos puros -- precio entero SIN centavos (ej. "15" ->
+        # $15). Se penso inicialmente exigir solo contexto fuerte (como B-3),
+        # pero medido contra el dataset manual (19-ago-2026) el 96% de los
+        # casos reales tenian "producto cerca" y NO contexto fuerte (a
+        # diferencia de precios promocionales, un precio de grid normal junto
+        # a su producto no trae palabras como "antes/oferta") -- igual que ya
+        # se valido para B-4. Gate: mismo OR que B-4. Ver
+        # sources/nlp/04_cobertura_bare_digits_2_5.md.
+        # "00" explicitamente excluido: un precio de $0 nunca es real -- es el
+        # remanente de centavos de un precio fusionado en 2 bloques (ej.
+        # "199"+"00") que ya se cubre aparte via _detectar_precios_fusionados.
+        # Sin este guard, "00" colaba como 173 precios falsos de $0.00 en todo
+        # el corpus (encontrado 19-ago-2026 al revisar valores extremos).
+        m = self.PATRON_BARE_DIGITOS_2.match(texto)
+        if m and m.group(1) != "00":
+            if not (
+                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
+            ):
+                return None
+            return self._parsear_numero(m.group(1))
 
         return None
 
