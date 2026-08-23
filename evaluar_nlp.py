@@ -9,8 +9,9 @@
 
 import json
 import logging
-from collections import defaultdict
 from pathlib import Path
+
+import pandas as pd
 
 from nlp.evaluador_calidad import comparar_folleto
 
@@ -56,24 +57,28 @@ def main():
         paginas_eval = comparar_folleto(datos_gt, datos_ocr, datos_nlp)
         resultados_por_folleto.append((tienda, folleto_id, paginas_eval))
 
-    # ---------------- Agregacion ----------------
-    agregados_tienda = defaultdict(lambda: defaultdict(int))
-    agregados_global = defaultdict(int)
-    fallos_producto_muestra = []   # para el reporte JSON de detalle
-    fallos_precio_muestra   = []
-    fallos_promo_muestra    = []
-
+    # ---------------- Agregacion (pandas) ----------------
+    # Antes: defaultdict anidado sumando campo por campo en un loop manual.
+    # Ahora: una fila por pagina evaluada -> DataFrame -> groupby("tienda").sum()
+    # + .sum() global. Mismo resultado, agregacion tabular real en vez de
+    # acumular a mano -- es exactamente el caso de uso para el que pandas
+    # existe (ver decision de integracion, 23-ago-2026: no se toco load.py
+    # por riesgo sobre codigo de escritura ya validado, pero este script de
+    # evaluacion es de solo lectura/reporte).
     CAMPOS = [
         "productos_total", "productos_ocr_ok", "productos_nlp_ok",
         "precios_total", "precios_ok", "precios_mal_clasificados",
         "promos_total", "promos_ok",
     ]
 
+    filas_paginas = []
+    fallos_producto_muestra = []   # para el reporte JSON de detalle
+    fallos_precio_muestra   = []
+    fallos_promo_muestra    = []
+
     for tienda, folleto_id, paginas_eval in resultados_por_folleto:
         for p in paginas_eval:
-            for campo in CAMPOS:
-                agregados_tienda[tienda][campo] += getattr(p, campo)
-                agregados_global[campo]         += getattr(p, campo)
+            filas_paginas.append({"tienda": tienda, **{c: getattr(p, c) for c in CAMPOS}})
 
             for nombre, ocr_ok, nlp_ok, ratio in p.productos_fallidos:
                 fallos_producto_muestra.append({
@@ -89,6 +94,17 @@ def main():
                 fallos_promo_muestra.append({
                     "tienda": tienda, "folleto_id": folleto_id, "pagina": p.pagina, "promo": texto,
                 })
+
+    df_paginas = pd.DataFrame(filas_paginas, columns=["tienda", *CAMPOS])
+
+    # .astype(int): pandas suma a int64 (numpy) -- se castea a int nativo de
+    # Python para que json.dump() no truene mas abajo (no sabe serializar
+    # numpy.int64).
+    agregados_tienda = {
+        tienda: fila.astype(int).to_dict()
+        for tienda, fila in df_paginas.groupby("tienda")[CAMPOS].sum().iterrows()
+    }
+    agregados_global = df_paginas[CAMPOS].sum().astype(int).to_dict()
 
     # ---------------- Reporte en consola ----------------
     print("\n" + "=" * 88)

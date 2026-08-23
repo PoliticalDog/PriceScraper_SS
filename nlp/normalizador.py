@@ -9,9 +9,25 @@ from dataclasses import dataclass, field
 from typing import Optional
 from rapidfuzz import process, fuzz
 
-from .catalogo_productos import buscar_categoria
+from .catalogo_productos import buscar_categoria, CATALOGO
 
 logger = logging.getLogger(__name__)
+
+# Mapeo nombre-para-mostrar -> slug de categoria, derivado directamente de
+# catalogo_productos.CATALOGO (clave del dict) en vez de slugificar el
+# nombre para mostrar -- evita que un mismo departamento termine con dos
+# slugs distintos en productos_canonicos.categoria segun si el producto
+# matcheo por CATALOGO_CANONICO (slug corto, ej. "alimentos") o por este
+# fallback (antes generaba "alimentos_y_bebidas" a partir de "Alimentos y
+# Bebidas" -- bug encontrado 23-ago-2026 comparando conteos reales en
+# Postgres: "alimentos" 24895 filas vs "alimentos_y_bebidas" 1667 filas,
+# la MISMA categoria fragmentada en dos).
+# "Frutas y Verduras" se fusiona deliberadamente con "alimentos": el
+# catalogo canonico ya trata produce como parte de alimentos (Platano,
+# Manzana, Naranja... usan categoria="alimentos"), no se crea un slug
+# "frutas_verduras" aparte para no fragmentar la taxonomia otra vez.
+_NOMBRE_A_SLUG: dict[str, str] = {datos["nombre"]: clave for clave, datos in CATALOGO.items()}
+_NOMBRE_A_SLUG["Frutas y Verduras"] = "alimentos"
 
 # Catálogo de productos canónicos
 
@@ -69,6 +85,19 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Papa":                    {"categoria": "alimentos", "marca": None,  "aliases": ["papas", "patata"]},
     "Chía":                    {"categoria": "alimentos", "marca": None,  "aliases": ["chia", "semilla de chia", "semilla de chía"]},
     "Quinoa":                  {"categoria": "alimentos", "marca": None,  "aliases": ["quinua", "quinua real"]},
+    # Agregados 23-ago-2026 -- top frutas/verduras reales mas frecuentes en
+    # el bucket heuristico (analisis de productos_canonicos vs Postgres real,
+    # ver sources/nlp/). "Granel"/unidades de venta se excluyeron a proposito
+    # (no son nombre de producto, ver plan de integracion).
+    "Melón":                   {"categoria": "alimentos", "marca": None,  "aliases": ["melon", "melon chino", "melones"]},
+    "Papaya":                  {"categoria": "alimentos", "marca": None,  "aliases": ["papaya maradol"]},
+    "Lechuga":                 {"categoria": "alimentos", "marca": None,  "aliases": ["lechuga romana", "lechugas"]},
+    "Sandía":                  {"categoria": "alimentos", "marca": None,  "aliases": ["sandia", "sandias"]},
+    "Elote":                   {"categoria": "alimentos", "marca": None,  "aliases": ["elotes", "elote dorado"]},
+    "Chile serrano":           {"categoria": "alimentos", "marca": None,  "aliases": ["chile serano", "chiles serranos"]},
+    "Chile jalapeño":          {"categoria": "alimentos", "marca": None,  "aliases": ["chile jalapeno", "chiles jalapenos"]},
+    "Brócoli":                 {"categoria": "alimentos", "marca": None,  "aliases": ["brocoli", "brocolis"]},
+    "Zanahoria":               {"categoria": "alimentos", "marca": None,  "aliases": ["zanahorias"]},
 
     # ---------------------------- Bebidas ----------------------------
     "Refresco":                {"categoria": "alimentos", "marca": None,  "aliases": ["refrcos", "refresco 2l", "refresco 600ml"]},
@@ -132,6 +161,17 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Vestido":                 {"categoria": "ropa",          "marca": None, "aliases": ["vestdo", "vestidos"]},
     "Pijama":                  {"categoria": "ropa",          "marca": None, "aliases": ["pijamas", "piyama"]},
     "Tenis":                   {"categoria": "ropa",          "marca": None, "aliases": ["tnis", "zapatillas deportivas"]},
+
+    # ---------------------------- Videojuegos ----------------------------
+    # Agregados 23-ago-2026 -- categoria nueva, no tenia ninguna entrada
+    # canonica pese a que catalogo_productos.py ya reconoce el departamento.
+    # Cuidado: "game" (keyword de catalogo_productos.py) matchea como
+    # substring dentro de "Gamesa" -- ruido de origen ajeno a este catalogo,
+    # ver plan de integracion.
+    "FIFA":                    {"categoria": "videojuegos",   "marca": None, "aliases": ["fifao", "fifac", "fifa worldcup"]},
+    "Spider-Man":              {"categoria": "videojuegos",   "marca": None, "aliases": ["spiderman", "spider man"]},
+    "Mario Kart":              {"categoria": "videojuegos",   "marca": None, "aliases": ["mario kart world"]},
+    "PS5":                     {"categoria": "videojuegos",   "marca": None, "aliases": ["ps5 digital slim", "playstation 5"]},
 }
 
 # ---------------------------- Marcas conocidas que se filtran del nombre canónico ----------------------------
@@ -372,12 +412,12 @@ class Normalizador:
         nombre_heuristico = self._capitalizar(texto_limpio)
         en_catalogo, categoria_amplia, _ = buscar_categoria(texto_raw)
         # buscar_categoria devuelve el nombre para mostrar ("Línea Blanca"),
-        # no el slug -- se convierte a slug (mismo formato que las categorias
-        # de CATALOGO_CANONICO, ej. "linea_blanca") para que productos_canonicos.categoria
+        # no el slug -- se traduce via _NOMBRE_A_SLUG (derivado de
+        # catalogo_productos.CATALOGO) para que productos_canonicos.categoria
         # sea consistente sin importar si el producto matcheo por catálogo
         # canónico o por este fallback.
         if en_catalogo:
-            categoria_amplia = self._normalizar_base(categoria_amplia).replace(" ", "_")
+            categoria_amplia = _NOMBRE_A_SLUG.get(categoria_amplia, categoria_amplia)
         return ResultadoNorm(
             texto_raw=texto_raw,
             nombre_canonico=nombre_heuristico,

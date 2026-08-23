@@ -532,6 +532,58 @@ class RegexExtractor:
             r"^(?:[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}\s+){1,3}"
             r"[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}$"
         ),
+
+        # ── Calendario de campana promocional (dia de la semana + fecha) ────────
+        # Agregado 23-ago-2026: analisis de productos_canonicos vs Postgres real
+        # encontro "Martes y Miercoles" (172), "Sabado 30 de Mayo"/"Viernes 29 de
+        # Mayo"/etc. (34 c/u, un bloque repetido por pagina de un calendario de
+        # ofertas por dia) clasificados como PRODUCTO. Estructural: dia(s) de la
+        # semana solos o seguidos de "N de <mes>".
+        re.compile(
+            r"^(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+            r"(?:\s+y\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo))?"
+            r"(?:\s+\d{1,2}\s*\w{0,3}\s*de\s+\w+)?\.?$",
+            re.IGNORECASE
+        ),
+
+        # ── "Tambien en la App/tienda/linea" ────────────────────────────────────
+        # Agregado 23-ago-2026: "Tambien En: App"/"Appc"/"Appi" (264 combinado)
+        # no matcheaba los patrones existentes de "en tienda"/"en linea" (linea
+        # 454) porque empieza con "tambien", no con "en".
+        re.compile(r"^tambi[eé]n\s*en\b.{0,15}$", re.IGNORECASE),
+
+        # ── Limite de compra / restricciones de promocion ──────────────────────
+        # Agregado 23-ago-2026: "Maximo 10 Kg. Por Cliente" (90), "Aplican
+        # Restricciones" (51). Distinto del pie de pagina legal generico (linea
+        # 348) porque esos exigen "sujeto a"/"terminos y condiciones" -- este es
+        # el patron especifico "Maximo N ... por cliente".
+        re.compile(
+            r"^m[aá]ximo\s+\d+.{0,20}por\s+cliente\.?$|"
+            r"^aplican\s+restricciones?[;:.]?$",
+            re.IGNORECASE
+        ),
+
+        # ── Slogans (frases de marketing completas, no palabras sueltas) ────────
+        # Agregado 23-ago-2026, RESTRINGIDO tras medir regresion contra
+        # evaluar_nlp.py: la primera version de este cambio tambien incluia
+        # palabras genericas sueltas ("mimarca", "variedad", "compra",
+        # "congelado", "super", "producto", "pieza"/"kilo"/"gramos" solos) que
+        # bajaron PROD global de 75.2%->73.8% -- resulto que el OCR frecuentemente
+        # separa esas palabras del resto de un producto real en su propio bloque
+        # ("Frijol pinto Mimarca 900 gramos" -> 3 bloques OCR: "Frijol pinto" +
+        # "Mimarca" + "900 gramos"), y la evaluacion cuenta cobertura de tokens
+        # en CUALQUIER bloque PRODUCTO de la pagina -- descartar el bloque
+        # "Mimarca" o "900 gramos" aislado bajaba la cobertura del producto
+        # real aunque el resto se siguiera detectando bien. Se dejaron SOLO las
+        # frases de varias palabras que son estructuralmente slogans de
+        # marketing (nunca aparecen como fragmento de un nombre de producto).
+        re.compile(
+            r"^(?:del\s+ahorro|te\s+regala|"
+            r"combina\s+como\s+quieras|los\s+m[aá]s\s+baratos\s+del\s+mercado|"
+            r"hasta\s+ac?otar\s+existencias|im[aá]genes\s+ilustrativas|"
+            r"al\s+precio\s+m[aá]s\s+bajo\s+siempre)\.?$",
+            re.IGNORECASE
+        ),
     ]
 
     # --------------- Keywords de producto ---------------
