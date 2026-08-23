@@ -17,6 +17,8 @@ from typing import Optional
 from vision.preprocessor import obtener_preprocesador
 from vision.region_detector import detectar_regiones, calificar_regiones, asociar_producto_por_region
 
+from nlp.normalizador import Normalizador
+
 from .db_builder import get_connection, get_cursor
 
 logger = logging.getLogger(__name__)
@@ -58,12 +60,14 @@ class Loader:
 
     def __init__(self):
         self.conn = get_connection()
+        self._normalizador = Normalizador()
         logger.info("[Load] Loader inicializado")
 
     @classmethod
     def desde_conexion(cls, conn) -> "Loader":
         instance = cls.__new__(cls)
         instance.conn = conn
+        instance._normalizador = Normalizador()
         return instance
 
     def cerrar(self):
@@ -214,16 +218,24 @@ class Loader:
 
         contadores = {"extracciones": 0, "sin_producto": 0, "eventos": 0}
 
+        # Productos: normalizar contra productos_canonicos e insertar como
+        # filas propias tipo=PRODUCTO (v3, 22-ago-2026; antes se calculaban y
+        # se descartaban, solo su texto quedaba embebido en la fila PRECIO
+        # asociada). Los descartados por el normalizador (ruido: eslóganes,
+        # nombres de tienda, fragmentos OCR) NO se insertan y NO se ofrecen
+        # como candidatos de asociación -- antes cualquier bloque clasificado
+        # como PRODUCTO, sin filtrar, era candidato valido.
+        productos_utiles = self._insertar_productos(cur, pagina_id, folleto_id, tienda_id, productos)
+        contadores["extracciones"] += len(productos_utiles)
+
         # Precios
         for precio in precios:
             producto_match = None
             if regiones_confiables:
-                producto_match = asociar_producto_por_region(precio, productos, regiones_confiables)
+                producto_match = asociar_producto_por_region(precio, productos_utiles, regiones_confiables)
             if producto_match is None:
-                producto_match = self._asociar_producto(precio, productos)
+                producto_match = self._asociar_por_cercania(precio, productos_utiles)
             precio_ant_val = self._buscar_precio_anterior(precio, precios_ant)
-            texto_norm     = self._texto_normalizado(producto_match)
-            texto_raw_prod = producto_match.get("texto", "") if producto_match else ""
             bbox           = precio.get("bbox", {})
 
             cur.execute("""
@@ -231,20 +243,44 @@ class Loader:
                     pagina_id, folleto_id, tienda_id,
                     tipo, texto_raw, texto_norm, categoria_nlp,
                     valor, valor_anterior, confianza_ocr,
-                    bbox_x, bbox_y, bbox_ancho, bbox_alto
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    bbox_x, bbox_y, bbox_ancho, bbox_alto,
+                    producto_extraccion_id, producto_canonico_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 pagina_id, folleto_id, tienda_id,
                 "PRECIO",
                 precio.get("texto", ""),
-                texto_norm or texto_raw_prod or None,
+                producto_match.get("_nombre_norm") if producto_match else None,
                 producto_match.get("categoria") if producto_match else None,
                 precio.get("valor"), precio_ant_val, precio.get("confianza"),
                 bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
+                producto_match.get("_id") if producto_match else None,
+                producto_match.get("_producto_canonico_id") if producto_match else None,
             ))
             contadores["extracciones"] += 1
-            if not texto_norm and not texto_raw_prod:
+            if not producto_match:
                 contadores["sin_producto"] += 1
+
+        # Atributos: mismo criterio de cercania que precios (sin ROI, no
+        # validado para atributos todavia). Antes no se persistian en
+        # absoluto pese a que el enum tipo_extraccion_enum ya los soportaba.
+        for atributo in atributos:
+            producto_match = self._asociar_por_cercania(atributo, productos_utiles)
+            bbox = atributo.get("bbox", {})
+            cur.execute("""
+                INSERT INTO extracciones (
+                    pagina_id, folleto_id, tienda_id,
+                    tipo, texto_raw, texto_norm, categoria_nlp, confianza_ocr,
+                    bbox_x, bbox_y, bbox_ancho, bbox_alto, producto_extraccion_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                pagina_id, folleto_id, tienda_id,
+                "ATRIBUTO", atributo.get("texto", ""), atributo.get("texto", ""),
+                atributo.get("categoria") or None, atributo.get("confianza"),
+                bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
+                producto_match.get("_id") if producto_match else None,
+            ))
+            contadores["extracciones"] += 1
 
         # Promos
         for promo in promos:
@@ -300,14 +336,92 @@ class Loader:
 
         return contadores
 
+    # -- Productos y normalización ---------------------------------------------
+
+    def _insertar_productos(self, cur, pagina_id: int, folleto_id: int, tienda_id: int,
+                            productos: list[dict]) -> list[dict]:
+        """
+        Normaliza cada producto (nlp.normalizador.Normalizador) e inserta los
+        aceptados como fila propia tipo=PRODUCTO, upserteando su identidad
+        canonica en productos_canonicos.
+
+        Devuelve SOLO los productos aceptados (no descartados por el
+        normalizador), enriquecidos con:
+          _id                     -> id de la fila en extracciones
+          _producto_canonico_id   -> id en productos_canonicos (o None)
+          _nombre_norm            -> nombre canonico o heuristico
+          categoria               -> sobreescrita con la categoria del normalizador
+
+        Son los unicos candidatos validos para asociar precios/atributos por
+        cercania -- antes de este cambio, CUALQUIER bloque clasificado como
+        PRODUCTO (incluyendo ruido: "Exclusivo en", nombres de tienda,
+        fragmentos OCR) era candidato valido de asociacion.
+        """
+        utiles = []
+        for prod in productos:
+            resultado = self._normalizador.normalizar(prod.get("texto", ""))
+            if resultado.descartado:
+                continue
+
+            producto_canonico_id = None
+            if resultado.nombre_canonico:
+                producto_canonico_id = self._upsert_producto_canonico(cur, resultado)
+
+            bbox = prod.get("bbox", {})
+            cur.execute("""
+                INSERT INTO extracciones (
+                    pagina_id, folleto_id, tienda_id,
+                    tipo, texto_raw, texto_norm, categoria_nlp,
+                    confianza_ocr, bbox_x, bbox_y, bbox_ancho, bbox_alto,
+                    producto_canonico_id, confianza_norm, metodo_norm
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                pagina_id, folleto_id, tienda_id,
+                "PRODUCTO", prod.get("texto", ""),
+                resultado.nombre_canonico or None,
+                resultado.categoria or prod.get("categoria") or None,
+                prod.get("confianza"),
+                bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
+                producto_canonico_id, resultado.confianza_norm, resultado.metodo,
+            ))
+            prod_id = cur.fetchone()["id"]
+
+            utiles.append({
+                **prod,
+                "_id": prod_id,
+                "_producto_canonico_id": producto_canonico_id,
+                "_nombre_norm": resultado.nombre_canonico or prod.get("texto", ""),
+                "categoria": resultado.categoria or prod.get("categoria", ""),
+            })
+        return utiles
+
+    def _upsert_producto_canonico(self, cur, resultado) -> int:
+        cur.execute("""
+            INSERT INTO productos_canonicos (nombre_canonico, categoria, marca)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (nombre_canonico) DO UPDATE SET
+                categoria = COALESCE(productos_canonicos.categoria, EXCLUDED.categoria),
+                marca     = COALESCE(productos_canonicos.marca, EXCLUDED.marca)
+            RETURNING id
+        """, (resultado.nombre_canonico, resultado.categoria or None, resultado.marca))
+        return cur.fetchone()["id"]
+
     # -- Asociacion bbox ------------------------------------------------------
 
-    def _asociar_producto(self, precio: dict, productos: list) -> dict | None:
+    def _asociar_por_cercania(self, item: dict, productos: list) -> dict | None:
+        """
+        Empareja un item (precio o atributo) con el producto reconocido mas
+        cercano verticalmente arriba, dentro de una tolerancia horizontal de
+        400px. Antes se llamaba "_asociar_producto" y solo se usaba para
+        precios -- generalizado (22-ago-2026) para reutilizarse tambien con
+        atributos.
+        """
         if not productos:
             return None
 
-        precio_x = precio.get("bbox", {}).get("x", 0)
-        precio_y = precio.get("bbox", {}).get("y", 0)
+        item_x = item.get("bbox", {}).get("x", 0)
+        item_y = item.get("bbox", {}).get("y", 0)
         mejor, menor_dist = None, float("inf")
 
         for prod in productos:
@@ -315,10 +429,10 @@ class Loader:
             prod_x    = prod_bbox.get("x", 0)
             prod_y    = prod_bbox.get("y", 0)
 
-            if abs(prod_x - precio_x) > 400:
+            if abs(prod_x - item_x) > 400:
                 continue
 
-            diff_y = precio_y - prod_y
+            diff_y = item_y - prod_y
             if 0 < diff_y < menor_dist:
                 menor_dist = diff_y
                 mejor = prod
@@ -431,16 +545,6 @@ class Loader:
             logger.info(f"[Load] Correccion tienda: '{slug_raw}' -> '{slug_correcto}'")
             return slug_correcto, nombre
         return slug_raw, slug_raw.replace("_", " ").title()
-
-    def _texto_normalizado(self, producto: dict | None) -> str:
-        if not producto:
-            return ""
-        norm = producto.get("norm", {})
-        if norm and not norm.get("descartado", False):
-            nombre = norm.get("nombre_canonico", "")
-            if nombre:
-                return nombre
-        return producto.get("texto", "")
 
     def _normalizar_nombre_evento(self, texto: str) -> str:
         texto = texto.lower().strip()

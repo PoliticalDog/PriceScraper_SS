@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 from rapidfuzz import process, fuzz
 
+from .catalogo_productos import buscar_categoria
+
 logger = logging.getLogger(__name__)
 
 # Catálogo de productos canónicos
@@ -201,6 +203,15 @@ class Normalizador:
     UMBRAL_ALTO = 0.80
     UMBRAL_BAJO = 0.60
 
+    # Guarda de longitud para el match fuzzy -- ver comentario en normalizar().
+    # 0.2 discrimina bien entre descripciones largas de producto que matchean
+    # legitimamente un nombre canonico corto (ratio ~0.3-0.45, ej. "Aceite de
+    # coco organico extra virgen 450ml" -> "aceite de coco") y textos largos
+    # sin relacion que matchean por contener de casualidad un alias/token
+    # corto (ratio ~0.08-0.09, ej. un listado de departamentos que contiene
+    # la palabra "celular" -> alias de "Smartphone").
+    RATIO_LONGITUD_MINIMO = 0.2
+
     # Correcciones OCR específicas antes del fuzzy
     CORRECCIONES_OCR = [
         (re.compile(r"\bpltano\b",  re.I), "plátano"),
@@ -312,28 +323,67 @@ class Normalizador:
 
         if resultado_fuzzy:
             match_texto, score, idx = resultado_fuzzy
-            confianza = score / 100.0
-            nombre_canonico = self._indice[idx][1]
-            datos = CATALOGO_CANONICO[nombre_canonico]
-            metodo = "fuzzy" if confianza >= self.umbral_alto else "fuzzy_bajo"
+            # Guarda de longitud: token_set_ratio puede dar score 100 cuando
+            # el alias/nombre entero (a menudo corto: "a/a", "celular") queda
+            # contenido como token dentro de un texto mucho mas largo y sin
+            # relacion real -- confirmado 22-ago-2026 probando contra
+            # Postgres real: "'Sujato,a disponibllidad" matcheaba "Aire
+            # acondicionado" (via alias "a/a") y un listado de departamentos
+            # ("...Telefonia Celular; Linea Blanca...") matcheaba
+            # "Smartphone" (via alias "celular"), ambos con confianza 1.0.
+            # Un texto de producto real mas largo que su nombre canonico
+            # (ej. "Aceite de coco organico extra virgen 450ml" -> "aceite de
+            # coco", ratio ~0.33) nunca es TAN desproporcionado como estos
+            # falsos positivos (ratio ~0.08-0.09) -- la proporcion de
+            # longitud discrimina bien entre ambos casos sin penalizar
+            # descripciones largas legitimas.
+            largo_corto = min(len(match_texto), len(texto_norm_base))
+            largo_largo = max(len(match_texto), len(texto_norm_base))
+            ratio_longitud = largo_corto / largo_largo if largo_largo else 0.0
 
-            return ResultadoNorm(
-                texto_raw=texto_raw,
-                nombre_canonico=nombre_canonico,
-                confianza_norm=round(confianza, 3),
-                metodo=metodo,
-                categoria=datos["categoria"],
-                marca=marca or datos.get("marca"),
-            )
+            if ratio_longitud >= self.RATIO_LONGITUD_MINIMO:
+                confianza = score / 100.0
+                nombre_canonico = self._indice[idx][1]
+                datos = CATALOGO_CANONICO[nombre_canonico]
+                metodo = "fuzzy" if confianza >= self.umbral_alto else "fuzzy_bajo"
 
-        # 6. Sin match — devolver heurístico (texto limpio con capitalización)
+                return ResultadoNorm(
+                    texto_raw=texto_raw,
+                    nombre_canonico=nombre_canonico,
+                    confianza_norm=round(confianza, 3),
+                    metodo=metodo,
+                    categoria=datos["categoria"],
+                    marca=marca or datos.get("marca"),
+                )
+            # Si no pasa la guarda de longitud, cae al heuristico (paso 6)
+            # en vez de aceptar un match de confianza reportada alta pero
+            # espuria.
+
+        # 6. Sin match en el catálogo canónico (~90 productos, sesgado a
+        # abarrotes/limpieza/cuidado personal) -- devolver heurístico (texto
+        # limpio con capitalización) pero con la categoría amplia del
+        # departamento si catalogo_productos.py la reconoce (17 departamentos,
+        # cubre electrónica/ropa/muebles/etc. que el catálogo canónico no
+        # tiene todavía) en vez de dejarla vacía. Agregado 22-ago-2026: antes
+        # de esto, todo producto "heuristico" quedaba sin categoria alguna en
+        # productos_canonicos, aunque el texto sí calzara con un departamento
+        # conocido (ej. "Licuadora Oster 5 velocidades" -> sin match exacto,
+        # pero sí matchea "licuadora" en catalogo_productos.CATALOGO).
         nombre_heuristico = self._capitalizar(texto_limpio)
+        en_catalogo, categoria_amplia, _ = buscar_categoria(texto_raw)
+        # buscar_categoria devuelve el nombre para mostrar ("Línea Blanca"),
+        # no el slug -- se convierte a slug (mismo formato que las categorias
+        # de CATALOGO_CANONICO, ej. "linea_blanca") para que productos_canonicos.categoria
+        # sea consistente sin importar si el producto matcheo por catálogo
+        # canónico o por este fallback.
+        if en_catalogo:
+            categoria_amplia = self._normalizar_base(categoria_amplia).replace(" ", "_")
         return ResultadoNorm(
             texto_raw=texto_raw,
             nombre_canonico=nombre_heuristico,
             confianza_norm=0.0,
             metodo="heuristico",
-            categoria="",
+            categoria=categoria_amplia,
             marca=marca,
         )
 

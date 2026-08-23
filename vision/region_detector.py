@@ -212,7 +212,7 @@ def asociar_producto_por_region(precio: dict, productos: list[dict], regiones: l
     distancia bbox: busca la region que contiene al precio, y dentro de esa
     MISMA region busca un producto. Si el precio no cae en ninguna region, o
     la region no contiene ningun producto, retorna None -- el llamador debe
-    hacer fallback al metodo de distancia (load.py._asociar_producto).
+    hacer fallback al metodo de distancia (load.py._asociar_por_cercania).
 
     Si hay mas de un producto candidato en la region, se toma el mas cercano
     verticalmente arriba del precio (mismo criterio que el metodo de

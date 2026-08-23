@@ -12,7 +12,7 @@
 #
 # Metodo HIBRIDO: para cada precio, si cae dentro de una region que tambien
 # contiene un producto, se asocia por ROI. Si no, fallback al metodo de
-# distancia (replica exacta de Loader._asociar_producto en load/load.py).
+# distancia (replica exacta de Loader._asociar_por_cercania en load/load.py).
 #
 # No modifica load/load.py ni la base de datos -- es solo para decidir si
 # vale la pena integrar el hibrido al pipeline real.
@@ -45,7 +45,7 @@ TIENDAS_GRID_FRIENDLY = ["walmart", "chedraui", "soriana_hiper", "soriana_mercad
 
 
 def _asociar_por_distancia(precio: dict, productos: list) -> dict | None:
-    """Replica exacta de Loader._asociar_producto (load/load.py) para poder comparar."""
+    """Replica exacta de Loader._asociar_por_cercania (load/load.py) para poder comparar."""
     if not productos:
         return None
     precio_x = precio.get("bbox", {}).get("x", 0)
