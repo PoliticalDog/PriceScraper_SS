@@ -1,0 +1,71 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Resumen — PriceScraper{% endblock %}
+
+{% block contenido %}
+<h4 class="mb-3">Resumen general</h4>
+
+<div class="row g-3 mb-4" id="kpis"></div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="chart-card">
+      <h6>Top 10 categorías por volumen de precios</h6>
+      <canvas id="chartCategorias" height="260"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="chart-card">
+      <h6>Folletos cargados por tienda</h6>
+      <canvas id="chartTiendas" height="260"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+function tarjetaKpi(valor, etiqueta) {
+  return `
+    <div class="col-6 col-lg-3">
+      <div class="card kpi-card p-3 text-center">
+        <div class="kpi-valor">${valor}</div>
+        <div class="kpi-etiqueta">${etiqueta}</div>
+      </div>
+    </div>`;
+}
+
+async function cargar() {
+  const datos = await fetchJSON("/api/resumen");
+  const k = datos.kpis || {};
+
+  document.getElementById("kpis").innerHTML = [
+    tarjetaKpi(k.tiendas_activas ?? "—", "Tiendas activas"),
+    tarjetaKpi((k.total_folletos ?? 0).toLocaleString("es-MX"), "Folletos cargados"),
+    tarjetaKpi((k.productos_con_precio ?? 0).toLocaleString("es-MX"), "Precios detectados"),
+    tarjetaKpi(k.folleto_mas_reciente ?? "—", "Folleto más reciente"),
+  ].join("");
+
+  const cats = datos.top_categorias || [];
+  renderChart("chartCategorias", {
+    type: "bar",
+    data: {
+      labels: cats.map((c) => c.categoria),
+      datasets: [{ label: "Precios", data: cats.map((c) => c.n), backgroundColor: "#0d6efd" }],
+    },
+    options: { indexAxis: "y", plugins: { legend: { display: false } } },
+  });
+
+  const tiendas = datos.folletos_por_tienda || [];
+  renderChart("chartTiendas", {
+    type: "bar",
+    data: {
+      labels: tiendas.map((t) => t.tienda),
+      datasets: [{ label: "Folletos", data: tiendas.map((t) => t.n), backgroundColor: "#198754" }],
+    },
+    options: { plugins: { legend: { display: false } } },
+  });
+}
+
+cargar();
+</script>
+{% endblock %}

@@ -15,6 +15,8 @@
 -- v_precios_actuales
 -- Precios extraídos con descuento calculado y metadata del folleto.
 -- Para precios vigentes hoy filtrar: WHERE vigencia_hasta >= CURRENT_DATE
+-- "id" agregado 23-ago-2026 (= extracciones.id, real y unico por fila) --
+-- requisito de Django ORM: todo modelo managed=False necesita una PK.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_precios_actuales AS
 SELECT
@@ -36,7 +38,8 @@ SELECT
     f.fuente,
     f.folleto_id_fuente,
     e.confianza_ocr,
-    e.created_at
+    e.created_at,
+    e.id                                                         AS id
 FROM extracciones e
 JOIN tiendas  t ON t.id = e.tienda_id
 JOIN folletos f ON f.id = e.folleto_id
@@ -119,6 +122,7 @@ COMMENT ON VIEW v_calidad_pipeline IS
 -- v_historico_precios
 -- Evolución de precio de un producto a lo largo del tiempo por tienda.
 -- Base para gráficas de tendencia en el dashboard BI.
+-- "id" agregado 23-ago-2026 (= extracciones.id) -- ver nota en v_precios_actuales.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_historico_precios AS
 SELECT
@@ -130,7 +134,8 @@ SELECT
     e.valor                 AS precio,
     e.valor_anterior        AS precio_anterior,
     f.folleto_id_fuente,
-    f.fuente
+    f.fuente,
+    e.id                     AS id
 FROM extracciones e
 JOIN tiendas  t ON t.id = e.tienda_id
 JOIN folletos f ON f.id = e.folleto_id
@@ -148,6 +153,13 @@ COMMENT ON VIEW v_historico_precios IS
 -- -----------------------------------------------------------------------------
 -- v_eventos_activos
 -- Campañas promocionales vigentes hoy.
+-- "id" agregado 23-ago-2026 -- MIN(ep.id), NO ep.id en el GROUP BY: un primer
+-- intento agrego ep.id directo al GROUP BY y esto rompio la agregacion (la
+-- vista paso de ~44 filas agrupadas por texto de campana a 131, una por fila
+-- cruda de eventos_promo, perdiendo el COUNT sumado entre folletos) --
+-- detectado comparando el conteo de la vista contra SELECT COUNT(*) FROM
+-- eventos_promo antes de comitear. MIN(ep.id) da un id estable por grupo sin
+-- tocar que columnas definen el agrupamiento.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_eventos_activos AS
 SELECT
@@ -156,7 +168,8 @@ SELECT
     ep.fecha_inicio,
     ep.fecha_fin,
     ep.texto_raw,
-    COUNT(e.id)         AS num_precios_asociados
+    COUNT(e.id)         AS num_precios_asociados,
+    MIN(ep.id)          AS id
 FROM eventos_promo ep
 JOIN tiendas t ON t.id = ep.tienda_id
 LEFT JOIN extracciones e

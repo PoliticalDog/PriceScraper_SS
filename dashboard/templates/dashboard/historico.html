@@ -1,0 +1,106 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Histórico de precios — PriceScraper{% endblock %}
+
+{% block contenido %}
+<h4 class="mb-3">Histórico de precios</h4>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Producto</label>
+      <input type="text" id="fProducto" class="form-control" list="sugerenciasProducto" placeholder="Escribe para buscar...">
+      <datalist id="sugerenciasProducto"></datalist>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Tienda (opcional)</label>
+      <select id="fTienda" class="form-select" multiple size="4"></select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Desde</label>
+      <input type="date" id="fDesde" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Hasta</label>
+      <input type="date" id="fHasta" class="form-control">
+    </div>
+    <div class="col-md-1">
+      <button class="btn btn-primary w-100" id="btnAplicar">Ver</button>
+    </div>
+  </div>
+</div>
+
+<div class="chart-card mb-3">
+  <canvas id="chartHistorico" height="220"></canvas>
+</div>
+
+<table id="tablaHistorico" class="table table-striped table-hover w-100"></table>
+{% endblock %}
+
+{% block script %}
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+const coloresPaleta = ["#0d6efd", "#198754", "#fd7e14", "#dc3545", "#6f42c1", "#20c997"];
+
+async function cargarFiltros() {
+  const tiendas = await fetchJSON("/api/filtros/tiendas");
+  document.getElementById("fTienda").innerHTML =
+    tiendas.map((t) => `<option value="${t.nombre}">${t.nombre}</option>`).join("");
+}
+
+let debounceId;
+document.getElementById("fProducto").addEventListener("input", (e) => {
+  clearTimeout(debounceId);
+  debounceId = setTimeout(async () => {
+    const sugerencias = await fetchJSON(`/api/productos/sugerencias?q=${encodeURIComponent(e.target.value)}`);
+    document.getElementById("sugerenciasProducto").innerHTML =
+      sugerencias.map((s) => `<option value="${s}">`).join("");
+  }, 250);
+});
+
+async function cargar() {
+  const producto = document.getElementById("fProducto").value.trim();
+  if (!producto) return;
+
+  const params = {
+    producto: producto,
+    tienda: valoresSeleccionados(document.getElementById("fTienda")),
+    desde: document.getElementById("fDesde").value,
+    hasta: document.getElementById("fHasta").value,
+  };
+  const datos = await fetchJSON(`/api/historico${qs(params)}`);
+
+  renderTabla("#tablaHistorico", datos, [
+    { data: "tienda", title: "Tienda" },
+    { data: "fecha", title: "Fecha" },
+    { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
+    { data: "precio_anterior", title: "Precio anterior", render: (d) => formatoMoneda(d) },
+  ], { order: [[1, "asc"]] });
+
+  const porTienda = {};
+  datos.forEach((d) => {
+    if (!porTienda[d.tienda]) porTienda[d.tienda] = [];
+    porTienda[d.tienda].push({ x: d.fecha, y: d.precio });
+  });
+
+  const datasets = Object.entries(porTienda).map(([tienda, puntos], i) => ({
+    label: tienda,
+    data: puntos,
+    borderColor: coloresPaleta[i % coloresPaleta.length],
+    fill: false,
+    tension: 0.1,
+  }));
+
+  renderChart("chartHistorico", {
+    type: "line",
+    data: { datasets },
+    options: {
+      parsing: false,
+      scales: { x: { type: "time", time: { unit: "week" } } },
+    },
+  });
+}
+
+document.getElementById("btnAplicar").addEventListener("click", cargar);
+cargarFiltros();
+</script>
+{% endblock %}

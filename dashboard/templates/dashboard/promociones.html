@@ -1,0 +1,58 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Promociones y eventos — PriceScraper{% endblock %}
+
+{% block contenido %}
+<h4 class="mb-3">Promociones y eventos</h4>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Tienda</label>
+      <select id="fTienda" class="form-select" multiple size="4"></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Desde</label>
+      <input type="date" id="fDesde" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Hasta</label>
+      <input type="date" id="fHasta" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<table id="tablaEventos" class="table table-striped table-hover w-100"></table>
+{% endblock %}
+
+{% block script %}
+<script>
+async function cargarFiltros() {
+  const tiendas = await fetchJSON("/api/filtros/tiendas");
+  document.getElementById("fTienda").innerHTML =
+    tiendas.map((t) => `<option value="${t.nombre}">${t.nombre}</option>`).join("");
+}
+
+async function cargarTabla() {
+  const params = {
+    tienda: valoresSeleccionados(document.getElementById("fTienda")),
+    desde: document.getElementById("fDesde").value,
+    hasta: document.getElementById("fHasta").value,
+  };
+  const datos = await fetchJSON(`/api/eventos${qs(params)}`);
+
+  renderTabla("#tablaEventos", datos, [
+    { data: "nombre_evento", title: "Evento" },
+    { data: "tienda", title: "Tienda" },
+    { data: "fecha_inicio", title: "Desde" },
+    { data: "fecha_fin", title: "Hasta" },
+    { data: "num_precios_asociados", title: "# Precios asociados" },
+  ], { order: [[2, "desc"]] });
+}
+
+document.getElementById("btnAplicar").addEventListener("click", cargarTabla);
+cargarFiltros().then(cargarTabla);
+</script>
+{% endblock %}

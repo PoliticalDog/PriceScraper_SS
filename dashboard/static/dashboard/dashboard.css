@@ -1,0 +1,48 @@
+body {
+  background-color: #f4f6f8;
+}
+
+.kpi-card {
+  border: none;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.kpi-card .kpi-valor {
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.kpi-card .kpi-etiqueta {
+  color: #6c757d;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.chart-card {
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.filtros-card {
+  background: #fff;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1rem;
+}
+
+table.dataTable {
+  background: #fff;
+}
+
+.fila-alerta {
+  background-color: #fff3cd !important;
+}
+
+.fila-critica {
+  background-color: #f8d7da !important;
+}

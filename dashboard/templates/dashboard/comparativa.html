@@ -1,0 +1,87 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Comparativa entre tiendas — PriceScraper{% endblock %}
+
+{% block contenido %}
+<h4 class="mb-3">Comparativa de precios entre tiendas</h4>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Categoría</label>
+      <select id="fCategoria" class="form-select" multiple size="4"></select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Producto</label>
+      <input type="text" id="fBusqueda" class="form-control" placeholder="Buscar...">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Mín. tiendas</label>
+      <input type="number" id="fMinTiendas" class="form-control" value="2" min="1">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <table id="tablaComparativa" class="table table-striped table-hover w-100"></table>
+  </div>
+  <div class="col-lg-5">
+    <div class="chart-card">
+      <h6 id="tituloGrafico">Selecciona un producto de la tabla para ver el precio por tienda</h6>
+      <canvas id="chartPorTienda" height="280"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+async function cargarFiltros() {
+  const categorias = await fetchJSON("/api/filtros/categorias");
+  document.getElementById("fCategoria").innerHTML =
+    categorias.map((c) => `<option value="${c}">${c}</option>`).join("");
+}
+
+async function cargarGraficoProducto(producto) {
+  document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;
+  const datos = await fetchJSON(`/api/comparativa/${encodeURIComponent(producto)}/por-tienda`);
+  renderChart("chartPorTienda", {
+    type: "bar",
+    data: {
+      labels: datos.map((d) => d.tienda),
+      datasets: [{ label: "Precio", data: datos.map((d) => d.precio), backgroundColor: "#fd7e14" }],
+    },
+    options: { plugins: { legend: { display: false } } },
+  });
+}
+
+async function cargarTabla() {
+  const params = {
+    categoria: valoresSeleccionados(document.getElementById("fCategoria")),
+    q: document.getElementById("fBusqueda").value,
+    min_tiendas: document.getElementById("fMinTiendas").value,
+  };
+  const datos = await fetchJSON(`/api/comparativa${qs(params)}`);
+
+  const tabla = renderTabla("#tablaComparativa", datos, [
+    { data: "producto", title: "Producto" },
+    { data: "categoria", title: "Categoría" },
+    { data: "precio_min", title: "Mín.", render: (d) => formatoMoneda(d) },
+    { data: "precio_max", title: "Máx.", render: (d) => formatoMoneda(d) },
+    { data: "diferencia", title: "Diferencia", render: (d) => formatoMoneda(d) },
+    { data: "num_tiendas", title: "# Tiendas" },
+  ], { order: [[4, "desc"]] });
+
+  $("#tablaComparativa tbody").off("click").on("click", "tr", function () {
+    const fila = tabla.row(this).data();
+    if (fila) cargarGraficoProducto(fila.producto);
+  });
+}
+
+document.getElementById("btnAplicar").addEventListener("click", cargarTabla);
+cargarFiltros().then(cargarTabla);
+</script>
+{% endblock %}
