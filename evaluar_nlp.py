@@ -34,6 +34,40 @@ def pct(a: int, b: int) -> str:
     return f"{(a / b * 100):.1f}%" if b else "  n/a"
 
 
+def tasa(a: int, b: int) -> float:
+    return a / b if b else 0.0
+
+
+def f1_score(precision: float, recall: float) -> float:
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
+
+
+def precision_recall_f1(agregado: dict, prefijo: str) -> dict:
+    """
+    Precision/recall/F1 para una categoria (producto/precio/promo) a partir
+    de un dict agregado (por tienda o global) con los campos de
+    ResultadoPaginaEval. "prefijo" es "productos"/"precios"/"promos".
+
+    Recall reusa el mismo campo que ya se reportaba antes de F1-score
+    (24-ago-2026, criterio "NLP: F1-score >= 70%" de la propuesta, nunca
+    antes calculado -- solo se media recall). Precision es nuevo: de cada
+    bloque que el NLP clasifico en esta categoria, cuantos son correctos
+    (ver nlp/evaluador_calidad.py, campos *_nlp_clasificados/*_nlp_correctos).
+    "productos_ok" se llama en realidad "productos_nlp_ok" -- unica
+    inconsistencia de nombres heredada del evaluador original.
+    """
+    campo_ok = "productos_nlp_ok" if prefijo == "productos" else f"{prefijo}_ok"
+    recall = tasa(agregado[campo_ok], agregado[f"{prefijo}_total"])
+    precision = tasa(agregado[f"{prefijo}_nlp_correctos"], agregado[f"{prefijo}_nlp_clasificados"])
+    return {
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1_score(precision, recall), 4),
+    }
+
+
 def main():
     SALIDA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -69,6 +103,10 @@ def main():
         "productos_total", "productos_ocr_ok", "productos_nlp_ok",
         "precios_total", "precios_ok", "precios_mal_clasificados",
         "promos_total", "promos_ok",
+        # Precision (24-ago-2026, para F1-score -- ver nlp/evaluador_calidad.py)
+        "productos_nlp_clasificados", "productos_nlp_correctos",
+        "precios_nlp_clasificados", "precios_nlp_correctos",
+        "promos_nlp_clasificados", "promos_nlp_correctos",
     ]
 
     filas_paginas = []
@@ -150,6 +188,21 @@ def main():
     print(f"  Detectadas:               {g['promos_ok']}  ({pct(g['promos_ok'], g['promos_total'])})")
     print("=" * 88)
 
+    # ---------------- F1-score (criterio "NLP: F1-score >= 70%" de la propuesta) ----------------
+    f1_producto = precision_recall_f1(g, "productos")
+    f1_precio   = precision_recall_f1(g, "precios")
+    f1_promo    = precision_recall_f1(g, "promos")
+    f1_promedio = round((f1_producto["f1"] + f1_precio["f1"] + f1_promo["f1"]) / 3, 4)
+
+    print("\nF1-SCORE (criterio de exito de la propuesta: >= 70%)")
+    print(f"{'CATEGORIA':<12} {'PRECISION':>10} {'RECALL':>10} {'F1':>10}")
+    for nombre, r in [("Producto", f1_producto), ("Precio", f1_precio), ("Promo", f1_promo)]:
+        print(f"{nombre:<12} {r['precision']*100:>9.1f}% {r['recall']*100:>9.1f}% {r['f1']*100:>9.1f}%")
+    print(f"{'PROMEDIO':<12} {'':>10} {'':>10} {f1_promedio*100:>9.1f}%")
+    print(f"\n{'CUMPLE >= 70%' if f1_promedio >= 0.70 else 'NO CUMPLE 70%'} "
+          f"(F1 promedio = {f1_promedio*100:.1f}%)")
+    print("=" * 88)
+
     # ---------------- Guardar reporte detallado ----------------
     reporte = {
         "folletos_en_dataset_manual": len(archivos_manual),
@@ -157,6 +210,13 @@ def main():
         "folletos_sin_datos": sin_datos,
         "por_tienda": {t: dict(a) for t, a in agregados_tienda.items()},
         "global": dict(g),
+        "f1_score": {
+            "producto": f1_producto,
+            "precio": f1_precio,
+            "promo": f1_promo,
+            "promedio": f1_promedio,
+            "cumple_criterio_70pct": f1_promedio >= 0.70,
+        },
         "fallos_producto": fallos_producto_muestra,
         "fallos_precio": fallos_precio_muestra,
         "fallos_promo": fallos_promo_muestra,

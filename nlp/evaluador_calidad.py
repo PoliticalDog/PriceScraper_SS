@@ -77,6 +77,21 @@ class ResultadoPaginaEval:
     precios_fallidos: list = field(default_factory=list)    # [(producto, precio)]
     promos_fallidas: list = field(default_factory=list)     # [texto]
 
+    # ---- Precision (24-ago-2026, para F1-score real vs criterio de la propuesta) ----
+    # Los campos de arriba miden RECALL (de cada item del ground truth, se
+    # encontro?). Estos miden PRECISION en la direccion inversa (de cada
+    # bloque que el NLP clasifico, es correcto?) -- necesarios para F1, que
+    # castiga tanto lo que no se encuentra como el ruido que se clasifica de
+    # mas (ej. slogans marcados como PRODUCTO). Mismo umbral/metodologia de
+    # recall_texto que el resto del evaluador, solo invertido: se busca el
+    # texto del bloque NLP dentro del corpus del ground truth.
+    productos_nlp_clasificados: int = 0
+    productos_nlp_correctos: int = 0
+    precios_nlp_clasificados: int = 0
+    precios_nlp_correctos: int = 0
+    promos_nlp_clasificados: int = 0
+    promos_nlp_correctos: int = 0
+
 
 def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict | None) -> ResultadoPaginaEval:
     res = ResultadoPaginaEval(pagina=pagina_gt["pagina"])
@@ -142,6 +157,42 @@ def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict |
             res.promos_ok += 1
         else:
             res.promos_fallidas.append(promo.get("texto", "") or mecanica)
+
+    # ---- Precision: de cada bloque que el NLP clasifico, es correcto? ----
+    # Productos: se busca el texto de CADA bloque NLP dentro del corpus del
+    # ground truth (inverso al bloque de arriba, misma funcion recall_texto).
+    corpus_gt_productos = corpus_de_bloques(pagina_gt.get("articulos", []), "producto")
+    res.productos_nlp_clasificados = len(nlp_productos)
+    for bloque in nlp_productos:
+        ok, _ = recall_texto(bloque.get("texto", ""), corpus_gt_productos)
+        if ok:
+            res.productos_nlp_correctos += 1
+
+    # Precios: un bloque PRECIO es correcto si su valor numerico coincide
+    # (tolerancia) con ALGUN precio del ground truth de la pagina -- no se
+    # exige que sea el precio de "su" producto asociado, mismo criterio
+    # laxo que ya usa el bloque de recall de arriba.
+    precios_gt_valores = [
+        art["precio"] for art in pagina_gt.get("articulos", []) if art.get("precio") is not None
+    ]
+    res.precios_nlp_clasificados = len(nlp_precios)
+    for p in nlp_precios:
+        valor = p.get("valor")
+        if valor is not None and any(abs(valor - pv) < TOLERANCIA_PRECIO for pv in precios_gt_valores):
+            res.precios_nlp_correctos += 1
+
+    # Promos: mismo criterio de texto que productos, contra la mecanica real
+    # del ground truth (notas/texto, igual que el bloque de recall de arriba).
+    textos_gt_promo = [
+        (promo.get("notas", "") or promo.get("texto", ""))
+        for promo in pagina_gt.get("promociones_pagina", [])
+    ]
+    corpus_gt_promos = " ".join(normalizar(t) for t in textos_gt_promo if t)
+    res.promos_nlp_clasificados = len(nlp_promos)
+    for bloque in nlp_promos:
+        ok, _ = recall_texto(bloque.get("texto", ""), corpus_gt_promos)
+        if ok:
+            res.promos_nlp_correctos += 1
 
     return res
 
