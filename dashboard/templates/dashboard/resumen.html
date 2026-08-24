@@ -24,12 +24,17 @@
 
 {% block script %}
 <script>
-function tarjetaKpi(valor, etiqueta) {
+function tarjetaKpi(icono, valor, etiqueta) {
   return `
     <div class="col-6 col-lg-3">
-      <div class="card kpi-card p-3 text-center">
-        <div class="kpi-valor">${valor}</div>
-        <div class="kpi-etiqueta">${etiqueta}</div>
+      <div class="card kpi-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="kpi-icono"><i class="ti ${icono}"></i></div>
+          <div>
+            <div class="kpi-valor">${valor}</div>
+            <div class="kpi-etiqueta">${etiqueta}</div>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -39,10 +44,10 @@ async function cargar() {
   const k = datos.kpis || {};
 
   document.getElementById("kpis").innerHTML = [
-    tarjetaKpi(k.tiendas_activas ?? "—", "Tiendas activas"),
-    tarjetaKpi((k.total_folletos ?? 0).toLocaleString("es-MX"), "Folletos cargados"),
-    tarjetaKpi((k.productos_con_precio ?? 0).toLocaleString("es-MX"), "Precios detectados"),
-    tarjetaKpi(k.folleto_mas_reciente ?? "—", "Folleto más reciente"),
+    tarjetaKpi("ti-building-store", k.tiendas_activas ?? "—", "Tiendas activas"),
+    tarjetaKpi("ti-files", (k.total_folletos ?? 0).toLocaleString("es-MX"), "Folletos cargados"),
+    tarjetaKpi("ti-currency-dollar", (k.productos_con_precio ?? 0).toLocaleString("es-MX"), "Precios detectados"),
+    tarjetaKpi("ti-calendar", k.folleto_mas_reciente ?? "—", "Folleto más reciente"),
   ].join("");
 
   const cats = datos.top_categorias || [];
@@ -50,7 +55,7 @@ async function cargar() {
     type: "bar",
     data: {
       labels: cats.map((c) => c.categoria),
-      datasets: [{ label: "Precios", data: cats.map((c) => c.n), backgroundColor: "#0d6efd" }],
+      datasets: [{ label: "Precios", data: cats.map((c) => c.n), backgroundColor: "#4A3AA7" }],
     },
     options: { indexAxis: "y", plugins: { legend: { display: false } } },
   });
@@ -60,7 +65,7 @@ async function cargar() {
     type: "bar",
     data: {
       labels: tiendas.map((t) => t.tienda),
-      datasets: [{ label: "Folletos", data: tiendas.map((t) => t.n), backgroundColor: "#198754" }],
+      datasets: [{ label: "Folletos", data: tiendas.map((t) => t.n), backgroundColor: "#008300" }],
     },
     options: { plugins: { legend: { display: false } } },
   });

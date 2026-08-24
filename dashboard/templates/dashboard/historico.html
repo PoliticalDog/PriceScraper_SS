@@ -39,7 +39,9 @@
 {% block script %}
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>
-const coloresPaleta = ["#0d6efd", "#198754", "#fd7e14", "#dc3545", "#6f42c1", "#20c997"];
+// Paleta categorica validada (skill dataviz, ver dashboard.css) -- orden fijo,
+// nunca reordenar por serie/tienda seleccionada.
+const coloresPaleta = ["#4A3AA7", "#2A78D6", "#EB6834", "#1BAF7A", "#EDA100", "#E87BA4", "#008300", "#E34948"];
 
 async function cargarFiltros() {
   const tiendas = await fetchJSON("/api/filtros/tiendas");

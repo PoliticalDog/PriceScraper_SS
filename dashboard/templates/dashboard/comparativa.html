@@ -52,7 +52,7 @@ async function cargarGraficoProducto(producto) {
     type: "bar",
     data: {
       labels: datos.map((d) => d.tienda),
-      datasets: [{ label: "Precio", data: datos.map((d) => d.precio), backgroundColor: "#fd7e14" }],
+      datasets: [{ label: "Precio", data: datos.map((d) => d.precio), backgroundColor: "#E34948" }],
     },
     options: { plugins: { legend: { display: false } } },
   });

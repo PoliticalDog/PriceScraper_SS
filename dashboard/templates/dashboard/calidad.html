@@ -68,7 +68,23 @@ async function cargarTabla() {
     { data: "total_paginas", title: "Págs. total" },
     { data: "confianza_ocr_prom", title: "Confianza OCR" },
     { data: "tasa_util_prom", title: "Tasa útil" },
-    { data: "estado", title: "Estado" },
+    {
+      data: "estado", title: "Estado",
+      render: (estado, tipo, fila) => {
+        if (tipo !== "display") return estado;
+        const tasa = fila.tasa_util_prom;
+        // El color de fondo de la fila (fila-critica/fila-alerta) nunca va
+        // solo -- siempre acompañado de icono + texto (regla de la skill
+        // dataviz: "status colors... always paired with an icon + label").
+        if (tasa !== null && tasa !== undefined && tasa < 0.2) {
+          return `<i class="ti ti-alert-triangle text-danger"></i> ${estado}`;
+        }
+        if (tasa !== null && tasa !== undefined && tasa < 0.4) {
+          return `<i class="ti ti-alert-circle text-warning"></i> ${estado}`;
+        }
+        return estado;
+      },
+    },
   ], {
     order: [[7, "asc"]],
     rowCallback: function (row, data) {

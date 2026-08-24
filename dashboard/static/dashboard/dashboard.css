@@ -1,20 +1,110 @@
+/* Paleta de marca (UI/chrome) extraida de sources/capturas/estilo_1.webp por
+   muestreo de pixeles (24-ago-2026): morado como color de identidad para
+   navbar/botones/acentos. Esto es tinta de marca, no codifica datos, asi que
+   no pasa por el validador de la skill dataviz.
+
+   Paleta de GRAFICAS (marcas de datos) por separado, 24-ago-2026: la version
+   inicial (colores tambien extraidos de la imagen) fallo el validador de la
+   skill dataviz -- verde/cian/ambar quedaban por encima de la banda de
+   luminosidad (L 0.77-0.80, el techo es 0.77) y por debajo de 3:1 de
+   contraste contra el fondo. Se reemplazo por la paleta categorica validada
+   de la skill (references/palette.md), rotada para empezar en violeta (la
+   mas cercana a la marca): pasa luminosidad/croma/separacion CVD/piso de
+   vision normal, con WARN de contraste en 4 de 8 tonos -- mitigado porque
+   este dashboard ya trae leyenda + vista de tabla en toda grafica multi-serie
+   (la mitigacion que exige la skill para ese WARN). Ver dashboard.js y los
+   <script> de cada plantilla para donde se usa cada slot. */
+:root {
+  --color-morado: #786aca;
+  --color-morado-oscuro: #665bb0;
+  --color-morado-claro: #e3e1f4;
+  --color-fondo: #f8f6f9;
+  --color-texto: #444445;
+  --color-texto-muted: #8b8b96;
+
+  /* Paleta categorica validada (dataviz skill), orden fijo -- nunca ciclar
+     ni reordenar por serie, ver color-formula.md "Fixed hue anchors". */
+  --serie-1: #4a3aa7; /* violeta -- cercano a la marca */
+  --serie-2: #2a78d6; /* azul */
+  --serie-3: #eb6834; /* naranja */
+  --serie-4: #1baf7a; /* aqua */
+  --serie-5: #eda100; /* amarillo */
+  --serie-6: #e87ba4; /* magenta */
+  --serie-7: #008300; /* verde */
+  --serie-8: #e34948; /* rojo */
+
+  /* Sobreescribe las variables de Bootstrap 5 -- se propaga solo a
+     btn-primary, links, focus rings, etc. sin tocar cada plantilla. */
+  --bs-primary: var(--color-morado);
+  --bs-primary-rgb: 120, 106, 202;
+  --bs-link-color: var(--color-morado);
+  --bs-link-color-rgb: 120, 106, 202;
+  --bs-link-hover-color: var(--color-morado-oscuro);
+  --bs-link-hover-color-rgb: 102, 91, 176;
+}
+
 body {
-  background-color: #f4f6f8;
+  background-color: var(--color-fondo);
+  color: var(--color-texto);
+}
+
+.navbar.bg-dark {
+  background-color: var(--color-morado) !important;
+}
+
+.navbar .nav-link.active {
+  background-color: rgba(255, 255, 255, 0.18);
+  border-radius: 0.4rem;
+}
+
+.btn-primary {
+  background-color: var(--color-morado);
+  border-color: var(--color-morado);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--color-morado-oscuro);
+  border-color: var(--color-morado-oscuro);
 }
 
 .kpi-card {
   border: none;
+  border-left: 3px solid var(--color-morado);
   border-radius: 0.75rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
+.kpi-icono {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.6rem;
+  background: var(--color-morado-claro);
+  color: var(--color-morado);
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+/* Navbar: separacion entre icono y texto del link */
+.navbar-nav .nav-link i {
+  margin-right: 0.35rem;
+}
+
 .kpi-card .kpi-valor {
+  /* La skill dataviz: "el texto nunca lleva el color de la serie" -- el
+     valor va en tinta oscura normal (coincide ademas con la imagen de
+     referencia, donde estos numeros tampoco eran morados). La identidad de
+     marca queda en el borde izquierdo de la tarjeta, no en el numero. */
   font-size: 2rem;
   font-weight: 600;
+  color: var(--color-texto);
 }
 
 .kpi-card .kpi-etiqueta {
-  color: #6c757d;
+  color: var(--color-texto-muted);
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -27,6 +117,11 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
+.chart-card h6 {
+  color: var(--color-texto);
+  font-weight: 600;
+}
+
 .filtros-card {
   background: #fff;
   border-radius: 0.75rem;
@@ -35,14 +130,41 @@ body {
   margin-bottom: 1rem;
 }
 
+.filtros-card label {
+  color: var(--color-texto-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 table.dataTable {
   background: #fff;
 }
 
+table.dataTable thead {
+  color: var(--color-texto);
+}
+
+/* Coincide con el badge activo de DataTables por defecto (azul Bootstrap);
+   se sobreescribe para que el paginador tambien siga la paleta. */
+.dataTables_wrapper .page-link {
+  color: var(--color-morado);
+}
+
+/* Bug encontrado 24-ago-2026: la regla de arriba pintaba el TEXTO de todos
+   los links de pagina en morado, incluyendo el activo -- que tambien tiene
+   fondo morado (regla de abajo). Texto morado sobre fondo morado = numero
+   invisible. Esta regla va DESPUES para ganar la cascada y forzar texto
+   blanco solo en el link activo. */
+.dataTables_wrapper .page-item.active .page-link {
+  background-color: var(--color-morado);
+  border-color: var(--color-morado);
+  color: #fff;
+}
+
 .fila-alerta {
-  background-color: #fff3cd !important;
+  background-color: #fdf1e0 !important;
 }
 
 .fila-critica {
-  background-color: #f8d7da !important;
+  background-color: #fbe4e2 !important;
 }
