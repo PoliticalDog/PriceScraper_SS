@@ -1,34 +1,8 @@
+# Modulo especializado de ofertomat
+# Error en caputura de URL para identificador unico de folleto (tiene ids repetidos de diferentes folletos y alunas url no siguen patron de paginado)
+#Cuenta cn muchas protecciones
+
 """
-ofertomat.py
-Adaptador para Ofertomat.mx.
-
-Notas de diseño:
-  1. _navegar usa domcontentloaded por defecto (Ofertomat tiene requests
-     continuas de geolocalización/analytics que impiden llegar a networkidle),
-     con recreacion de pagina si crashea.
-  2. _parsear_tarjetas filtra logos, redes sociales y basura.
-  3. folleto_id se extrae del numero al FINAL de la URL (ej: 127756).
-  4. El visor carga las imagenes de las paginas de forma perezosa: solo pide
-     la imagen de la pagina actual. Por eso obtener_paginas_folleto navega
-     secuencialmente ?page=2, ?page=3, ... (ademas de la url base = pagina 1),
-     escuchando pasivamente (page.on("request")) la request al CDN que
-     dispara cada navegacion, hasta que una pagina no dispare ninguna
-     request nueva para ese folleto_id (fin del folleto -- esa ultima
-     "pagina" no tiene imagen propia, o el visor muestra miniaturas de
-     folletos recomendados en su lugar).
-  5. Las imagenes solo se sirven a traves del proxy thumbor con una URL
-     firmada (hash) que cambia por request -- no se puede adivinar/construir
-     la URL de una pagina sin que el visor la pida primero (confirmado: la
-     ruta directa al CDN sin thumbor siempre 404, y thumbor no acepta modo
-     "unsafe"). Por eso no hay atajo de solo-HTTP como Tiendeo tiene con el
-     fallback de DOM/regex -- hay que navegar con el browser si o si.
-  6. obtener_paginas_folleto usa page.on("request") (escucha pasiva), NO
-     page.route() (interceptor activo) -- confirmado con pruebas reales que
-     activar page.route(), aunque no bloquee nada, rompe la carga perezosa
-     del visor (deja de pedir la imagen de las paginas siguientes a la
-     primera). Por eso este metodo no bloquea recursos pesados (fonts,
-     analytics, etc.) como sí se podía hacer antes con page.route().
-
 CDN descubierto (URL real, vía thumbor, firma omitida):
   Portada:  na.leafletscdn.com/thumbor/<hash>/.../mx/data/{N}/{id}/0.jpg
   Páginas:  na.leafletscdn.com/thumbor/<hash>/.../mx/data/{N}/{id}/{num}.jpg
@@ -64,40 +38,29 @@ TIENDAS = {
     "arteli":           "https://www.ofertomat.mx/arteli/",
 }
 
-# Tiendas de interes en Ofertomat: no tienen equivalente en Tiendeo, asi que
-# son las unicas que debe tocar el rastreo masivo ("todas las tiendas") para
-# no duplicar informacion de supermercados que Tiendeo ya cubre.
-# Excluidas (ya cubiertas en Tiendeo): walmart, bodega-aurrera,
-# soriana (-> soriana-hiper/soriana-mercado en Tiendeo), chedraui, la-comer,
-# costco, heb, sams-club, oxxo, s-mart, alsuper, casa-ley.
+#Unicas tiendas de interes (diferentes de ofertomat)
 TIENDAS_UNICAS = ("arteli", "calimax", "7-eleven", "walmart-express")
 
-# Una pagina real de folleto termina en /{numero}.jpg|webp|png — distingue
 # paginas de otros assets del mismo CDN (logo.png, banners, etc.)
 _ES_PAGINA_CDN = re.compile(r"/(\d+)\.(?:jpg|webp|png)(?:\?|$)")
 
-# Palabras que indican que una tarjeta NO es un folleto real
+# Discriminadores que indican que una tarjeta NO es un folleto real
 PALABRAS_BASURA = {
     "logo", "facebook", "youtube", "instagram", "twitter",
-    "offers", "←", "→", "iniciar", "registrarse", "busca",
+    "offers", "←", "-->", "iniciar", "registrarse", "busca",
     "confirmar", "ubicación", "guardado",
 }
 
-
+# ------------------ Clase principal del scraper de Ofertomat ------------------
 class OfertomatScraper(BaseScraper):
 
     FUENTE   = "ofertomat"
     BASE_URL = "https://www.ofertomat.mx"
     _tienda_actual = ""  # slug de la tienda que se está scrapeando
 
-    # ── Override de _navegar para Ofertomat ───────────────────────────────────
+    # navegación con manejo de crash de página (recrea la página si crashea)
     async def _navegar(self, url: str, esperar: str = "domcontentloaded"):
-        """
-        Ofertomat tiene requests continuas de geolocalización/analytics
-        que impiden que networkidle se alcance. Usamos domcontentloaded
-        y esperamos 3 segundos manualmente.
-        Si la página crasheó, la recreamos antes de navegar.
-        """
+        
         try:
             # Si la página está en estado crashed, recrearla
             if self.page and self.page.is_closed():
@@ -125,11 +88,12 @@ class OfertomatScraper(BaseScraper):
             logger.error(f"Error navegando a {url}: {e}")
             raise
 
-    # ── Listado de folletos ───────────────────────────────────────────────────
+    # -------------- Listado de folletos --------------
 
+    # Obtiene la lista de folletos de una categoría/tienda, parseando las tarjetas de folleto
     async def obtener_folletos(self, categoria_url: str) -> list[dict]:
         # Guardar el slug de la tienda actual para filtrar tarjetas
-        # Ej: 'https://www.ofertomat.mx/walmart/' → 'walmart'
+        # 'https://www.ofertomat.mx/walmart/' --> 'walmart'
         partes = [p for p in categoria_url.replace(self.BASE_URL, "").split("/") if p]
         self._tienda_actual = partes[0] if partes else ""
 
@@ -143,6 +107,7 @@ class OfertomatScraper(BaseScraper):
         logger.info(f"[Ofertomat] {len(folletos)} folletos encontrados en {categoria_url}")
         return folletos
 
+    # ------------------ Parseo de tarjetas de folletos ------------------
     def _parsear_tarjetas(self, html: str) -> list[dict]:
         soup = BeautifulSoup(html, "html.parser")
         folletos = []
@@ -184,11 +149,12 @@ class OfertomatScraper(BaseScraper):
 
         return unicos
 
+    # ------------------ Parseo de datos de tarjeta individual ------------------
     def _extraer_datos_tarjeta(self, tarjeta) -> dict | None:
         href = tarjeta.get("href", "")
 
         # Extraer ID numérico del final de la URL
-        # Ej: /walmart/walmart-folleto-desde-15-04-2026-127756/ → 127756
+        # Ej: /walmart/walmart-folleto-desde-15-04-2026-127756/ --> 127756
         match_id = re.search(r"-(\d{5,})\/?$", href)
         if not match_id:
             return None
@@ -199,7 +165,7 @@ class OfertomatScraper(BaseScraper):
                       if href.startswith("/") else href)
 
         # Nombre de la tienda — extraer del primer segmento del href
-        # Ej: /walmart/walmart-folleto-... → "walmart"
+        # Ej: /walmart/walmart-folleto-... --> "walmart"
         segmentos = [s for s in href.split("/") if s]
         tienda_slug = segmentos[0] if segmentos else ""
         tienda = tienda_slug.replace("-", " ").title()
@@ -241,12 +207,7 @@ class OfertomatScraper(BaseScraper):
             "fecha_fin":    None,  # Ofertomat no expone fecha_fin en URL
         }
 
-    # Fallback para fecha_fin (y validacion cruzada de fecha_inicio): la pagina de
-    # DETALLE del folleto siempre trae la frase "durante los dias DD/MM/YYYY -
-    # DD/MM/YYYY" en el cuerpo (confirmado en Walmart, Bodega Aurrera, Calimax,
-    # Walmart Express -- a diferencia del <title>, que varia de formato por tienda
-    # y muchas veces solo trae la fecha de inicio). _extraer_fechas_url() nunca
-    # obtiene fecha_fin desde la URL (Ofertomat no la expone ahi).
+    # El folleto siempre trae la frase "durante los dias DD/MM/YYYY - DD/MM/YYYY" se obtiene desde ahi la metada
     def _extraer_fechas_detalle(self, html: str) -> tuple[str | None, str | None]:
         soup = BeautifulSoup(html, "html.parser")
         patron = re.compile(
@@ -259,22 +220,18 @@ class OfertomatScraper(BaseScraper):
         return f"{y1}-{m1}-{d1}", f"{y2}-{m2}-{d2}"
 
     # Navega a la pagina de detalle del folleto y extrae las fechas de vigencia
-    # (ver _extraer_fechas_detalle). Uso: solo cuando fecha_fin vino None del
-    # listado -- es una navegacion dedicada, no se reutiliza la de
-    # obtener_paginas_folleto porque esa usa esperar="commit" (carga minima
-    # para no romper el mecanismo de paginacion perezosa) y no siempre alcanza
-    # a renderizar el texto que necesitamos.
     async def obtener_fechas_detalle(self, url_folleto: str) -> tuple[str | None, str | None]:
         await self._navegar(url_folleto, esperar="domcontentloaded")
         html = await self.page.content()
         return self._extraer_fechas_detalle(html)
 
+    # ------------------ Parseo de fechas desde URL ------------------
     def _extraer_fechas_url(self, href: str) -> tuple[str | None, str | None]:
         """
         Extrae fecha de inicio desde la URL del folleto.
         Patrones encontrados:
-          desde-miercoles-15-04-2026  → 2026-04-15
-          desde-domingo-03052026      → 2026-05-03
+          desde-miercoles-15-04-2026  --> 2026-04-15
+          desde-domingo-03052026      --> 2026-05-03
         """
         # Patrón con guiones: desde-{dia_semana}-DD-MM-YYYY
         m = re.search(r"desde-\w+-(\d{2})-(\d{2})-(\d{4})", href)
@@ -288,35 +245,13 @@ class OfertomatScraper(BaseScraper):
 
         return None, None
 
-    # ── Páginas del folleto — navegación secuencial + intercepción de red ────
+    # -------------- Páginas del folleto - navegación secuencial + intercepción de red --------------
 
-    MAX_PAGINAS = 30
+    MAX_PAGINAS = 30    # límite de loop de busqueda
 
+    # Obtiene las páginas reales del folleto navegando secuencialmente ?page=2, ?page=3, ... 
     async def obtener_paginas_folleto(self, url_folleto: str) -> list[str]:
-        """
-        Obtiene las páginas reales del folleto navegando secuencialmente
-        ?page=2, ?page=3, ... (la url base = página 1) y escuchando la
-        request al CDN que cada navegación dispara -- el visor solo pide la
-        imagen de la página actual (lazy), no hay atajo por HTTP puro (ver
-        docstring del módulo: las URLs del CDN están firmadas por thumbor).
-
-        IMPORTANTE: se usa page.on("request") (escucha pasiva) y NO
-        page.route() (interceptor activo). Se confirmó con pruebas reales
-        que activar page.route() -- incluso sin bloquear ningún recurso --
-        rompe el mecanismo de carga perezosa del visor: a partir de la
-        segunda navegación deja de pedirse la imagen de la página nueva
-        (solo se re-pide el logo). Con on("request") pasivo el visor se
-        comporta igual que en un navegador normal y sí pide cada página.
-        Como consecuencia ya no se bloquean recursos (fonts/media/ads) en
-        este método -- el trade-off de cargar un poco más pesado es
-        preferible a que el scraping no funcione.
-
-        Se detiene en la primera página que no dispare ninguna request nueva
-        para este folleto_id: ahí termina el folleto (esa "página" no tiene
-        imagen propia, o el visor muestra miniaturas de folletos recomendados
-        en su lugar -- por eso el filtro exige que la URL sea del folleto_id
-        que estamos scrapeando, no de leafletscdn en general).
-        """
+        
         match_id = re.search(r"-(\d{5,})\/?$", url_folleto)
         folleto_id = match_id.group(1) if match_id else None
         if not folleto_id:
@@ -326,11 +261,10 @@ class OfertomatScraper(BaseScraper):
         patron_pagina_propia = re.compile(rf"/{folleto_id}/\d+\.(?:jpg|webp|png)(?:\?|$)")
         urls_capturadas: set[str] = set()
 
+        # Interceptor de requests para capturar URLs de imágenes del CDN
         def _on_request(request):
-            url = request.url
-            # Solo capturar páginas del folleto que estamos scrapeando --
+            url = request.url # Solo capturar páginas del folleto que se estan scrapeando
             # descarta logo.png y, sobre todo, las miniaturas de folletos
-            # recomendados de la pantalla final (llevan otro folleto_id).
             if "leafletscdn" in url and patron_pagina_propia.search(url):
                 urls_capturadas.add(url)
 
@@ -370,23 +304,20 @@ class OfertomatScraper(BaseScraper):
         logger.info(f"[Ofertomat] {len(paginas)} páginas en {url_folleto}")
         return paginas
 
+    # Ordena las URLs de imágenes por número de página.
     def _ordenar_paginas(self, urls: list[str]) -> list[str]:
-        """
-        Ordena las URLs de imágenes por número de página.
-        Las URLs del CDN tienen el patrón: .../data/1/{folleto_id}/{num_pagina}.jpg
-        Se extrae el último número antes de la extensión como clave de orden.
-        URLs sin número reconocible van al final.
-        """
+        # Las URLs del CDN tienen el patrón: .../data/1/{folleto_id}/{num_pagina}.jpg
+        # Se extrae el último número antes de la extensión como clave de orden, URLs sin número reconocible van al final.
         def _clave(url: str) -> int:
             # Extrae el número de página del último segmento antes de la extensión
-            # Ej: .../131170/3.jpg → 3  |  .../0.jpg → 0
+            # Ej: .../131170/3.jpg --> 3  |  .../0.jpg --> 0
             m = _ES_PAGINA_CDN.search(url)
             return int(m.group(1)) if m else 9999
 
         return sorted(urls, key=_clave)
 
+    # Extrae la URL de preview de la tarjeta del folleto (miniatura)
     def _extraer_url_preview(self, tarjeta, folleto_id: str) -> str:
-        """Extrae la URL de imagen de portada de la tarjeta del folleto."""
         for img in tarjeta.select("img"):
             src = img.get("src", "") or img.get("data-src", "")
             if src and "leafletscdn" in src:
@@ -394,8 +325,7 @@ class OfertomatScraper(BaseScraper):
         # Fallback vacío — se obtendrá al navegar al folleto
         return ""
 
-    # ── Métodos de conveniencia ───────────────────────────────────────────────
-
+    # scaping por tienda (slug) 
     async def scrapear_tienda(self, slug_tienda: str) -> list[dict]:
         if slug_tienda not in TIENDAS:
             raise ValueError(

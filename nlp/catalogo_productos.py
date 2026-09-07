@@ -17,7 +17,7 @@ CATALOGO = {
         ]
     },
 
-    # ----------------------- Electrónica y tecnología ───────────────────────────────────────────────
+    # ----------------------- Electrónica y tecnología -----------------------------------------------
     "electronica": {
         "nombre": "Electrónica",
         "keywords": [

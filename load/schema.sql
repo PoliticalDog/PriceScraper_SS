@@ -1,26 +1,11 @@
--- =============================================================================
--- PriceScraper MX — schema.sql
 -- Definición de tipos, tablas e índices en PostgreSQL
---
--- Uso:
---   psql -U <usuario> -d <base_datos> -f schema.sql
---
--- Idempotente: se puede ejecutar múltiples veces sin error.
--- Orden: extensiones → ENUMs → tablas → índices
--- =============================================================================
-
-
--- =============================================================================
--- 0. EXTENSIONES
--- =============================================================================
+-- uso: psql -U <usuario> -d <base_datos> -f schema.sql
 
 -- Búsqueda de similitud en texto_norm (productos con typos o variaciones OCR)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 
--- =============================================================================
 -- 1. TIPOS ENUM
--- =============================================================================
 
 DO $$ BEGIN
     CREATE TYPE fuente_enum AS ENUM (
@@ -55,14 +40,10 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 
--- =============================================================================
 -- 2. TABLAS
--- =============================================================================
 
--- -----------------------------------------------------------------------------
 -- tiendas
 -- Cadenas comerciales scrapeadas (Soriana, Walmart, Chedraui, etc.)
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tiendas (
     id          SERIAL          PRIMARY KEY,
     nombre      VARCHAR(100)    NOT NULL,
@@ -77,10 +58,8 @@ COMMENT ON COLUMN tiendas.slug        IS 'Identificador canónico normalizado (p
 COMMENT ON COLUMN tiendas.fuente_slug IS 'Slug original del scraper, puede ser erróneo (ej. walmart cuando es soriana)';
 
 
--- -----------------------------------------------------------------------------
 -- folletos
 -- Folletos digitales con metadata de vigencia y origen
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS folletos (
     id                  SERIAL                  PRIMARY KEY,
     tienda_id           INTEGER                 NOT NULL REFERENCES tiendas(id),
@@ -107,10 +86,8 @@ COMMENT ON COLUMN folletos.perfil_ocr         IS 'Perfil de preprocesamiento: co
 COMMENT ON COLUMN folletos.motor_ocr          IS 'Motor OCR usado: easyocr';
 
 
--- -----------------------------------------------------------------------------
 -- paginas
 -- Páginas individuales de cada folleto con métricas de calidad OCR/NLP
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS paginas (
     id                  SERIAL      PRIMARY KEY,
     folleto_id          INTEGER     NOT NULL REFERENCES folletos(id) ON DELETE CASCADE,
@@ -136,7 +113,6 @@ COMMENT ON TABLE  paginas           IS 'Páginas individuales de cada folleto';
 COMMENT ON COLUMN paginas.tasa_util IS 'Ratio entidades útiles / total bloques OCR (benchmark de calidad)';
 
 
--- -----------------------------------------------------------------------------
 -- productos_canonicos
 -- Catálogo deduplicado de identidades de producto (v3, 22-ago-2026).
 -- Semilla: nlp/normalizador.py (CATALOGO_CANONICO, match exacto/fuzzy).
@@ -144,7 +120,6 @@ COMMENT ON COLUMN paginas.tasa_util IS 'Ratio entidades útiles / total bloques 
 -- 'heuristico' (ver extracciones.metodo_norm) -- así el catálogo crece
 -- orgánicamente y las filas heurísticas quedan filtrables/auditables en vez
 -- de perderse como texto suelto.
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS productos_canonicos (
     id              SERIAL          PRIMARY KEY,
     nombre_canonico VARCHAR(150)    NOT NULL UNIQUE,
@@ -159,13 +134,11 @@ COMMENT ON COLUMN productos_canonicos.categoria  IS 'Departamento amplio (catalo
 COMMENT ON COLUMN productos_canonicos.aliases    IS 'Variantes de texto OCR ya vistas para este producto (crece con el tiempo)';
 
 
--- -----------------------------------------------------------------------------
 -- extracciones
 -- Tabla principal del pipeline. Un evento por entidad NLP detectada.
 -- Desde v3 (22-ago-2026) tambien persiste filas PRODUCTO y ATRIBUTO (antes
 -- se calculaban y se descartaban, solo su texto quedaba embebido en la fila
 -- PRECIO asociada por cercania bbox).
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS extracciones (
     id              BIGSERIAL               PRIMARY KEY,
     pagina_id       INTEGER                 NOT NULL REFERENCES paginas(id)   ON DELETE CASCADE,
@@ -186,7 +159,7 @@ CREATE TABLE IF NOT EXISTS extracciones (
     -- Calidad OCR
     confianza_ocr   FLOAT,
 
-    -- Posición en imagen (asociación posicional producto→precio/atributo)
+    -- Posición en imagen (asociación posicional producto-->precio/atributo)
     bbox_x          INTEGER,
     bbox_y          INTEGER,
     bbox_ancho      INTEGER,
@@ -228,10 +201,8 @@ COMMENT ON COLUMN extracciones.confianza_norm           IS 'Score 0.0–1.0 del 
 COMMENT ON COLUMN extracciones.metodo_norm              IS 'exacto | fuzzy | fuzzy_bajo | heuristico | sin_match (nlp/normalizador.py)';
 
 
--- -----------------------------------------------------------------------------
 -- eventos_promo
 -- Campañas comerciales detectadas (Julio Regalado, Hot Sale, Buen Fin…)
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS eventos_promo (
     id              SERIAL          PRIMARY KEY,
     folleto_id      INTEGER         NOT NULL REFERENCES folletos(id),
@@ -249,10 +220,8 @@ COMMENT ON TABLE  eventos_promo               IS 'Campañas comerciales detectad
 COMMENT ON COLUMN eventos_promo.nombre_evento IS 'Slug normalizado: julio_regalado, hot_sale, buen_fin, etc.';
 
 
--- -----------------------------------------------------------------------------
 -- alertas
 -- Monitoreo de precios por producto/tienda (capa BI futura)
--- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS alertas (
     id              SERIAL          PRIMARY KEY,
     tienda_id       INTEGER         REFERENCES tiendas(id),
@@ -267,9 +236,7 @@ COMMENT ON TABLE  alertas               IS 'Alertas de precio por producto. tien
 COMMENT ON COLUMN alertas.slug_producto IS 'Slug del nombre canónico del producto a monitorear';
 
 
--- =============================================================================
 -- 3. ÍNDICES
--- =============================================================================
 
 -- folletos
 CREATE INDEX IF NOT EXISTS ix_folleto_tienda_fecha  ON folletos     (tienda_id, fecha_inicio);
@@ -300,8 +267,3 @@ CREATE INDEX IF NOT EXISTS ix_evento_fechas         ON eventos_promo (fecha_inic
 -- alertas
 CREATE INDEX IF NOT EXISTS ix_alerta_tienda_prod    ON alertas (tienda_id, slug_producto);
 CREATE INDEX IF NOT EXISTS ix_alerta_activa         ON alertas (activa);
-
-
--- =============================================================================
--- FIN schema.sql
--- =============================================================================

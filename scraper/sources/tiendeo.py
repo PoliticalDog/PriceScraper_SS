@@ -1,4 +1,4 @@
-# Tiendeo scraper personalizado
+# Tiendeo scraper personalizado, usa los metodos de BaseScraper para navegar y extraer folletos de la web de Tiendeo
 
 import re
 import asyncio
@@ -10,9 +10,7 @@ from ..metodos_scraper import BaseScraper
 # inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
 
-# Normaliza texto para comparar nombre de tienda (tarjeta) contra slug esperado:
-# quita acentos, minusculas, solo alfanumerico. Ej: "Soriana Híper" y "soriana-hiper"
-# ambos dan "sorianahiper".
+# Normaliza (acentos, minusculas, espacios, caracteres especiales) para comparar lista de tiendas:
 def _normalizar_comparacion(texto: str) -> str:
     sin_acentos = unicodedata.normalize("NFKD", texto)
     sin_acentos = "".join(c for c in sin_acentos if not unicodedata.combining(c))
@@ -38,36 +36,32 @@ TIENDAS = {
     "merco":            "https://www.tiendeo.mx/ofertas-catalogos/merco",
 }
 
-# Para romper el loop de bloques
-MAX_PAGINAS = 60
+# --- Parametros de scraping ---
+MAX_PAGINAS = 60        # maximo loop de busqueda
+PAGINAS_POR_BLOQUE = 5  # paginas por bloque (visor)
 
-# Numero de paginas por bloque (ventana del visor)
-PAGINAS_POR_BLOQUE = 5
-
+# --- Extraccion ID folleto de URL ---
 # Extrae el "publication ID" de una URL de la imagen
-# page_assets/{publication_id}/{num_pagina}/page_{n}_level_{lvl}_{hash}.{ext}
-PATRON_PUBLICATION_ID = re.compile(r"/page_assets/(\d+)/")
+PATRON_PUBLICATION_ID = re.compile(r"/page_assets/(\d+)/")  # page_assets/{publication_id}/{num_pagina}/page_{n}_level_{lvl}_{hash}.{ext}
 
 # Extrae el ID de publicación de una URL de imagen
 def _publication_id(url: str) -> str | None:
     m = PATRON_PUBLICATION_ID.search(url)
     return m.group(1) if m else None
 
-# clase prinicpal de tiendeo
+# --- clase prinicpal de tiendeo ---
 class TiendeoScraper(BaseScraper):
 
     FUENTE   = "tiendeo"
     BASE_URL = "https://www.tiendeo.mx"
 
     # -------------------- Métodos principales de scraping --------------------
-
-    # Obtiene los folletos listados en una categoría o tienda específica.
-    # slug_esperado: si se da, descarta tarjetas de otras tiendas (ver _parsear_tarjetas).
+    # Obtiene los folletos listados en una categoría o tienda específica
     async def obtener_folletos(self, categoria_url: str, slug_esperado: str | None = None) -> list[dict]:
         async def _extraer():
             # carga los metodos estadnar de navegacion y carga
             await self._navegar(categoria_url)
-            await self._scroll_hasta_abajo(pasos=12) # Con 12 se logra cargar todos los folletos
+            await self._scroll_hasta_abajo(pasos=12) # Con 12 para tiendeo se logra cargar todos los folletos
             html = await self.page.content()
             return self._parsear_tarjetas(html, slug_esperado)
 
@@ -81,13 +75,10 @@ class TiendeoScraper(BaseScraper):
         """
         return folletos
 
-    # Parsea las tarjetas de folletos en la página de categoría/tienda de html a dict con datos estructurados.
-    # se busca <a> que contiene la informacion del folleto
-    #
-    # Cada página de categoría trae ademas de los folletos propios de la tienda un widget fijo
-    # de "folletos recomendados" con tarjetas de OTRAS tiendas (confirmado en vivo: mismo set de
-    # ~12-13 tarjetas repetido en distintas páginas de categoría). Si se da slug_esperado, se
-    # descartan las tarjetas cuya tienda no coincida (normalizada) con la tienda solicitada.
+# ------------------ Parseo de tarjetas de folletos ------------------ 
+    # Se busca eituqeta <a> con informacion del folleto
+    
+    # Se descartan las tarjetas cuya tienda no coincida (normalizada) con la tienda solicitada.
     def _parsear_tarjetas(self, html: str, slug_esperado: str | None = None) -> list[dict]:
         soup = BeautifulSoup(html, "html.parser") # b4 interpreta html y busca eleemntos en html y css
         folletos = []
@@ -240,13 +231,13 @@ class TiendeoScraper(BaseScraper):
 
             # si no hay mas paginas en el iguiente bloque, cierra
             if not urls_bloque:
-                logger.info(f"[Tiendeo] Sin páginas en bloque {pagina_inicio} → fin del folleto")
+                logger.info(f"[Tiendeo] Sin páginas en bloque {pagina_inicio} --> fin del folleto")
                 break
             
             nuevas = set(urls_bloque) - todas_urls
             # si no hay nuevas pagina se cierra
             if not nuevas:
-                logger.info(f"[Tiendeo] Sin páginas nuevas en bloque {pagina_inicio} → fin del folleto")
+                logger.info(f"[Tiendeo] Sin páginas nuevas en bloque {pagina_inicio} --> fin del folleto")
                 break
 
             todas_urls.update(nuevas)
@@ -318,7 +309,7 @@ class TiendeoScraper(BaseScraper):
                 for _ in range(5):  # 5 veces por 500 ms = 2.5 seg
                     if redirect_detectado.is_set():
                         logger.info(f"[Tiendeo] Redirect detectado en {url_con_pagina} "
-                                    f"→ deteniendo captura de este bloque")
+                                    f"--> deteniendo captura de este bloque")
                         break
                     await self.page.wait_for_timeout(500)
                 else:
@@ -328,7 +319,7 @@ class TiendeoScraper(BaseScraper):
                         for _ in range(3):  # 3 x 500ms = 1500ms equivalente al timeout original
                             if redirect_detectado.is_set():
                                 logger.info(f"[Tiendeo] Redirect detectado en {url_con_pagina} "
-                                            f"→ deteniendo captura de este bloque")
+                                            f"--> deteniendo captura de este bloque")
                                 break
                             await self.page.wait_for_timeout(500)
             finally:

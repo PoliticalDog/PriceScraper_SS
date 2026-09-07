@@ -1,14 +1,4 @@
-"""
-load/db_builder.py
-PriceScraper MX - Gestor de conexion PostgreSQL (psycopg v3)
-
-Responsabilidades:
-    1. Leer DATABASE_URL desde .env
-    2. Conectar a PostgreSQL con psycopg (v3)
-    3. Verificar si el schema ya existe
-    4. Si no existe -> ejecutar schema.sql
-    5. Exponer get_connection() y get_cursor()
-"""
+# Gestor de conexion PostgreSQL (psycopg v3)
 
 import logging
 import os
@@ -19,6 +9,15 @@ import psycopg
 from psycopg.rows import dict_row
 from dotenv import load_dotenv
 
+"""
+    1. Leer DATABASE_URL desde .env
+    2. Conectar a PostgreSQL con psycopg (v3)
+    3. Verificar si el schema ya existe
+    4. Si no existe -> ejecutar schema.sql
+    5. Exponer get_connection() y get_cursor()
+"""
+
+# inicia el loggin en consola
 logger = logging.getLogger(__name__)
 
 _ENV_PATH    = Path(__file__).parent.parent / ".env"
@@ -30,9 +29,7 @@ _TABLAS_REQUERIDAS = {
     "productos_canonicos",
 }
 
-
-# -- Configuracion ------------------------------------------------------------
-
+#  Configuracion 
 def _cargar_url() -> str:
     load_dotenv(_ENV_PATH, encoding="utf-8")
     url = os.getenv("DATABASE_URL", "").strip()
@@ -44,15 +41,8 @@ def _cargar_url() -> str:
         )
     return url
 
-
-# -- Conexion -----------------------------------------------------------------
-
+#  Conexion 
 def get_connection() -> psycopg.Connection:
-    """
-    Retorna una conexion psycopg v3 a PostgreSQL.
-    En el primer uso inicializa el schema si no existe.
-    Rows retornadas como dicts.
-    """
     url = _cargar_url()
     try:
         conn = psycopg.connect(url, row_factory=dict_row)
@@ -64,16 +54,9 @@ def get_connection() -> psycopg.Connection:
     _inicializar_schema(conn)
     return conn
 
-
+#  Cursor 
 @contextmanager
 def get_cursor(conn: psycopg.Connection):
-    """
-    Context manager con commit/rollback automatico.
-
-    Uso:
-        with get_cursor(conn) as cur:
-            cur.execute("INSERT INTO tiendas ...")
-    """
     with conn.cursor(row_factory=dict_row) as cur:
         try:
             yield cur
@@ -82,9 +65,7 @@ def get_cursor(conn: psycopg.Connection):
             conn.rollback()
             raise
 
-
-# -- Schema -------------------------------------------------------------------
-
+#  Schema
 def _inicializar_schema(conn: psycopg.Connection) -> None:
     tablas = _tablas_existentes(conn)
 
@@ -115,7 +96,7 @@ def _inicializar_schema(conn: psycopg.Connection) -> None:
         logger.error(f"[DB] Error ejecutando schema.sql: {e}")
         raise
 
-
+#  Tablas
 def _tablas_existentes(conn: psycopg.Connection) -> set:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute("""
@@ -127,8 +108,9 @@ def _tablas_existentes(conn: psycopg.Connection) -> set:
         return {row["table_name"] for row in cur.fetchall()}
 
 
-# -- Utilidades ---------------------------------------------------------------
+# ---------- otras ---------- 
 
+# verificar conexion
 def verificar_conexion() -> bool:
     """Health-check: verifica que la conexion funciona."""
     try:
@@ -142,9 +124,8 @@ def verificar_conexion() -> bool:
         logger.error(f"[DB] Health-check fallo: {e}")
         return False
 
-
+# Conteo de registros por tabla
 def resumen_bd() -> dict:
-    """Conteo de registros por tabla."""
     tablas = ["tiendas", "folletos", "paginas", "extracciones",
               "eventos_promo", "alertas", "productos_canonicos"]
     resultado = {}
@@ -160,6 +141,7 @@ def resumen_bd() -> dict:
     return resultado
 
 
+# Log de tablas existentes
 def _log_tablas(conn: psycopg.Connection) -> None:
     tablas = _tablas_existentes(conn)
     for tabla in sorted(_TABLAS_REQUERIDAS):

@@ -1,4 +1,4 @@
-# Orquestador para probar los scrapers de Tiendeo y Ofertomat, con menú 
+# Orquestador para probar los scrapers de Tiendeo y Ofertomat desde consola
 
 import asyncio
 import json
@@ -14,6 +14,7 @@ from scraper.sources.ofertomat import OfertomatScraper, TIENDAS_UNICAS as TIENDA
 from scraper.downloader        import Downloader
 from scraper.registro          import Registro
 
+# ------------- Configuracion de .log -------------
 # Crear carpeta de logs
 Path("logs").mkdir(exist_ok=True)
 
@@ -43,8 +44,9 @@ logger = logging.getLogger("scraper")
 sys.path.insert(0, str(Path(__file__).parent))
 
 
-# -------------------- Menús --------------------
+# ---------------------------------- Menús de consola ----------------------------------
 
+# Menú inicial 
 def menu_principal() -> int:
     print("\n" + "-" * 55)
     print("   PriceScraper -- Prueba de Scrapers")
@@ -59,7 +61,34 @@ def menu_principal() -> int:
     except ValueError:
         return -1
 
-# Menús para elegir tienda específica o todas en tiendeo
+
+# Función para mostrar un resumen de los folletos encontrados
+def mostrar_resumen_folletos(folletos: list[dict]):
+    print(f"\n  {'TIENDA':<25} {'TÍTULO':<35} {'VIGENCIA'}")
+    print(f"  {'-'*25} {'-'*35} {'-'*20}")
+    for f in folletos:
+        vigencia = f"{f['fecha_inicio'] or '?'} --> {f['fecha_fin'] or '?'}"  # Si no hay fecha, se muestra "?" para indicar desconocida
+        print(f"  {f['tienda']:<25} {f['titulo'][:35]:<35} {vigencia}")
+
+# ---------------------- Menú ofertomat ----------------------
+# Menú para elegir tienda específica o todas en "ofertomat"
+def menu_tiendas_ofertomat() -> str:
+    print("\n" + "-" * 55)
+    print("   Tiendas de interés en Ofertomat (no duplicadas con Tiendeo):")
+    tiendas = list(TIENDAS_OFERTOMAT_UNICAS)
+    for i, t in enumerate(tiendas, 1):
+        print(f"   {i:>2}. {t}")
+    print(f"    0. Las {len(tiendas)} juntas de un jalón")
+    print("-" * 55)
+    try:
+        opc = int(input("   Tienda específica (0 = todas): ").strip())
+        if opc == 0:
+            return "todas"
+        return tiendas[opc - 1] if 1 <= opc <= len(tiendas) else "todas"  # Si el número no es válido, se asume "todas"
+    except (ValueError, IndexError):
+        return "todas"
+
+# ---------------------- Menú Tiendeo ----------------------
 def menu_tiendas_tiendeo() -> str:
     print("\n" + "-" * 55)
     print("   Tiendas disponibles en Tiendeo:")
@@ -70,43 +99,14 @@ def menu_tiendas_tiendeo() -> str:
     print(f"    0. Todas las tiendas (categoría supermercados)")
     print("-" * 55)
     try:
-        idx = int(input("   Tienda específica (0 = todas): ").strip())
-        if idx == 0:
+        opc = int(input("   Tienda específica (0 = todas): ").strip())
+        if opc == 0:
             return "todas"
-        return tiendas[idx - 1] if 1 <= idx <= len(tiendas) else "todas" # Si el número no es válido, se asume "todas"
+        return tiendas[opc - 1] if 1 <= opc <= len(tiendas) else "todas" # Si el número no es válido, se asume "todas"
     except (ValueError, IndexError):
         return "todas"
 
-# Menú para elegir tienda específica o todas en ofertomat
-# Solo se listan las tiendas de interés (sin equivalente en Tiendeo, ver
-# TIENDAS_UNICAS en scraper/sources/ofertomat.py) para no duplicar datos.
-def menu_tiendas_ofertomat() -> str:
-    print("\n" + "-" * 55)
-    print("   Tiendas de interés en Ofertomat (no duplicadas con Tiendeo):")
-    tiendas = list(TIENDAS_OFERTOMAT_UNICAS)
-    for i, t in enumerate(tiendas, 1):
-        print(f"   {i:>2}. {t}")
-    print(f"    0. Las {len(tiendas)} juntas de un jalón")
-    print("-" * 55)
-    try:
-        idx = int(input("   Tienda específica (0 = todas): ").strip())
-        if idx == 0:
-            return "todas"
-        return tiendas[idx - 1] if 1 <= idx <= len(tiendas) else "todas"  # Si el número no es válido, se asume "todas"
-    except (ValueError, IndexError):
-        return "todas"
-
-# Función para mostrar un resumen de los folletos encontrados
-def mostrar_resumen_folletos(folletos: list[dict]):
-    print(f"\n  {'TIENDA':<25} {'TÍTULO':<35} {'VIGENCIA'}")
-    print(f"  {'-'*25} {'-'*35} {'-'*20}")
-    for f in folletos:
-        vigencia = f"{f['fecha_inicio'] or '?'} --> {f['fecha_fin'] or '?'}" # Si no hay fecha, se muestra "?" para indicar desconocida
-        print(f"  {f['tienda']:<25} {f['titulo'][:35]:<35} {vigencia}")
-
-
-# ---------------------- Tiendeo ----------------------
-
+# ---------------------- orquestador Tiendeo ----------------------
 # Funcion principal tiendeo -- una tienda específica (para "todas" ver scrapear_tiendeo_todas_tiendas)
 async def scrapear_tiendeo(registro: Registro, slug_tienda: str):
     logger.info(f"\n[TIENDEO] Iniciando scraping ({slug_tienda.replace('-',' ').title()})...")
@@ -139,7 +139,7 @@ async def scrapear_tiendeo(registro: Registro, slug_tienda: str):
     logger.info(f"[TIENDEO] {len(nuevos)} folletos nuevos a descargar")
 
     # ------------- Paso 2 y 3: Descargar páginas -------------
-    
+
     downloader = Downloader(max_concurrentes=2) # solo 2 descargas simultáneas para no saturar ni parecer bot
     
     # Descargar cada folleto nuevo
@@ -275,7 +275,7 @@ async def scrapear_tiendeo_todas_tiendas(registro: Registro):
                 f"Acumulados: {registro.total_procesados('tiendeo')}")
 
 
-# ------------- Ofertomat -------------
+# ------------- orquestador Ofertomat -------------
 
 # Función principal para Ofertomat, similar a la de Tiendeo pero adaptada a su estructura y opciones de tienda.
 # Una tienda específica (para "las 4 juntas" ver scrapear_ofertomat_todas_tiendas)

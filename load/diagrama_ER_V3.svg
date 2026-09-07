@@ -1,0 +1,372 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2170" height="1320" viewBox="0 0 2170 1320">
+<rect width="100%" height="100%" fill="#1d2228"/>
+<polyline points="490,341.0 525,341.0 525,671.0 590,671.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="490" cy="341.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="590" cy="671.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="490,371.0 505,371.0 505,631.0 1090,631.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="490" cy="371.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1090" cy="631.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="490,401.0 500,401.0 500,1230 1585,1230 1585,671.0 1630,671.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="490" cy="401.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1630" cy="671.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="1020,701.0 1045,701.0 1045,631.0 1090,631.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="1020" cy="701.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1090" cy="631.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="1560,661.0 1590,661.0 1590,671.0 1630,671.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="1560" cy="661.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1630" cy="671.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="1020,161.0 1040,161.0 1040,631.0 1090,631.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="1020" cy="161.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1090" cy="631.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="1020,191.0 1048,191.0 1048,520 1580,520 1580,671.0 1630,671.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="1020" cy="191.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1630" cy="671.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="1520,161.0 1580,161.0 1580,671.0 1630,671.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="1520" cy="161.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1630" cy="671.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="70,791.0 35,791.0 35,311.0 70,311.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="70" cy="791.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="70" cy="311.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<polyline points="490,821.0 520,821.0 520,1170 1585,1170 1585,131.0 1630,131.0" fill="none" stroke="#6b8599" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.5 5.5"/><circle cx="490" cy="821.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/><circle cx="1630" cy="131.0" r="5" fill="#1d2228" stroke="#66bfff" stroke-width="1.5"/>
+<rect x="70" y="250" width="420" height="676" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 75,250 H 485 Q 490,250 490,255 V 296 H 70 V 255 Q 70,250 75,250 Z" fill="#153b5d"/>
+<rect x="86" y="264" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="91.3" y1="264" x2="91.3" y2="280" stroke="#66bfff" stroke-width="1"/>
+<line x1="96.6" y1="264" x2="96.6" y2="280" stroke="#66bfff" stroke-width="1"/>
+<line x1="86" y1="269.3" x2="102" y2="269.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="86" y1="274.6" x2="102" y2="274.6" stroke="#66bfff" stroke-width="1"/>
+<text x="112" y="279" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">extracciones</text>
+<rect x="71" y="296" width="418" height="30" fill="#2d343b"/>
+<line x1="70" y1="296" x2="490" y2="296" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="311.5" r="4.5" fill="#66bfff" />
+<text x="104" y="317.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="477" y="316.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">BIGSERIAL</text>
+<line x1="70" y1="326" x2="490" y2="326" stroke="#3b434c" stroke-width="1"/>
+<rect x="82" y="337.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="104" y="347.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">pagina_id</text>
+<text x="477" y="346.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="356" x2="490" y2="356" stroke="#3b434c" stroke-width="1"/>
+<rect x="82" y="367.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="104" y="377.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">folleto_id</text>
+<text x="477" y="376.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="386" x2="490" y2="386" stroke="#3b434c" stroke-width="1"/>
+<rect x="82" y="397.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="104" y="407.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">tienda_id</text>
+<text x="477" y="406.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="416" x2="490" y2="416" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="431.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="437.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">tipo</text>
+<text x="477" y="436.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">tipo_extraccion_enum</text>
+<line x1="70" y1="446" x2="490" y2="446" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="461.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="467.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">texto_raw</text>
+<text x="477" y="466.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TEXT</text>
+<line x1="70" y1="476" x2="490" y2="476" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="491.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="497.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">texto_norm</text>
+<text x="477" y="496.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(300)</text>
+<line x1="70" y1="506" x2="490" y2="506" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="521.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="527.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">categoria_nlp</text>
+<text x="477" y="526.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(60)</text>
+<line x1="70" y1="536" x2="490" y2="536" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="551.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="557.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">valor</text>
+<text x="477" y="556.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="70" y1="566" x2="490" y2="566" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="581.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="587.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">valor_anterior</text>
+<text x="477" y="586.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="70" y1="596" x2="490" y2="596" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="611.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="617.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">texto_promo</text>
+<text x="477" y="616.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(300)</text>
+<line x1="70" y1="626" x2="490" y2="626" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="641.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="647.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">confianza_ocr</text>
+<text x="477" y="646.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="70" y1="656" x2="490" y2="656" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="671.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="677.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">bbox_x</text>
+<text x="477" y="676.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="686" x2="490" y2="686" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="701.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="707.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">bbox_y</text>
+<text x="477" y="706.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="716" x2="490" y2="716" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="731.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="737.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">bbox_ancho</text>
+<text x="477" y="736.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="746" x2="490" y2="746" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="761.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="767.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">bbox_alto</text>
+<text x="477" y="766.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="776" x2="490" y2="776" stroke="#3b434c" stroke-width="1"/>
+<rect x="82" y="787.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="104" y="797.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">producto_extraccion_id</text>
+<text x="477" y="796.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">BIGINT</text>
+<line x1="70" y1="806" x2="490" y2="806" stroke="#3b434c" stroke-width="1"/>
+<rect x="82" y="817.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="104" y="827.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">producto_canonico_id</text>
+<text x="477" y="826.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="70" y1="836" x2="490" y2="836" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="851.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="857.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">confianza_norm</text>
+<text x="477" y="856.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="70" y1="866" x2="490" y2="866" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="881.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="887.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">metodo_norm</text>
+<text x="477" y="886.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(20)</text>
+<line x1="70" y1="896" x2="490" y2="896" stroke="#3b434c" stroke-width="1"/>
+<circle cx="86" cy="911.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="104" y="917.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="477" y="916.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="590" y="70" width="430" height="286" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 595,70 H 1015 Q 1020,70 1020,75 V 116 H 590 V 75 Q 590,70 595,70 Z" fill="#153b5d"/>
+<rect x="606" y="84" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="611.3" y1="84" x2="611.3" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="616.6" y1="84" x2="616.6" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="606" y1="89.3" x2="622" y2="89.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="606" y1="94.6" x2="622" y2="94.6" stroke="#66bfff" stroke-width="1"/>
+<text x="632" y="99" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">eventos_promo</text>
+<rect x="591" y="116" width="428" height="30" fill="#2d343b"/>
+<line x1="590" y1="116" x2="1020" y2="116" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="131.5" r="4.5" fill="#66bfff" />
+<text x="624" y="137.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="1007" y="136.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="590" y1="146" x2="1020" y2="146" stroke="#3b434c" stroke-width="1"/>
+<rect x="602" y="157.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="624" y="167.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">folleto_id</text>
+<text x="1007" y="166.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="176" x2="1020" y2="176" stroke="#3b434c" stroke-width="1"/>
+<rect x="602" y="187.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="624" y="197.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">tienda_id</text>
+<text x="1007" y="196.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="206" x2="1020" y2="206" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="221.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="227.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">nombre_evento</text>
+<text x="1007" y="226.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(100)</text>
+<line x1="590" y1="236" x2="1020" y2="236" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="251.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="257.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">texto_raw</text>
+<text x="1007" y="256.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(200)</text>
+<line x1="590" y1="266" x2="1020" y2="266" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="281.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="287.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fecha_inicio</text>
+<text x="1007" y="286.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">DATE</text>
+<line x1="590" y1="296" x2="1020" y2="296" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="311.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="317.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fecha_fin</text>
+<text x="1007" y="316.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">DATE</text>
+<line x1="590" y1="326" x2="1020" y2="326" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="341.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="347.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="1007" y="346.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="1090" y="70" width="430" height="256" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 1095,70 H 1515 Q 1520,70 1520,75 V 116 H 1090 V 75 Q 1090,70 1095,70 Z" fill="#153b5d"/>
+<rect x="1106" y="84" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="1111.3" y1="84" x2="1111.3" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="1116.6" y1="84" x2="1116.6" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="1106" y1="89.3" x2="1122" y2="89.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="1106" y1="94.6" x2="1122" y2="94.6" stroke="#66bfff" stroke-width="1"/>
+<text x="1132" y="99" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">alertas</text>
+<rect x="1091" y="116" width="428" height="30" fill="#2d343b"/>
+<line x1="1090" y1="116" x2="1520" y2="116" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="131.5" r="4.5" fill="#66bfff" />
+<text x="1124" y="137.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="1507" y="136.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="1090" y1="146" x2="1520" y2="146" stroke="#3b434c" stroke-width="1"/>
+<rect x="1102" y="157.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="1124" y="167.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">tienda_id</text>
+<text x="1507" y="166.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="1090" y1="176" x2="1520" y2="176" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="191.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="197.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">slug_producto</text>
+<text x="1507" y="196.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(200)</text>
+<line x1="1090" y1="206" x2="1520" y2="206" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="221.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="227.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">umbral_precio</text>
+<text x="1507" y="226.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="1090" y1="236" x2="1520" y2="236" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="251.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="257.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">activa</text>
+<text x="1507" y="256.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">BOOLEAN</text>
+<line x1="1090" y1="266" x2="1520" y2="266" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="281.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="287.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">disparada_at</text>
+<text x="1507" y="286.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<line x1="1090" y1="296" x2="1520" y2="296" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="311.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="317.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="1507" y="316.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="1630" y="70" width="470" height="226" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 1635,70 H 2095 Q 2100,70 2100,75 V 116 H 1630 V 75 Q 1630,70 1635,70 Z" fill="#153b5d"/>
+<rect x="1646" y="84" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="1651.3" y1="84" x2="1651.3" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="1656.6" y1="84" x2="1656.6" y2="100" stroke="#66bfff" stroke-width="1"/>
+<line x1="1646" y1="89.3" x2="1662" y2="89.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="1646" y1="94.6" x2="1662" y2="94.6" stroke="#66bfff" stroke-width="1"/>
+<text x="1672" y="99" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">productos_canonicos</text>
+<rect x="1631" y="116" width="468" height="30" fill="#2d343b"/>
+<line x1="1630" y1="116" x2="2100" y2="116" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="131.5" r="4.5" fill="#66bfff" />
+<text x="1664" y="137.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="2087" y="136.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="1630" y1="146" x2="2100" y2="146" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="161.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="167.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">nombre_canonico</text>
+<text x="2087" y="166.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(150)</text>
+<line x1="1630" y1="176" x2="2100" y2="176" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="191.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="197.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">categoria</text>
+<text x="2087" y="196.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(60)</text>
+<line x1="1630" y1="206" x2="2100" y2="206" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="221.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="227.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">marca</text>
+<text x="2087" y="226.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(80)</text>
+<line x1="1630" y1="236" x2="2100" y2="236" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="251.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="257.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">aliases</text>
+<text x="2087" y="256.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TEXT[]</text>
+<line x1="1630" y1="266" x2="2100" y2="266" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="281.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="287.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="2087" y="286.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="590" y="610" width="430" height="406" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 595,610 H 1015 Q 1020,610 1020,615 V 656 H 590 V 615 Q 590,610 595,610 Z" fill="#153b5d"/>
+<rect x="606" y="624" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="611.3" y1="624" x2="611.3" y2="640" stroke="#66bfff" stroke-width="1"/>
+<line x1="616.6" y1="624" x2="616.6" y2="640" stroke="#66bfff" stroke-width="1"/>
+<line x1="606" y1="629.3" x2="622" y2="629.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="606" y1="634.6" x2="622" y2="634.6" stroke="#66bfff" stroke-width="1"/>
+<text x="632" y="639" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">paginas</text>
+<rect x="591" y="656" width="428" height="30" fill="#2d343b"/>
+<line x1="590" y1="656" x2="1020" y2="656" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="671.5" r="4.5" fill="#66bfff" />
+<text x="624" y="677.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="1007" y="676.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="590" y1="686" x2="1020" y2="686" stroke="#3b434c" stroke-width="1"/>
+<rect x="602" y="697.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="624" y="707.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">folleto_id</text>
+<text x="1007" y="706.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="716" x2="1020" y2="716" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="731.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="737.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">numero_pagina</text>
+<text x="1007" y="736.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="746" x2="1020" y2="746" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="761.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="767.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">archivo_imagen</text>
+<text x="1007" y="766.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(100)</text>
+<line x1="590" y1="776" x2="1020" y2="776" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="791.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="797.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_bloques_ocr</text>
+<text x="1007" y="796.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="806" x2="1020" y2="806" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="821.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="827.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">confianza_ocr_prom</text>
+<text x="1007" y="826.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="590" y1="836" x2="1020" y2="836" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="851.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="857.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_productos</text>
+<text x="1007" y="856.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="866" x2="1020" y2="866" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="881.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="887.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_precios</text>
+<text x="1007" y="886.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="896" x2="1020" y2="896" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="911.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="917.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_promos</text>
+<text x="1007" y="916.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="926" x2="1020" y2="926" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="941.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="947.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_atributos</text>
+<text x="1007" y="946.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="590" y1="956" x2="1020" y2="956" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="971.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="977.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">tasa_util</text>
+<text x="1007" y="976.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">FLOAT</text>
+<line x1="590" y1="986" x2="1020" y2="986" stroke="#3b434c" stroke-width="1"/>
+<circle cx="606" cy="1001.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="624" y="1007.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">procesado_at</text>
+<text x="1007" y="1006.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="1090" y="570" width="470" height="466" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 1095,570 H 1555 Q 1560,570 1560,575 V 616 H 1090 V 575 Q 1090,570 1095,570 Z" fill="#153b5d"/>
+<rect x="1106" y="584" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="1111.3" y1="584" x2="1111.3" y2="600" stroke="#66bfff" stroke-width="1"/>
+<line x1="1116.6" y1="584" x2="1116.6" y2="600" stroke="#66bfff" stroke-width="1"/>
+<line x1="1106" y1="589.3" x2="1122" y2="589.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="1106" y1="594.6" x2="1122" y2="594.6" stroke="#66bfff" stroke-width="1"/>
+<text x="1132" y="599" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">folletos</text>
+<rect x="1091" y="616" width="468" height="30" fill="#2d343b"/>
+<line x1="1090" y1="616" x2="1560" y2="616" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="631.5" r="4.5" fill="#66bfff" />
+<text x="1124" y="637.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="1547" y="636.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="1090" y1="646" x2="1560" y2="646" stroke="#3b434c" stroke-width="1"/>
+<rect x="1102" y="657.5" width="8" height="8" rx="1" fill="none" stroke="#66bfff" stroke-width="1.4" />
+<text x="1124" y="667.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">tienda_id</text>
+<text x="1547" y="666.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="1090" y1="676" x2="1560" y2="676" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="691.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="697.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">folleto_id_fuente</text>
+<text x="1547" y="696.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(30)</text>
+<line x1="1090" y1="706" x2="1560" y2="706" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="721.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="727.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fuente</text>
+<text x="1547" y="726.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">fuente_enum</text>
+<line x1="1090" y1="736" x2="1560" y2="736" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="751.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="757.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">titulo</text>
+<text x="1547" y="756.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(200)</text>
+<line x1="1090" y1="766" x2="1560" y2="766" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="781.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="787.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fecha_inicio</text>
+<text x="1547" y="786.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">DATE</text>
+<line x1="1090" y1="796" x2="1560" y2="796" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="811.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="817.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fecha_fin</text>
+<text x="1547" y="816.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">DATE</text>
+<line x1="1090" y1="826" x2="1560" y2="826" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="841.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="847.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">url_origen</text>
+<text x="1547" y="846.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TEXT</text>
+<line x1="1090" y1="856" x2="1560" y2="856" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="871.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="877.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">total_paginas</text>
+<text x="1547" y="876.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">INTEGER</text>
+<line x1="1090" y1="886" x2="1560" y2="886" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="901.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="907.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">perfil_ocr</text>
+<text x="1547" y="906.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(40)</text>
+<line x1="1090" y1="916" x2="1560" y2="916" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="931.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="937.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">motor_ocr</text>
+<text x="1547" y="936.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(20)</text>
+<line x1="1090" y1="946" x2="1560" y2="946" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="961.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="967.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">scrapeado_at</text>
+<text x="1547" y="966.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<line x1="1090" y1="976" x2="1560" y2="976" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="991.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="997.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">estado</text>
+<text x="1547" y="996.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">estado_folleto_enum</text>
+<line x1="1090" y1="1006" x2="1560" y2="1006" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1106" cy="1021.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1124" y="1027.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="1547" y="1026.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+<rect x="1630" y="610" width="470" height="226" rx="5" fill="#252b31" stroke="#2aa7ff" stroke-width="1.7"/>
+<path d="M 1635,610 H 2095 Q 2100,610 2100,615 V 656 H 1630 V 615 Q 1630,610 1635,610 Z" fill="#153b5d"/>
+<rect x="1646" y="624" width="16" height="16" rx="1" fill="none" stroke="#66bfff" stroke-width="1.2"/>
+<line x1="1651.3" y1="624" x2="1651.3" y2="640" stroke="#66bfff" stroke-width="1"/>
+<line x1="1656.6" y1="624" x2="1656.6" y2="640" stroke="#66bfff" stroke-width="1"/>
+<line x1="1646" y1="629.3" x2="1662" y2="629.3" stroke="#66bfff" stroke-width="1"/>
+<line x1="1646" y1="634.6" x2="1662" y2="634.6" stroke="#66bfff" stroke-width="1"/>
+<text x="1672" y="639" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="700" fill="#d9e1e8">tiendas</text>
+<rect x="1631" y="656" width="468" height="30" fill="#2d343b"/>
+<line x1="1630" y1="656" x2="2100" y2="656" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="671.5" r="4.5" fill="#66bfff" />
+<text x="1664" y="677.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#d9e1e8">id</text>
+<text x="2087" y="676.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">SERIAL</text>
+<line x1="1630" y1="686" x2="2100" y2="686" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="701.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="707.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">nombre</text>
+<text x="2087" y="706.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(100)</text>
+<line x1="1630" y1="716" x2="2100" y2="716" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="731.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="737.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">slug</text>
+<text x="2087" y="736.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(60)</text>
+<line x1="1630" y1="746" x2="2100" y2="746" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="761.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="767.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">fuente_slug</text>
+<text x="2087" y="766.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">VARCHAR(60)</text>
+<line x1="1630" y1="776" x2="2100" y2="776" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="791.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="797.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">activa</text>
+<text x="2087" y="796.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">BOOLEAN</text>
+<line x1="1630" y1="806" x2="2100" y2="806" stroke="#3b434c" stroke-width="1"/>
+<circle cx="1646" cy="821.5" r="2.3" fill="#9fa9b4" opacity="0.7" />
+<text x="1664" y="827.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14.5" fill="#9fa9b4">created_at</text>
+<text x="2087" y="826.3" text-anchor="end" font-family="DejaVu Sans Mono, Consolas, monospace" font-size="11.4" fill="#9fa9b4">TIMESTAMP</text>
+</svg>

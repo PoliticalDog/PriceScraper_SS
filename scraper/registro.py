@@ -1,4 +1,5 @@
-# Guarda un registro de folletos ya procesados para evitar reprocesar en futuras ejecuciones del scrapeer
+# Guarda un registro de folletos en json data/registro_folletos_scrapeados.json 
+# revisa el id de cada folleto para no volver a procesarlo si ya fue scrapeado y fallback buscando la carpeta del folleto en data/raw/{fuente}/{tienda}/{folleto_id}/
 
 import json
 import logging

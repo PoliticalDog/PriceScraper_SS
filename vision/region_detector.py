@@ -1,16 +1,5 @@
-# Deteccion de regiones (ROI) -- recuadros que delimitan cada producto en el folleto.
-# Analisis independiente de la imagen ya preprocesada; NO reemplaza ni toca el OCR
-# (vision/ocr_engine.py sigue corriendo sobre la pagina completa exactamente igual).
-# Uso previsto: senal adicional para la asociacion producto-precio en load/load.py,
-# con fallback a la heuristica de distancia actual cuando no hay regiones confiables.
-#
-# El heuristico de "confiable" original (>=3 regiones y >=5% cobertura de pagina)
-# se descarto tras el benchmark ampliado a 17 tiendas (jul 2026): no correlaciona
-# con calidad -- deja pasar tanto layouts buenos (Casa Ley) como ruido de letras
-# sueltas (Oxxo/Alsuper) o cajas que agrupan varios productos (Chedraui/Merco).
-# Se reemplaza por una senal de calidad POR REGION: una region solo se considera
-# confiable si al menos un bloque de OCR (ya extraido de la pagina completa, sin
-# costo adicional) cuyo bbox cae dentro de ella coincide con un patron de precio.
+# Deteccion de regiones (ROI) -- recuadros por producto
+# Despues de procesar la iamgen --> solo se aplica a (walmart, chedraui, soriana_hiper, soriana_mercado) 
 
 import logging
 import cv2

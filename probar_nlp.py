@@ -1,16 +1,17 @@
-#  clasifica cada bloque en PRODUCTO / PRECIO / PROMO / DESCARTE 
+# clasifica cada bloque en PRODUCTO / PRECIO / PROMO / DESCARTE 
 # y guarda nlp_resultado.json junto al folleto procesado
-
 
 import sys
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from nlp.regex_extractor import RegexExtractor
 
-# ------------------------- Logging -------------------------
+# verifica el .log y crea carpeta logs si no existe
 Path("logs").mkdir(exist_ok=True)
 
+# configura los logs para consola y archivo
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter(
     "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"
@@ -24,34 +25,32 @@ file_handler.setFormatter(logging.Formatter(
 logging.basicConfig(level=logging.INFO, handlers=[console_handler, file_handler])
 logger = logging.getLogger("nlp")
 
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-from nlp.regex_extractor import RegexExtractor
-
+# Path para los resultados de OCR y NLP
 DATA_PROCESSED = Path("data/processed")
-
 
 # ------------------------- Menús -------------------------
 
+# Menú principal
 def menu_principal() -> int:
-    print("\n" + "═" * 55)
+    print("\n" + "=" * 55)
     print("   PriceScraper — Módulo NLP (Regex)")
-    print("═" * 55)
-    print("   1 → Procesar carpeta específica  (modo prueba)")
-    print("   2 → Procesar todo data/processed/ (modo batch)")
-    print("   0 → Salir")
-    print("─" * 55)
+    print("-" * 55)
+    print("   1 --> Procesar carpeta específica  (modo prueba)")
+    print("   2 --> Procesar todo data/processed/ (modo batch)")
+    print("   0 --> Salir")
+    print("-" * 55)
     try:
         return int(input("   Selecciona una opción: ").strip())
     except ValueError:
         return -1
 
-
+# Menú para elegir carpeta con ocr_resultado.json
 def menu_carpeta() -> Path | None:
-    """
-    Lista todas las carpetas que tienen ocr_resultado.json disponible
-    y permite elegir una para procesar.
-    """
+    
+    # Lista todas las carpetas que tienen ocr_resultado.json disponible
     carpetas = sorted([
         p.parent for p in DATA_PROCESSED.rglob("ocr_resultado.json")
     ])
@@ -61,60 +60,53 @@ def menu_carpeta() -> Path | None:
         logger.error("Ejecuta primero: python probar_vision.py")
         return None
 
-    print("\n" + "─" * 60)
+    print("\n" + "-" * 60)
     print("   Folletos con OCR disponible:")
     print(f"   {'#':>3}  {'RUTA':<45}  {'ESTADO NLP'}")
-    print("─" * 60)
+    print("-" * 60)
 
+    # enloista cada carpeta con su estado (procesado o pendiente)
     for i, carpeta in enumerate(carpetas, 1):
         ruta_rel = carpeta.relative_to(DATA_PROCESSED)
         ya_procesado = (carpeta / "nlp_resultado.json").exists()
         estado = "✅ procesado" if ya_procesado else "pendiente"
         print(f"   {i:>3}. {str(ruta_rel):<45}  {estado}")
 
-    print("─" * 60)
+    print("-" * 60)
     try:
-        idx = int(input("\n   Número de carpeta: ").strip())
-        if 1 <= idx <= len(carpetas):
-            return carpetas[idx - 1]
+        opc = int(input("\n   Número de carpeta: ").strip())
+        if 1 <= opc <= len(carpetas):
+            return carpetas[opc - 1]
     except ValueError:
         pass
     logger.warning("Selección inválida.")
     return None
 
 
-# ------------------------- Procesamiento de una carpeta -------------------------
-
+#  Procesamiento de una carpeta
+#  Procesa el ocr_resultado.json de un folleto y genera nlp_resultado.json.
 def procesar_carpeta(
     carpeta: Path,
     extractor: RegexExtractor,
     forzar: bool = False,
     imprimir_detalle: bool = False,
 ) -> dict | None:
-    """
-    Procesa el ocr_resultado.json de un folleto y genera nlp_resultado.json.
-
-    Args:
-        carpeta:          Ruta a data/processed/{fuente}/{tienda}/{folleto_id}/
-        extractor:        Instancia de RegexExtractor.
-        forzar:           Si True, reprocesa aunque ya exista nlp_resultado.json.
-        imprimir_detalle: Si True, imprime clasificación por página en consola.
-
-    Returns:
-        Dict con resumen del resultado, o None si se saltó.
-    """
+   
+    # rutas carpetas
     ruta_ocr = carpeta / "ocr_resultado.json"
     ruta_nlp = carpeta / "nlp_resultado.json"
 
+    # Si no existe ocr_resultado.json --> no se puede procesar
     if not ruta_ocr.exists():
         logger.warning(f"[NLP] Sin ocr_resultado.json en {carpeta}")
         return None
 
+    # Si ya existe nlp_resultado.json --> no se fuerza
     if ruta_nlp.exists() and not forzar:
         logger.info(f"[NLP] ⏭️  Ya procesado: {carpeta.relative_to(DATA_PROCESSED)}")
         return None
 
-    # ------------------------- Cargar OCR -------------------------
+    #  ------- Cargar OCR -------
     with open(ruta_ocr, encoding="utf-8") as f:
         ocr_data = json.load(f)
 
@@ -123,31 +115,34 @@ def procesar_carpeta(
 
     # El ocr_resultado.json tiene estructura:
     # { "fuente": ..., "tienda": ..., "folleto_id": ..., "paginas": [...] }
-    # Cada página tiene { "pagina": ..., "bloques": [...] }
     paginas_ocr = ocr_data.get("paginas", [])
 
     if not paginas_ocr:
         logger.warning(f"[NLP] Sin páginas en {ruta_ocr}")
         return None
 
-    # Adaptar formato para RegexExtractor
-    # procesar_json_ocr espera: [{"imagen": ..., "bloques": [...], "ancho_pagina": ...}]
-    # "ancho_pagina" es opcional (paginas de antes de este campo no lo traen; el
-    # extractor asume el ancho de referencia y no cambia su comportamiento).
-    datos_para_extractor = [
-        {"imagen": p["pagina"], "bloques": p["bloques"], "ancho_pagina": p.get("ancho_pagina")}
-        for p in paginas_ocr
-    ]
+   # prepara los datos para el extractor: 
+    datos_para_extractor = []       # lista de dicts con keys: imagen, bloques, ancho_pagina
 
-    # ------------------------- Clasificar con Regex -------------------------
+    for p in paginas_ocr:
+        datos_para_extractor.append({
+            "imagen": p["pagina"],
+            "bloques": p["bloques"],
+            "ancho_pagina": p.get("ancho_pagina")
+        })
+
+    #  ------- Clasificar con Regex -------
     resultados_paginas = extractor.procesar_json_ocr(datos_para_extractor)
 
-    # ------------------------- Imprimir detalle si modo prueba -------------------------
+    # ------- Imprimir detalle (solo modo prueba) -------
+
+    # imprime la categria y la confianza de cada bloque en cada página
     if imprimir_detalle:
         for r in resultados_paginas:
             extractor.imprimir_resultado(r)
 
     # ------------------------- Calcular métricas globales -------------------------
+    # Totales por categoría y tasa útil
     total_prod       = sum(len(r.productos)          for r in resultados_paginas)
     total_prec       = sum(len(r.precios)            for r in resultados_paginas)
     total_prec_ant   = sum(len(r.precios_anteriores) for r in resultados_paginas)
@@ -157,12 +152,13 @@ def procesar_carpeta(
     total_attr       = sum(len(r.atributos)          for r in resultados_paginas)
     total_financiero = 0  # reservado
     total_desc       = sum(len(r.descartes)          for r in resultados_paginas)
+
     # Tasa útil: todo lo que no es descarte (incluye ahorros y eventos como info valiosa)
     total_util  = total_prod + total_prec + total_prec_ant + total_ahorros + total_promo + total_eventos + total_attr
     total       = total_util + total_desc
     tasa_util   = total_util / total if total > 0 else 0
 
-    # ------------------------- Construir JSON de salida -------------------------
+    # Construir JSON de salida
     resultado = {
         "fuente":        ocr_data.get("fuente", ""),
         "tienda":        ocr_data.get("tienda", ""),
@@ -183,6 +179,7 @@ def procesar_carpeta(
         "paginas": []
     }
 
+    # Guardar cada página con sus bloques clasificados
     for r in resultados_paginas:
         resultado["paginas"].append({
             "pagina":    r.imagen,
@@ -222,12 +219,13 @@ def procesar_carpeta(
             ],
         })
 
-    #  ------------------------- Guardar junto al folleto -------------------------
-    with open(ruta_nlp, "w", encoding="utf-8") as f:
-        json.dump(resultado, f, ensure_ascii=False, indent=2)
+    #  Guardar junto al folleto
+    f = open(ruta_nlp, "w", encoding="utf-8")               # se abre en modo escritura
+    json.dump(resultado, f, ensure_ascii=False, indent=2)   # escribe resultado en JSON 
+    f.close()
 
     logger.info(
-        f"[NLP] ✅ {ruta_rel} → "
+        f"[NLP]  {ruta_rel} --> "
         f"prod:{total_prod} prec:{total_prec} promo:{total_promo} "
         f"attr:{total_attr} desc:{total_desc} | tasa útil: {tasa_util:.0%}"
     )
@@ -236,44 +234,8 @@ def procesar_carpeta(
     return resultado
 
 
-# ------------------------- Modos -------------------------
-
-def modo_prueba(extractor: RegexExtractor):
-    carpeta = menu_carpeta()
-    if not carpeta:
-        return
-
-    resultado = procesar_carpeta(
-        carpeta=carpeta,
-        extractor=extractor,
-        forzar=True,           # siempre reprocesar en modo prueba
-        imprimir_detalle=True, # mostrar clasificación por página
-    )
-
-    if resultado:
-        r = resultado["resumen"]
-        print(f"\n{'─'*55}")
-        print(f"  Folleto:     {resultado['tienda']} / {resultado['folleto_id']}")
-        print(f"  Páginas:     {resultado['total_paginas']}")
-        print(f"{'─'*55}")
-        print(f"  ** Productos:          {r['total_productos']}")
-        print(f"  ** Precios actuales:   {r['total_precios']}")
-        print(f"  ** Precios anteriores: {r['total_precios_anterior']}")
-        print(f"  ** Ahorros:            {r['total_ahorros']}")
-        print(f"  ** Financiero:         {r['total_financiero']}")
-        print(f"  ** Promociones:        {r['total_promos']}")
-        print(f"  ** Eventos promo:      {r['total_eventos_promo']}")
-        print(f"  ** Atributos:          {r['total_atributos']}")
-        print(f"  **  Descartes:          {r['total_descartes']}")
-        print(f"  ** Tasa útil:          {r['tasa_util']:.0%}")
-        print(f"{'─'*55}")
-
-        if r["tasa_util"] < 0.30:
-            print(f"\n  WARNING:  Tasa útil baja ({r['tasa_util']:.0%})")
-            print("     Revisar: calidad del OCR, keywords de producto,")
-            print("     o umbrales de confianza en regex_extractor.py")
-
-
+# ------------- Batch y unitario -------------
+# revisa todo el liestdao y muetsra pendientes
 def modo_batch(extractor: RegexExtractor):
     carpetas = sorted([
         p.parent for p in DATA_PROCESSED.rglob("ocr_resultado.json")
@@ -330,15 +292,50 @@ def modo_batch(extractor: RegexExtractor):
     logger.info(f"   Total precios anteriores: {total_prec_ant}")
     logger.info(f"   Total financiero:         {total_financiero}")
     logger.info(f"   Total promociones:        {total_promo}")
-    logger.info(f"   Próximo paso: ETL → asociar producto+precio por bbox → PostgreSQL")
+    logger.info(f"   Próximo paso: ETL --> asociar producto+precio por bbox --> PostgreSQL")
     logger.info("=" * 55)
+
+# diferencia es que muestra detalle de cada página
+def modo_prueba(extractor: RegexExtractor):
+    carpeta = menu_carpeta()
+    if not carpeta:
+        return
+
+    resultado = procesar_carpeta(
+        carpeta=carpeta,
+        extractor=extractor,
+        forzar=True,           # siempre reprocesar en modo prueba
+        imprimir_detalle=True, # mostrar clasificación por página
+    )
+
+    if resultado:
+        r = resultado["resumen"]
+        print(f"\n{'-'*55}")
+        print(f"  Folleto:     {resultado['tienda']} / {resultado['folleto_id']}")
+        print(f"  Páginas:     {resultado['total_paginas']}")
+        print(f"{'-'*55}")
+        print(f"  ** Productos:          {r['total_productos']}")
+        print(f"  ** Precios actuales:   {r['total_precios']}")
+        print(f"  ** Precios anteriores: {r['total_precios_anterior']}")
+        print(f"  ** Ahorros:            {r['total_ahorros']}")
+        print(f"  ** Financiero:         {r['total_financiero']}")
+        print(f"  ** Promociones:        {r['total_promos']}")
+        print(f"  ** Eventos promo:      {r['total_eventos_promo']}")
+        print(f"  ** Atributos:          {r['total_atributos']}")
+        print(f"  **  Descartes:          {r['total_descartes']}")
+        print(f"  ** Tasa útil:          {r['tasa_util']:.0%}")
+        print(f"{'-'*55}")
+
+        if r["tasa_util"] < 0.30:
+            print(f"\n  WARNING:  Tasa útil baja ({r['tasa_util']:.0%})")
+            print("     Revisar: calidad del OCR, keywords de producto,")
+            print("     o umbrales de confianza en regex_extractor.py")
 
 
 #  ------------------------- Main -------------------------
-
 def main():
     logger.info("=" * 55)
-    logger.info("PriceScraper MX — Módulo NLP (Regex)")
+    logger.info("PriceScraper — Módulo NLP (Regex)")
     logger.info("=" * 55)
 
     # Extractor se inicializa una vez para toda la sesión

@@ -159,7 +159,7 @@ def main():
         writer.writeheader()
         writer.writerows(filas)
 
-    print("\n" + "=" * 90)
+    print("\n" + "-" * 90)
     print("RESUMEN GLOBAL")
     print("=" * 90)
     total = len(filas)
@@ -178,7 +178,7 @@ def main():
     print(f"Mejora (hibrido encontro, distancia no): {mejoras} ({mejoras/total:.1%})")
     print(f"Regresion (distancia encontro, hibrido no): {regresiones} ({regresiones/total:.1%})")
 
-    print("\n" + "=" * 90)
+    print("\n" + "-" * 90)
     print("POR TIENDA")
     print("=" * 90)
     print(f"{'Tienda':<16} {'Precios':>8} {'ViaROI':>8} {'SinProd_dist':>13} {'SinProd_hib':>12} {'Mejora':>8} {'Regresion':>10}")

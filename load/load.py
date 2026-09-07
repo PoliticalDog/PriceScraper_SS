@@ -1,10 +1,4 @@
-"""
-load/load.py
-PriceScraper MX - Modulo de carga ETL (NLP -> PostgreSQL)
-
-Lee nlp_resultado.json, asocia productos-precios por proximidad bbox
-e inserta en PostgreSQL usando psycopg v3.
-"""
+# Lee nlp_resultado.json, asocia productos-precios por proximidad bbox e inserta en PostgreSQL
 
 import json
 import logging
@@ -21,8 +15,10 @@ from nlp.normalizador import Normalizador
 
 from .db_builder import get_connection, get_cursor
 
+# incia el loggin en consola
 logger = logging.getLogger(__name__)
 
+# variables de path
 DATA_PROCESSED = Path("data/processed")
 DATA_RAW = Path("data/raw")
 RUTA_REGISTRO_SCRAPER = Path("data/registro_folletos_scrapeados.json")
@@ -31,12 +27,7 @@ CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {
     ("tiendeo", "walmart"): ("soriana", "Soriana"),
 }
 
-# Tiendas donde el benchmark hibrido (sources/vision/06_hibrido_roi_asociacion_producto_precio.md)
-# confirmo mejora real sin regresion: usa el slug CRUDO de scraping (tal como
-# aparece en data/raw/<fuente>/<slug>/), no el slug corregido de CORRECCION_TIENDAS.
-# NO agregar tiendas aqui sin correr antes probar_hibrido_roi.py -- fuera de
-# estas 4, ROI no detecta suficientes regiones confiables para ser util
-# (ver sources/vision/05_benchmark_roi_deteccion_regiones.md).
+# tiendas que se benefician de ROI
 TIENDAS_ROI_HIBRIDO = {"walmart", "chedraui", "soriana_hiper", "soriana_mercado"}
 
 _preprocesador_roi = None

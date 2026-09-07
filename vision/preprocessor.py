@@ -1,73 +1,78 @@
-# Metodos de los 3 perfiles de preprocesamiento de imagenes para mejorar el OCR
-# 2 categorías principales: Color (EasyOCR) y Blanco y negro (Tesseract)
+# preparacion de imagen antes del OCR - 2 motores principales: Color (EasyOCR) y Blanco y negro (Tesseract)
+# 2 perfiles (color blanco y negro) y 3 niveles de procesamiento (suave, normal, fuerte) para cada perfil
 
 import cv2
 import numpy as np
 import logging 
 from pathlib import Path
 
-# Perfiles de preprocesamiento:
+# Perfiles de color - pensadi para EasyOCR (3 perfiles):
 """
-     Color - EasyOCR (3 perfiles):
-        Preserva color -->  se usa usa canales RGB para segmentar texto del fondo
-        Sharpening --> realza bordes de letras sin quitar color
-        CLAHE --> mejora contraste local en zonas oscuras sin afectar zonas claras
+    Perfil suave: Escalado a 1500px
+    Perfil normal: Escalado, sharpening
+    Perfil fuerte:  Escalado, sharpening, clahe
+"""
 
-    Blanco y Negro - Tesseract (3 perfiles):
-        Escala de grises --> Tesseract opera mejor en un solo canal
-        Gaussiano --> reduce ruido antes de binarizar
-        Rotación --> Hough (útil para documentos escaneados)
-        Binarización adaptativa --> máximo contraste texto/fondo
+# Perfiles de blanco y negro - pensado para Tesseract (3 perfiles):
+"""
+    perfil suave: escalado, grises
+    perfil normal: escalado, grises, ruido
+    perfil fuerte: escalado, grises, ruido, binarizacion
 """
 
 # Configuración de logging
 logger = logging.getLogger(__name__)
 
-# Clase preporcesar
+# Clase principal de preprocesamiento
 class Preprocessor:
     
     # Ancho del escalado por default
-    ANCHO_OBJETIVO_DEFAULT = 1500  # valor por defecto
+    ANCHO_OBJETIVO_DEFAULT = 1500  # px valor por defecto
 
-    def __init__(
-        self,
+    # Constructor
+    def __init__(self,
         
         # --------------- Parámetros compartidos entre perfiles ---------------
-        escalar:        bool       = True,
-        escala_factor:  float|None = None,   # None --> adaptativo por ancho_objetivo
-        ancho_objetivo: int        = None,   # None -->ñ usa ANCHO_OBJETIVO_DEFAULT (1500px)
+        escalar:        bool       = True,   # siempre se escala
+        escala_factor:  float|None = None,   # None --> adaptativo por ancho_objetivo (se ajusta sobre la marcha)
+        ancho_objetivo: int        = None,   # None --> usa ANCHO_OBJETIVO_DEFAULT (1500px)
         
+        corregir_rot:   bool  = True,       # La verdad no es util aqui, pero se deja porque asi decia el tutorial
+
         # --------------- Blanco y negro (Tesseract) ---------------
         escala_grises:  bool  = True,
         reducir_ruido:  bool  = True,
         binarizar:      bool  = True,
-        corregir_rot:   bool  = True,
+        
         
         # --------------- COLOR (EasyOCR) ---------------
         sharpening:     bool  = False,  # Realza bordes conservando color
-        clahe:          bool  = False,  # Mejora contraste local por canal
+        clahe:          bool  = False,  # Mejora contraste por regiones de 64
     ):
         # Inicializacion de variables
         # Pasos compartidos
         self.escalar_flag  = escalar
         self.escala_factor = escala_factor  # None = adaptativo
         self.ancho_objetivo = ancho_objetivo or self.ANCHO_OBJETIVO_DEFAULT
+        self.corregir_rot  = corregir_rot
+
         # Perfil --> blanco y negro
         self.escala_grises = escala_grises
         self.reducir_ruido = reducir_ruido
         self.binarizar     = binarizar
-        self.corregir_rot  = corregir_rot
+        
         # Perfil --> color
         self.sharpening    = sharpening
         self.clahe         = clahe
 
-    # --------------------- Método principal ---------------------
+# --------------------- Método principal ---------------------
     # Procesa la imagen según los pasos activos en el orden correcto.
     def procesar(self, ruta_imagen: Path) -> np.ndarray:
         imagen = cv2.imread(str(ruta_imagen))
         if imagen is None:
             raise ValueError(f"No se pudo cargar la imagen: {ruta_imagen}")
 
+        # Log de inicio del procesamiento
         logger.info(f"[Preprocessor] Procesando: {ruta_imagen.name} "
                     f"({imagen.shape[1]}x{imagen.shape[0]}px)")
 
@@ -75,28 +80,27 @@ class Preprocessor:
         if self.escalar_flag:
             imagen = self._escalar(imagen)
 
-        # 2. CLAHE - mejora contraste antes del sharpening (v2 color)
+        # 2. CLAHE - mejora contraste antes del sharpening
         if self.clahe:
             imagen = self._clahe(imagen)
 
-        # 3. Sharpening - realza bordes conservando color (v2 color)
+        # 3. Sharpening - realza bordes conservando color
         if self.sharpening:
             imagen = self._sharpening(imagen)
 
-
-        # 4. Escala de grises (v1 / v2 bn)
+        # 4. Escala de grises
         if self.escala_grises:
             imagen = self._escala_grises(imagen)
 
-        # 5. Reducir ruido gaussiano (v1 / v2 bn)
+        # 5. Reducir ruido gaussiano
         if self.reducir_ruido:
             imagen = self._reducir_ruido(imagen)
 
-        # 6. Corrección de rotación - Hough (v1 / v2 bn)
+        # 6. Corrección de rotación - Hough (no es util para estos folletos, pero se deja por compatibilidad)
         if self.corregir_rot:
             imagen = self._corregir_rotacion(imagen)
 
-        # 7. Binarización adaptativa (v1 / v2 bn fuerte)
+        # 7. Binarización adaptativa
         if self.binarizar:
             imagen = self._binarizar(imagen)
 
@@ -112,61 +116,34 @@ class Preprocessor:
         logger.info(f"[Preprocessor] Guardada en: {ruta_salida}")
         return ruta_salida
 
-    # -------------------- Pasos compartidos --------------------
+# -------------------- Pasos compartidos --------------------
     # escalado adaptativo o fijo, según el perfil
     def _escalar(self, imagen: np.ndarray) -> np.ndarray:
-        
+
+        # Obtener dimensiones de la imagen
         alto, ancho = imagen.shape[:2] # alto, ancho, canales
 
-        # Si la imagen ya es más ancha que el objetivo, no SE escala 
+        # Determinar medida de escalado 
         if self.escala_factor is None:
             # Escalado adaptativo --> calcular factor según ancho objetivo
             if ancho == self.ancho_objetivo:
                 logger.info(f"[Preprocessor] Escalado adaptativo: {ancho}px = objetivo, sin cambio")
                 return imagen
+            # sino es objetivo, calcula escalado
             factor = self.ancho_objetivo / ancho
-            direccion = "↑" if ancho < self.ancho_objetivo else "↓"
+            direccion = "AUMENTA" if ancho < self.ancho_objetivo else "REDUCE"
             logger.info(
                 f"[Preprocessor] Escalado adaptativo: "
                 f"{ancho}px {direccion} {self.ancho_objetivo}px (x{factor:.2f})"
             )
+        # Recibio medida fija
         else:
-            # Modo fijo v1
             factor = self.escala_factor
 
         nuevo_ancho = int(ancho * factor)
         nuevo_alto  = int(alto  * factor)
         # INTER_CUBIC suaviza bordes - alternativa: INTER_LANCZOS4 (más nítido, más lento)
-        return cv2.resize(imagen, (nuevo_ancho, nuevo_alto),
-                          interpolation=cv2.INTER_CUBIC)
-
-    # Convierte a escala de grises si la imagen tiene 3 canales (color)
-    def _escala_grises(self, imagen: np.ndarray) -> np.ndarray:
-        if len(imagen.shape) == 3:
-            return cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-        return imagen
-
-    # ---------------------- Perfil Blanco y negro - Tesseracy ----------------------
-    # elimina ruido con gauss, no destruye tipografías finas
-    def _reducir_ruido(self, imagen: np.ndarray) -> np.ndarray:
-        # si la imagen es de 3 canales (color), se convierte a escala de grises
-        if len(imagen.shape) == 3:
-            imagen = self._escala_grises(imagen)
-        return cv2.GaussianBlur(imagen, (3, 3), 0)
-
-    # Binarización adaptativa gaussiana
-    def _binarizar(self, imagen: np.ndarray) -> np.ndarray:
-        
-        if len(imagen.shape) == 3:
-            imagen = self._escala_grises(imagen)
-        return cv2.adaptiveThreshold(
-            imagen,
-            maxValue=255,
-            adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            thresholdType=cv2.THRESH_BINARY,
-            blockSize=11, #vecindad
-            C=2 # penalización para evitar fondo completamente blanco
-        )
+        return cv2.resize(imagen, (nuevo_ancho, nuevo_alto),interpolation=cv2.INTER_CUBIC)
 
     # tecnica de rotacion Hough (inecesaria en pruebas)
     def _corregir_rotacion(self, imagen: np.ndarray) -> np.ndarray:
@@ -207,9 +184,40 @@ class Preprocessor:
             logger.warning(f"Error en corrección de rotación: {e}, saltando paso.")
             return imagen
 
-    # --------------------------------- v2 COLOR - optimizado para EasyOCR ---------------------- 
-    # mejora contraste local sin sobreexponer zonas claras
-    # Contrast Limited Adaptive Histogram Equalization
+
+    # ---------------------- Perfil Blanco y negro - pensado tesseract ----------------------
+    # Convierte a escala de grises si la imagen tiene 3 canales (color)
+    def _escala_grises(self, imagen: np.ndarray) -> np.ndarray:
+        if len(imagen.shape) == 3:
+            return cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
+        return imagen
+
+    # elimina ruido con gauss, no destruye tipografías finas
+    def _reducir_ruido(self, imagen: np.ndarray) -> np.ndarray:
+        # si la imagen es de 3 canales (color), se convierte a escala de grises
+        if len(imagen.shape) == 3:
+            imagen = self._escala_grises(imagen)
+        return cv2.GaussianBlur(imagen, (3, 3), 0)
+
+    # Binarización adaptativa gaussiana
+    def _binarizar(self, imagen: np.ndarray) -> np.ndarray:
+        
+        if len(imagen.shape) == 3:
+            imagen = self._escala_grises(imagen)
+        return cv2.adaptiveThreshold(
+            imagen,
+            maxValue=255,
+            adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            thresholdType=cv2.THRESH_BINARY,
+            blockSize=11, #vecindad
+            C=2 # penalización para evitar fondo completamente blanco
+        )
+
+    # ---------------------- Perfil COLOR - EasyOCR ---------------------- 
+    # sharpening - mejora contraste local sin sobreexponer zonas claras
+    # CLAHE - Contrast Limited Adaptive Histogram Equalization
+   
+    # Convierte a LAB, aplica CLAHE en L y vuelve a BGR
     def _clahe(self, imagen: np.ndarray) -> np.ndarray:
     
         # Si eesta en grises se aplica directo
@@ -229,7 +237,7 @@ class Preprocessor:
     def _sharpening(self, imagen: np.ndarray) -> np.ndarray:
         # Resalta bordes y el fondo blanco queda igual, usa el kernel de sharpening
         """
-        Explicacion breve, se toma el centro y se multiplica por 5, 
+        Se toma el centro y se multiplica por 5, 
         se resta el valor de los 4 puntos cardenales y se le resta al producto, de esta forma si los 4 puntos cardnales son cargados
         queda igual pero si los 4 puntos cardenales son blancos, el centro se resalta y se ve mas nítido
         """
@@ -240,7 +248,7 @@ class Preprocessor:
         ], dtype=np.float32)
         return cv2.filter2D(imagen, -1, kernel)
 
-
+    
     # ---------------- Comparación visual original vs procesada ----------------
     # Imagen comparativa, original - tratada 
     def guardar_comparacion(self, ruta_original: Path, ruta_salida: Path) -> Path:
@@ -277,27 +285,7 @@ class Preprocessor:
         return ruta_salida
 
 
-
-# ----------------- COMPARATIVAS ENTRE PERFILES -----------------
-
-"""
-PERFIL BASE V1
-_PERFILES_V1 = {
-    "suave":  Preprocessor(
-        escalar=True, escala_factor=1.5,
-        escala_grises=False, reducir_ruido=False, binarizar=False, corregir_rot=False,
-    ),
-    "normal": Preprocessor(
-        escalar=True, escala_factor=1.5,
-        escala_grises=True, reducir_ruido=True, binarizar=False, corregir_rot=True,
-    ),
-    "fuerte": Preprocessor(
-        escalar=True, escala_factor=1.5,
-        escala_grises=True, reducir_ruido=True, binarizar=True, corregir_rot=True,
-    ),
-}
-"""
-
+# -------- perfiles predefinidos para cada motor de OCR  --------
 #  Color - EasyOcr
 _PERFILES_COLOR = {
     "color_suave": Preprocessor(
@@ -346,10 +334,8 @@ _PERFILES_BN = {
 PERFILES = {**_PERFILES_COLOR, **_PERFILES_BN} # desempaquetar diccionarios y unirlos en uno solo
 
 # Agrupaciones para el menú
-#PERFILES_V1    = list(_PERFILES_V1.keys())     # ["suave", "normal", "fuerte"]
 PERFILES_COLOR = list(_PERFILES_COLOR.keys())  # ["color_suave", "color_normal", "color_fuerte"]
 PERFILES_BN    = list(_PERFILES_BN.keys())     # ["bn_suave", "bn_normal", "bn_fuerte"]
-
 
 # ----------------- Función para obtener preprocesador por nombre -----------------
 def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocessor:
@@ -368,7 +354,6 @@ def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocess
         return p_custom
 
     return p
-
 
 # Lista completa de perfiles disponibles (para validación externa)
 LISTA_PERFILES = list(PERFILES.keys())

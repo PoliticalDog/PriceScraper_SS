@@ -16,10 +16,10 @@ de alsuper y casa_ley (32 combinaciones).
 Resultado crudo (`gpu_alsuper_casa_ley/resumen_resolucion.txt` /
 `resultados_resolucion.csv`):
 
-- **casa_ley mejora claramente**: PROD_OCR 50.4%→81.8%, PROD_NLP 44.3%→76.9%
+- **casa_ley mejora claramente**: PROD_OCR 50.4%-->81.8%, PROD_NLP 44.3%-->76.9%
   a 2500px. Su cuello de botella si es tamano de fuente pequeno.
-- **alsuper empeora**: PRECIOS cae de 28.3%→18.2% (color_normal) y de
-  28.9%→21.2% (color_suave) a 2500px. Su problema no es resolucion.
+- **alsuper empeora**: PRECIOS cae de 28.3%-->18.2% (color_normal) y de
+  28.9%-->21.2% (color_suave) a 2500px. Su problema no es resolucion.
 
 Datos completos (bloques OCR crudos de las 32 combinaciones):
 `data/processed/_v8_experimento_resolucion_ocr/gpu_alsuper_casa_ley/resultados_detalle.json`.
@@ -41,7 +41,7 @@ agrego a la salida de `probar_vision.py` para poder calcularlo.
 **Validacion (19-ago-2026)**: se re-corrio `RegexExtractor` (ya con el fix)
 sobre los bloques OCR crudos del experimento de GPU — sin volver a hacer
 OCR — y se comparo contra el dataset manual
-(`scripts/validar_fix.py` → `gpu_alsuper_casa_ley/resultado_validacion_factor_escala.txt`):
+(`scripts/validar_fix.py` --> `gpu_alsuper_casa_ley/resultado_validacion_factor_escala.txt`):
 
 | tienda | perfil | ancho | PROD_NLP | PRECIOS |
 |---|---|---:|---:|---:|
@@ -67,13 +67,13 @@ basura). No es ruido agregado sobre lecturas buenas preservadas — es la
 misma region re-segmentada peor. Pasa igual con y sin sharpening
 (`color_suave` tambien lo sufre), asi que tampoco es (solo) el sharpening
 resaltando fondo de fotos, como se habia sospechado el 09-ago. La confianza
-promedio de bloques en alsuper cae con resolucion (0.556→0.499
-color_normal), mientras que en casa_ley sube (0.523→0.559) — la fuente
+promedio de bloques en alsuper cae con resolucion (0.556-->0.499
+color_normal), mientras que en casa_ley sube (0.523-->0.559) — la fuente
 nativa de alsuper (~17px) ya esta cerca del limite de fragmentacion de
 EasyOCR; estirarla mas no aporta nitidez real.
 
 El fix de `factor_escala` sigue siendo correcto y sin regresion a 1500px
-(`ancho_pagina == ANCHO_REFERENCIA_UMBRALES` → `factor_escala = 1.0`,
+(`ancho_pagina == ANCHO_REFERENCIA_UMBRALES` --> `factor_escala = 1.0`,
 comportamiento identico al anterior) y ayuda a casa_ley, pero **no cierra
 la prioridad 6 para alsuper**.
 
@@ -88,9 +88,9 @@ Se corrio el mismo experimento (OCR real, CPU, `color_normal`, 1500px vs
 2500px) sobre **todas** las paginas del dataset manual de esas 5 tiendas
 (138 paginas x 2 resoluciones = 276 corridas), sin tocar
 `data/processed/tiendeo/` de produccion.
-Script: `scripts/experimento_5_tiendas.py` → datos crudos en
+Script: `scripts/experimento_5_tiendas.py` --> datos crudos en
 `cpu_5_tiendas/detalle_5_tiendas.jsonl`.
-Analisis: `scripts/analizar_5_tiendas.py` →
+Analisis: `scripts/analizar_5_tiendas.py` -->
 `cpu_5_tiendas/resultado_prod_ocr_5_tiendas.txt`.
 
 | tienda | PROD_OCR 1500px | PROD_OCR 2500px | cambio |

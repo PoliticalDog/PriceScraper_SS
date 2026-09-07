@@ -1,23 +1,14 @@
--- =============================================================================
--- PriceScraper MX — vistas.sql
--- Vistas BI para análisis de precios, comparativas y calidad del pipeline
---
--- Requiere que schema.sql ya haya sido ejecutado.
---
--- Uso:
---   psql -U <usuario> -d <base_datos> -f vistas.sql
---
--- Todas las vistas usan CREATE OR REPLACE — se pueden actualizar sin DROP.
--- =============================================================================
+-- vistas BI para análisis de precios, comparativas y calidad del pipelin
+-- uso: psql -U <usuario> -d <base_datos> -f vistas.sql--
 
 
--- -----------------------------------------------------------------------------
 -- v_precios_actuales
 -- Precios extraídos con descuento calculado y metadata del folleto.
 -- Para precios vigentes hoy filtrar: WHERE vigencia_hasta >= CURRENT_DATE
 -- "id" agregado 23-ago-2026 (= extracciones.id, real y unico por fila) --
 -- requisito de Django ORM: todo modelo managed=False necesita una PK.
--- -----------------------------------------------------------------------------
+
+
 CREATE OR REPLACE VIEW v_precios_actuales AS
 SELECT
     t.nombre                                                    AS tienda,
@@ -52,11 +43,9 @@ COMMENT ON VIEW v_precios_actuales IS
     'Filtrar WHERE vigencia_hasta >= CURRENT_DATE para precios activos.';
 
 
--- -----------------------------------------------------------------------------
 -- v_comparativa_precios
 -- Rango de precios por producto entre tiendas.
 -- Solo productos con 2+ registros para que la comparativa sea significativa.
--- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_comparativa_precios AS
 SELECT
     e.texto_norm                                AS producto,
@@ -82,11 +71,9 @@ COMMENT ON VIEW v_comparativa_precios IS
     'Solo productos presentes en 2+ tiendas.';
 
 
--- -----------------------------------------------------------------------------
 -- v_calidad_pipeline
 -- Métricas de calidad OCR/NLP por folleto.
 -- Útil para detectar folletos con baja tasa útil o mala confianza OCR.
--- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_calidad_pipeline AS
 SELECT
     f.id                                            AS folleto_id,
@@ -118,12 +105,10 @@ COMMENT ON VIEW v_calidad_pipeline IS
     'Detecta folletos con baja tasa_util_prom o confianza_ocr_prom.';
 
 
--- -----------------------------------------------------------------------------
 -- v_historico_precios
 -- Evolución de precio de un producto a lo largo del tiempo por tienda.
 -- Base para gráficas de tendencia en el dashboard BI.
 -- "id" agregado 23-ago-2026 (= extracciones.id) -- ver nota en v_precios_actuales.
--- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_historico_precios AS
 SELECT
     t.nombre                AS tienda,
@@ -150,7 +135,6 @@ COMMENT ON VIEW v_historico_precios IS
     'Base para gráficas de tendencia en el dashboard.';
 
 
--- -----------------------------------------------------------------------------
 -- v_eventos_activos
 -- Campañas promocionales vigentes hoy.
 -- "id" agregado 23-ago-2026 -- MIN(ep.id), NO ep.id en el GROUP BY: un primer
@@ -160,7 +144,6 @@ COMMENT ON VIEW v_historico_precios IS
 -- detectado comparando el conteo de la vista contra SELECT COUNT(*) FROM
 -- eventos_promo antes de comitear. MIN(ep.id) da un id estable por grupo sin
 -- tocar que columnas definen el agrupamiento.
--- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_eventos_activos AS
 SELECT
     ep.nombre_evento,
@@ -184,8 +167,3 @@ ORDER BY ep.fecha_inicio DESC;
 
 COMMENT ON VIEW v_eventos_activos IS
     'Campañas promocionales vigentes hoy con conteo de precios asociados.';
-
-
--- =============================================================================
--- FIN vistas.sql
--- =============================================================================

@@ -1,13 +1,13 @@
 """
 probar_load.py
-PriceScraper MX — Orquestador del módulo Load (NLP → PostgreSQL)
+PriceScraper — Orquestador del módulo Load (NLP --> PostgreSQL)
 
 Menú:
-  1 → Cargar folleto específico   (modo prueba)
-  2 → Cargar todo data/processed/ (batch, salta ya cargados)
-  3 → Cargar batch forzando       (reprocesa todo)
-  4 → Ver estado de la BD
-  0 → Salir
+  1 --> Cargar folleto específico   (modo prueba)
+  2 --> Cargar todo data/processed/ (batch, salta ya cargados)
+  3 --> Cargar batch forzando       (reprocesa todo)
+  4 --> Ver estado de la BD
+  0 --> Salir
 
 Uso:
     python probar_load.py
@@ -18,7 +18,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+# -- Logging -------------------------------------------------------------------
 Path("logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
@@ -43,18 +43,18 @@ from load.db_builder import verificar_conexion, resumen_bd
 DATA_PROCESSED = Path("data/processed")
 
 
-# ── Menú ──────────────────────────────────────────────────────────────────────
+# -- Menú ----------------------------------------------------------------------
 
 def menu_principal() -> int:
-    print("\n" + "═" * 55)
-    print("   PriceScraper MX — Módulo Load (NLP → PostgreSQL)")
-    print("═" * 55)
-    print("   1 → Cargar folleto específico")
-    print("   2 → Cargar batch (salta ya cargados)")
-    print("   3 → Cargar batch forzando (reprocesa todo)")
-    print("   4 → Ver estado de la BD")
-    print("   0 → Salir")
-    print("─" * 55)
+    print("\n" + "=" * 55)
+    print("   PriceScraper — Módulo Load (NLP --> PostgreSQL)")
+    print("-" * 55)
+    print("   1 --> Cargar folleto específico")
+    print("   2 --> Cargar batch (salta ya cargados)")
+    print("   3 --> Cargar batch forzando (reprocesa todo)")
+    print("   4 --> Ver estado de la BD")
+    print("   0 --> Salir")
+    print("-" * 55)
     try:
         return int(input("   Opción: ").strip())
     except ValueError:
@@ -68,18 +68,18 @@ def menu_folleto() -> Path | None:
         print("     Ejecuta primero: python probar_nlp.py")
         return None
 
-    print(f"\n{'─' * 65}")
+    print(f"\n{'-' * 65}")
     print(f"   {'#':>3}  {'RUTA'}")
-    print(f"{'─' * 65}")
+    print(f"{'-' * 65}")
     for i, ruta in enumerate(rutas, 1):
         ruta_rel = ruta.parent.relative_to(DATA_PROCESSED)
         print(f"   {i:>3}. {ruta_rel}")
-    print(f"{'─' * 65}")
+    print(f"{'-' * 65}")
 
     try:
-        idx = int(input("\n   Número de folleto: ").strip())
-        if 1 <= idx <= len(rutas):
-            return rutas[idx - 1]
+        opc = int(input("\n   Número de folleto: ").strip())
+        if 1 <= opc <= len(rutas):
+            return rutas[opc - 1]
     except ValueError:
         pass
 
@@ -87,7 +87,7 @@ def menu_folleto() -> Path | None:
     return None
 
 
-# ── Modos ─────────────────────────────────────────────────────────────────────
+# -- Modos ---------------------------------------------------------------------
 
 def modo_prueba(loader: Loader):
     ruta = menu_folleto()
@@ -129,29 +129,29 @@ def modo_batch(loader: Loader, forzar: bool = False):
 
 def modo_ver_bd():
     estado = resumen_bd()
-    print(f"\n{'─' * 40}")
+    print(f"\n{'-' * 40}")
     print(f"  {'TABLA':<22} {'REGISTROS':>10}")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
     for tabla, count in estado.items():
         valor = f"{count:>10,}" if count is not None else "  NO EXISTE"
         print(f"  {tabla:<22} {valor}")
-    print(f"{'─' * 40}")
+    print(f"{'-' * 40}")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 def _imprimir_resumen_folleto(r: dict):
-    print(f"\n{'─' * 50}")
+    print(f"\n{'-' * 50}")
     print(f"  Tienda:      {r['tienda']} ({r['fuente']})")
     print(f"  Folleto:     {r['folleto_id']}")
     print(f"  Páginas:     {r['paginas_procesadas']}")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
     print(f"  Extracciones:       {r['extracciones_insertadas']}")
     print(f"  Sin producto:       {r['precios_sin_producto']}")
     print(f"  Eventos promo:      {r['eventos_insertados']}")
     if r["errores"]:
         print(f"  ⚠️  Errores:         {r['errores']}")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
 
     if r["extracciones_insertadas"] > 0 and r["precios_sin_producto"] > 0:
         pct = r["precios_sin_producto"] / r["extracciones_insertadas"] * 100
@@ -161,24 +161,24 @@ def _imprimir_resumen_folleto(r: dict):
 
 
 def _imprimir_resumen_batch(totales: dict):
-    print(f"\n{'═' * 50}")
+    print(f"\n{'=' * 50}")
     print(f"  ✅ Batch completado")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
     print(f"  Procesados:         {totales.get('procesados', 0)}")
     print(f"  Omitidos (ya BD):   {totales.get('omitidos', 0)}")
     print(f"  Errores:            {totales.get('errores', 0)}")
-    print(f"{'─' * 50}")
+    print(f"{'-' * 50}")
     print(f"  Extracciones total: {totales.get('extracciones_total', 0):,}")
     print(f"  Eventos promo:      {totales.get('eventos_total', 0):,}")
-    print(f"{'═' * 50}")
+    print(f"{'=' * 50}")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# -- Main ----------------------------------------------------------------------
 
 def main():
-    print("\n" + "═" * 55)
-    print("   PriceScraper MX — Módulo Load")
-    print("═" * 55)
+    print("\n" + "=" * 55)
+    print("   PriceScraper — Módulo Load")
+    print("-" * 55)
 
     # Health-check antes de inicializar el Loader
     if not verificar_conexion():

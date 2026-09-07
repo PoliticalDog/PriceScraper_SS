@@ -1,10 +1,11 @@
-# Guarda cada página como imagen en data/raw/{fuente}/{tienda}/{folleto_id}/pagina_{n}.webp
+# Se enfoca en descargar las imágenes de los folletos y guardándolas estructuradamente en las carpetas de data raw
+# Guarda cada pagina como imagen en data/raw/{fuente}/{tienda}/{folleto_id}/pagina_{n}.webp
 
 import asyncio
 import aiohttp
 import logging
 import re
-import unicodedata
+import unicodedata      # fragmentacion de cadena para eliminar acentos
 from pathlib import Path
 
 #inicia loger
@@ -38,7 +39,7 @@ class Downloader:
         "Accept":     "image/webp,image/apng,image/*,*/*;q=0.8",
     }
 
-    # Referer correcto por fuente — cada CDN espera el dominio del sitio que lo sirve
+    # Referer de fuente (Tiendeo y Ofertomat) CDN
     REFERERS = {
         "tiendeo":   "https://www.tiendeo.mx/",
         "ofertomat": "https://www.ofertomat.mx/",
@@ -57,7 +58,7 @@ class Downloader:
     def _ruta_folleto(self, fuente: str, tienda: str, folleto_id: str) -> Path:
         
         # Estructura: data/raw/{fuente}/{tienda_slug}/{folleto_id}/
-        # Si la tienda está vacía → carpeta desconocidos para revisión manual
+        # Si la tienda está vacía --> carpeta desconocidos para revisión manual
         ruta = ruta_folleto(fuente, tienda, folleto_id)
         ruta.mkdir(parents=True, exist_ok=True)
         return ruta
@@ -90,7 +91,7 @@ class Downloader:
         if errores:
             logger.warning(f"[Downloader] {errores} páginas fallaron en folleto {folleto_id}")
 
-        logger.info(f"[Downloader] {len(rutas_exitosas)}/{len(urls_paginas)} páginas descargadas → {ruta_destino}")
+        logger.info(f"[Downloader] {len(rutas_exitosas)}/{len(urls_paginas)} páginas descargadas --> {ruta_destino}")
         return sorted(rutas_exitosas)
 
     # Descarga una sola página respetando el semáforo de concurrencia.
@@ -125,29 +126,3 @@ class Downloader:
             except Exception as e:
                 logger.error(f"Error descargando página {num_pagina} ({url}): {e}")
                 raise
-    
-    # Descarga solo la imagen de portada (preview) de un folleto
-    async def descargar_preview(
-        self,
-        url_preview: str,
-        fuente: str,
-        tienda: str,
-        folleto_id: str,
-    ) -> Path | None:
-        
-        ruta_destino = self._ruta_folleto(fuente, tienda, folleto_id)
-        ruta_archivo = ruta_destino / "preview.webp"
-
-        if ruta_archivo.exists():
-            return ruta_archivo
-
-        try:
-            async with aiohttp.ClientSession(headers=self._headers_para(fuente)) as session:
-                async with session.get(url_preview, timeout=aiohttp.ClientTimeout(total=15)) as r:
-                    r.raise_for_status()
-                    ruta_archivo.write_bytes(await r.read())
-            logger.info(f"[Downloader] Preview guardada: {ruta_archivo}")
-            return ruta_archivo
-        except Exception as e:
-            logger.error(f"Error descargando preview de folleto {folleto_id}: {e}")
-            return None

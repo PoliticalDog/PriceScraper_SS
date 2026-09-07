@@ -68,7 +68,7 @@ def construir_matcher(nlp) -> PhraseMatcher:
 
 
 def main():
-    print("\n" + "=" * 88)
+    print("\n" + "-" * 88)
     print("EXPERIMENTO: spaCy (es_core_news_sm) vs regex actual -- recall de PRODUCTO")
     print("=" * 88)
 
@@ -110,14 +110,14 @@ def main():
           f"({len(todos_los_textos)/dt_spacy:.0f} bloques/seg)")
 
     # ---- Reasignar los docs procesados de vuelta a cada pagina/bloque ----
-    idx = 0
+    opc = 0
     resultados_por_tienda = {}  # tienda -> [ratios de recall NER, recall Matcher]
     conteo_entidades = {"LOC": 0, "MISC": 0, "ORG": 0, "PER": 0, "sin_entidad": 0}
     total_bloques_con_match = 0
 
     for tienda, folleto_id, pagina_gt, bloques in tareas:
-        docs_pagina = docs[idx: idx + len(bloques)]
-        idx += len(bloques)
+        docs_pagina = docs[opc: opc + len(bloques)]
+        opc += len(bloques)
 
         bloques_ner = []      # bloques con alguna entidad NER (MISC/ORG como proxy de "nombre propio")
         bloques_matcher = []  # bloques con match del PhraseMatcher (catalogo)

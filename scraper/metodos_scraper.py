@@ -1,4 +1,4 @@
-# Contiene la preparación del entorno de scraping, manejo de navegador, reintentos y delays.
+# Contiene la preparación del entorno de scraping, manejo de navegador, reintentos y delays
 
 import asyncio
 import random
@@ -33,13 +33,12 @@ class BaseScraper(ABC):
         
         # inicia el navegador con un user-agent aleatorio
         self._playwright = await async_playwright().start()
-        # configuracion chromium
+        # configuracion motor chromium para navegador web 
         self.browser = await self._playwright.chromium.launch(
             headless=self.headless,
             args=[
-                "--no-sandbox",                     # por si se usa docker despues para postgre
                 "--disable-dev-shm-usage",          # evita crashes por memoria compartida
-                "--disable-gpu",                    # evita crashes de GPU en servidores sin GPU
+                "--disable-gpu",                    # evita errores con uso de GPU
                 "--disable-software-rasterizer",    # reducción de consumo de recursos
                 "--disable-blink-features=AutomationControlled",  # oculta que es bot
             ]
@@ -77,7 +76,7 @@ class BaseScraper(ABC):
     async def _navegar(self, url: str, esperar: str = "networkidle"):
 
         # url: URL de destino.
-        # networkidle --> espera a que no haya peticiones de red (más seguro)
+        # networkidle --> espera a que no haya peticiones de red
         try:
             logger.info(f"Navegando a: {url}")
             await self.page.goto(url, wait_until=esperar, timeout=30_000)

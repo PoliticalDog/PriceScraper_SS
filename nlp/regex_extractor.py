@@ -52,15 +52,15 @@ class RegexExtractor:
     """
     Flujo de clasificación (orden de prioridad):
       1. Limpiar texto OCR
-      2. ¿Es descarte?          → DESCARTE
-      3. ¿Es precio anterior?   → PRECIO_ANTERIOR
-      4. ¿Es ahorro?            → AHORRO
-      5. ¿Es evento promo?      → EVENTO_PROMO
-      6. ¿Es precio?            → PRECIO
-      7. ¿Es promoción?         → PROMO
-      8. ¿En catálogo?          → PRODUCTO o ATRIBUTO
-      9. ¿Heurística producto?  → PRODUCTO
-     10. Por defecto            → DESCARTE
+      2. ¿Es descarte?          --> DESCARTE
+      3. ¿Es precio anterior?   --> PRECIO_ANTERIOR
+      4. ¿Es ahorro?            --> AHORRO
+      5. ¿Es evento promo?      --> EVENTO_PROMO
+      6. ¿Es precio?            --> PRECIO
+      7. ¿Es promoción?         --> PROMO
+      8. ¿En catálogo?          --> PRODUCTO o ATRIBUTO
+      9. ¿Heurística producto?  --> PRODUCTO
+     10. Por defecto            --> DESCARTE
     """
 
     # --------------- PRECIO ANTERIOR ---------------
@@ -81,7 +81,7 @@ class RegexExtractor:
     )
 
     # --------------- AHORRO ---------------
-    # "Ahorras $32.90" / "Ahorra $49.90" / "Ahorras 5755.00" (OCR $ → 5)
+    # "Ahorras $32.90" / "Ahorra $49.90" / "Ahorras 5755.00" (OCR $ --> 5)
     PATRON_AHORRO = re.compile(
         r"""
         \bahorr[ao]s?\b\s*
@@ -119,7 +119,7 @@ class RegexExtractor:
     )
 
     # Precio con $ OCR corrupto (fresko): s/8/S + 4-6 dígitos (últimos 2 = centavos)
-    # s9989 → $99.89 | 82990 → $29.90 | s15790 → $157.90
+    # s9989 --> $99.89 | 82990 --> $29.90 | s15790 --> $157.90
     PATRON_PRECIO_OCR_CORRUPTO = re.compile(
         r"""
         ^               # bloque completo
@@ -364,7 +364,7 @@ class RegexExtractor:
         # Specs técnicas sueltas sin contexto
         re.compile(r"^\d+\s*(?:gb|mb|ghz|mhz|watts?|w\b|mpx|pulgadas)", re.IGNORECASE),
 
-        # ── Estados y geografía de México ──────────────────────────────────────
+        # -- Estados y geografía de México --------------------------------------
         re.compile(
             r"^(?:"
             r"aguascalientes|baja\s+california(?:\s+sur)?|campeche|"
@@ -385,7 +385,7 @@ class RegexExtractor:
             r"TAB|TAMPS|TLAX|VER|YUC|ZAC)$"
         ),
 
-        # ── Financiero / bancario ───────────────────────────────────────────────
+        # -- Financiero / bancario -----------------------------------------------
         re.compile(
             r"^(?:bbva|banamex|banorte|santander|hsbc|citibanamex|"
             r"scotiabank|inbursa|banbajio|afirme|invex|american\s+express|"
@@ -414,7 +414,7 @@ class RegexExtractor:
         # en un precio de producto real del folleto, solo en letra chica financiera.
         re.compile(r"^\$\s*[\d,]+\s*MN\.?$", re.IGNORECASE),
 
-        # ── Slogans y frases de campaña cross-tienda ───────────────────────────
+        # -- Slogans y frases de campaña cross-tienda ---------------------------
         # El "¡" de apertura se pierde en el OCR y queda como una "i" pegada al
         # verbo ("iConsiente", "iRenueva"). Bug corregido: "(?:i¡)?" exigía la
         # secuencia literal de 2 caracteres "i¡" (nunca ocurre en OCR real) en vez
@@ -435,7 +435,7 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Condiciones MSI: lista de categorias separadas por coma ────────────
+        # -- Condiciones MSI: lista de categorias separadas por coma ------------
         # "En Electrónica, Cómputo, Fotografía, Videojuegos..." -- condicion de
         # letra chica de "Meses Sin Intereses", no un nombre de producto.
         re.compile(
@@ -443,7 +443,7 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Slogans específicos de tienda detectados en análisis ───────────────
+        # -- Slogans específicos de tienda detectados en análisis ---------------
         re.compile(
             r"^(?:"
             # tolera espacios totalmente fundidos por el OCR (ej. "Entiendayen inea",
@@ -455,7 +455,7 @@ class RegexExtractor:
             r"enlinea|enl[ií]nea|"                          # fusiones OCR costco
             r"s[oó]loenlinea|s[oó]loen\s+tienda|s[oó]loen\s+l[ií]nea|"
             r"s[oó]lo\s+enlinea|s[oó]lo\s+en\s+l[ií]nea|"  # con espacio: "SÓLO ENLINEA"
-            r"s[oó]lqen\s+l[ií]nea|s[oó]lqen\s+linea|"     # ERROR #19: Q→O por OCR
+            r"s[oó]lqen\s+l[ií]nea|s[oó]lqen\s+linea|"     # ERROR #19: Q-->O por OCR
             r"h[ií]per|"
             r"rebajado|"
             r"sale|"
@@ -477,7 +477,7 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Palabras sueltas de folleto que pasan isupper() ────────────────────
+        # -- Palabras sueltas de folleto que pasan isupper() --------------------
         re.compile(
             r"^(?:desde|ahora|antes|sale|rebajado|h[ií]per|kilo|kilos|"
             r"oferta|ofertas|promocion|promoci[oó]n|exclusivo|exclusiva|"
@@ -486,7 +486,7 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Marcas-logo de envase (fresko / alsuper) ───────────────────────────
+        # -- Marcas-logo de envase (fresko / alsuper) ---------------------------
         # Cubre: Golden, Hills, variantes OCR solas Y combinaciones compuestas
         re.compile(
             r"^['\"\`]?"                                    # comilla inicial OCR
@@ -508,13 +508,13 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Header repetido de folleto (fresko Golden Hills) ─────────────────
+        # -- Header repetido de folleto (fresko Golden Hills) -----------------
         re.compile(
             r"^(?:un\s+brillo(?:\s+de\s+calidad)?|de\s+calidad|decalidad)$",
             re.IGNORECASE
         ),
 
-        # ── Textos de portada / cierre de folleto ────────────────────────────
+        # -- Textos de portada / cierre de folleto ----------------------------
         re.compile(
             r"^(?:como\s+te\s+gusta|exploralo\s+en|s[ií]guenos\s+en|"
             r"libera|el\s+potencial|de\s+tu\s+suv|"
@@ -522,18 +522,18 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Slogan "precio bajo" de Bodega Aurrera ──────────────────────────────
+        # -- Slogan "precio bajo" de Bodega Aurrera ------------------------------
         # El OCR nunca lee "precio bodega" limpio en este folleto -- variantes
         # garbled confirmadas: "PREçIQ"/"BGDEGA", "PREçO"/"DEGA", "PREçI".
         re.compile(r"^(?:precio\s*bodega|pre[cç][ií]?[oq]?|bgdega|dega)$", re.IGNORECASE),
 
-        # ── Ruido OCR puro (consonantes sin vocales) ───────────────────────────
+        # -- Ruido OCR puro (consonantes sin vocales) ---------------------------
         re.compile(
             r"^(?:[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}\s+){1,3}"
             r"[b-df-hj-np-tv-zB-DF-HJ-NP-TV-Z]{2,6}$"
         ),
 
-        # ── Calendario de campana promocional (dia de la semana + fecha) ────────
+        # -- Calendario de campana promocional (dia de la semana + fecha) --------
         # Agregado 23-ago-2026: analisis de productos_canonicos vs Postgres real
         # encontro "Martes y Miercoles" (172), "Sabado 30 de Mayo"/"Viernes 29 de
         # Mayo"/etc. (34 c/u, un bloque repetido por pagina de un calendario de
@@ -546,13 +546,13 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── "Tambien en la App/tienda/linea" ────────────────────────────────────
+        # -- "Tambien en la App/tienda/linea" ------------------------------------
         # Agregado 23-ago-2026: "Tambien En: App"/"Appc"/"Appi" (264 combinado)
         # no matcheaba los patrones existentes de "en tienda"/"en linea" (linea
         # 454) porque empieza con "tambien", no con "en".
         re.compile(r"^tambi[eé]n\s*en\b.{0,15}$", re.IGNORECASE),
 
-        # ── Limite de compra / restricciones de promocion ──────────────────────
+        # -- Limite de compra / restricciones de promocion ----------------------
         # Agregado 23-ago-2026: "Maximo 10 Kg. Por Cliente" (90), "Aplican
         # Restricciones" (51). Distinto del pie de pagina legal generico (linea
         # 348) porque esos exigen "sujeto a"/"terminos y condiciones" -- este es
@@ -563,7 +563,7 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
-        # ── Slogans (frases de marketing completas, no palabras sueltas) ────────
+        # -- Slogans (frases de marketing completas, no palabras sueltas) --------
         # Agregado 23-ago-2026, RESTRINGIDO tras medir regresion contra
         # evaluar_nlp.py: la primera version de este cambio tambien incluia
         # palabras genericas sueltas ("mimarca", "variedad", "compra",
@@ -601,7 +601,7 @@ class RegexExtractor:
     CORRECCIONES_OCR = [
         (re.compile(r"@"),                        "o"),
         (re.compile(r"(?<!\w)0(?=\d{2,})"),       "o"),
-        # 'o' minúscula entre coma de miles y dígitos: $16,o00 → $16,000
+        # 'o' minúscula entre coma de miles y dígitos: $16,o00 --> $16,000
         (re.compile(r"(\d[,\.])o(\d{2,3})"),      r"\g<1>0\2"),
         (re.compile(r"\$\s+"),                     "$"),
         (re.compile(r"(\d),(\d{3})(?!\d)"),        r"\1,\2"),
@@ -753,7 +753,7 @@ class RegexExtractor:
             return EntidadExtraida("PRECIO", texto_raw, texto,
                                    valor=precio_sin_simbolo, confianza=confianza, bbox=bbox)
 
-        # 6. Catálogo → PRODUCTO o ATRIBUTO
+        # 6. Catálogo --> PRODUCTO o ATRIBUTO
         en_catalogo, categoria, es_atributo = buscar_categoria(texto)
         if en_catalogo:
             tipo = "ATRIBUTO" if es_atributo else "PRODUCTO"
@@ -793,13 +793,13 @@ class RegexExtractor:
         if match:
             return self._parsear_numero(match.group(1))
         # ERROR #18 — "DE $5,4900 A $3,990": el precio anterior es el primero
-        # OCR fusiona el punto decimal: "$5,490.00" → "$5,4900"
+        # OCR fusiona el punto decimal: "$5,490.00" --> "$5,4900"
         # Corrección: si hay coma de miles + 4 dígitos, los últimos 2 son centavos
         m_de_a = self.PATRON_DE_A.match(texto)
         if m_de_a:
             num_str = m_de_a.group(1)
-            # Corregir fusión OCR: "$5,490.00" → OCR lee "$5,4900"
-            # coma + más de 3 dígitos → los últimos 2 son centavos
+            # Corregir fusión OCR: "$5,490.00" --> OCR lee "$5,4900"
+            # coma + más de 3 dígitos --> los últimos 2 son centavos
             num_str = re.sub(
                 r"(\d+),(\d{4,})$",
                 lambda m: m.group(1) + "," + m.group(2)[:-2] + "." + m.group(2)[-2:],
@@ -1107,10 +1107,10 @@ class RegexExtractor:
         Convierte string numérico a float manejando separadores de miles/decimales.
 
         Reglas:
-          $2,295  → 2295.0  (coma de miles: 3 dígitos tras separador)
-          $10.999 → 10999.0 (punto de miles: 3 dígitos tras separador)
-          $18.50  → 18.5    (punto decimal: 1-2 dígitos tras separador)
-          $1,390  → 1390.0
+          $2,295  --> 2295.0  (coma de miles: 3 dígitos tras separador)
+          $10.999 --> 10999.0 (punto de miles: 3 dígitos tras separador)
+          $18.50  --> 18.5    (punto decimal: 1-2 dígitos tras separador)
+          $1,390  --> 1390.0
         """
         try:
             numero_str = numero_str.strip()
@@ -1119,7 +1119,7 @@ class RegexExtractor:
             # Separador de miles: coma o punto seguido de EXACTAMENTE 3 dígitos
             # — reemplazar por placeholder vacío (eliminar separador de miles)
             numero_str = re.sub(r"[,\.](\d{3})(?!\d)", r"\1", numero_str)
-            # El separador que quede ahora (si hay) es decimal → normalizar a punto
+            # El separador que quede ahora (si hay) es decimal --> normalizar a punto
             numero_str = numero_str.replace(",", ".")
             return float(numero_str)
         except (ValueError, IndexError):
@@ -1192,9 +1192,9 @@ class RegexExtractor:
     # --------------- Utilidades ---------------
 
     def imprimir_resultado(self, resultado: ResultadoPagina):
-        print(f"\n{'═'*65}")
+        print(f"\n{'='*65}")
         print(f"  {resultado.imagen}")
-        print(f"{'═'*65}")
+        print(f"{'='*65}")
 
         if resultado.productos:
             print(f"\n  🏷️  PRODUCTOS ({len(resultado.productos)}):")
@@ -1233,4 +1233,4 @@ class RegexExtractor:
                 print(f"      {e.texto_norm[:55]:<55} [{e.confianza:.0%}]")
 
         print(f"\n  🗑️  Descartes: {len(resultado.descartes)} bloques filtrados")
-        print(f"{'─'*65}\n")
+        print(f"{'-'*65}\n")

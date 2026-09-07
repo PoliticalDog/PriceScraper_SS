@@ -1,5 +1,5 @@
-# Motor de OCR - EasyOCR y Tesseract como motores independientes
-# Se obtienen resultados de OCR con texto, confianza, bbox y motor utilizado
+# OCR  (EasyOCR y Tesseract)
+# genera el resultado de OCR con texto, confianza, bbox y motor utilizado
 
 import logging
 import numpy as np
@@ -10,7 +10,7 @@ from pathlib import Path
 # inicialización del logger para este módulo
 logger = logging.getLogger(__name__)
 
-# Lista de motores OCR disponibles
+# Lista de motores OCR
 MOTORES_DISPONIBLES = ["easyocr", "tesseract"]
 
 # Resultado de OCR con texto, confianza, bbox y motor utilizado
@@ -19,20 +19,37 @@ class ResultadoOCR:
     # bloque de texto detectado por el OCR
     texto:     str    # texto detectado
     confianza: float  # Score de confianza (0.0 a 1.0)
-    bbox:      list   # [[x1,y1],[x2,y1],[x2,y2],[x1,y2]] en píxeles
-    motor:     str    # motor usado
+    bbox:      list   # [[x1,y1],[x2,y1],[x2,y2],[x1,y2]]
+    motor:     str    # motor seleccionado
 
     # Convierte el bbox a formato simple {x, y, ancho, alto} para JSON
     @property
     def bbox_simple(self) -> dict:
-        xs = [p[0] for p in self.bbox]
-        ys = [p[1] for p in self.bbox]
+        xs = []
+        ys = []
+
+        # Extraer coordenadas x,y en pilas
+        for punto in self.bbox:
+            x = punto[0]
+            y = punto[1]
+
+            xs.append(x)
+            ys.append(y)
+
+        x_min = min(xs)
+        x_max = max(xs)
+        y_min = min(ys)
+        y_max = max(ys)
+
+        ancho = x_max - x_min
+        alto = y_max - y_min
+
         return {
-            "x":     min(xs),
-            "y":     min(ys),
-            "ancho": max(xs) - min(xs),
-            "alto":  max(ys) - min(ys),
-        }
+            "x": x_min,
+            "y": y_min,
+            "ancho": ancho,
+            "alto": alto,
+    }
 
     # resultado OCR
     def __str__(self):
@@ -47,10 +64,10 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
         idiomas:  list[str] = None,
         usar_gpu: bool= False,
     ):
-        self.idiomas  = idiomas or ["es", "en"]
+        self.idiomas  = idiomas or ["es", "en"] # Solo para easyocr, Tesseract usa su propia configuración de idiomas
         self.usar_gpu = usar_gpu
 
-        self._reader    = None   # instancia de EasyOCR.Reader (inicialización lazy) 
+        self._easycor    = None   # instancia de EasyOCR.Reader (inicialización lazy) 
         self._tesseract = False  # instancia de Tesseract verificada (lazy)
 
     # ------------------ Método principal ------------------ 
@@ -58,17 +75,19 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
     def extraer_texto(
         self,
         imagen: np.ndarray,
-        motor:  str = "easyocr",
+        motor:  str = "easyocr",    # sino recibe tessercat oor fedecto es easyocr
     ) -> list[ResultadoOCR]:
         
-        # Verificar motor solicitado, easyocr es el default
+        # Verificar motor solicitado (en caso de ser tesseract)
         if motor not in MOTORES_DISPONIBLES:
             logger.warning(f"[OCR] Motor '{motor}' no válido, usando 'easyocr'.")
             motor = "easyocr"
+
         # usar easyocr
         if motor == "easyocr":
             self._iniciar_easyocr()
             resultados = self._extraer_easyocr(imagen)
+
         # usar tesseract
         else:
             resultados = self._extraer_tesseract(imagen)
@@ -100,20 +119,22 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
         return self.extraer_texto(imagen, motor=motor) # extraer texto desde imagen numpy (RGB) con motor seleccionado
 
     
-    # ---------------------- Inicialización lazy de motores ---------------------- 
+    # ---------------------- Inicialización lazy de motores ----------------------
+    # ----- EASUYOCR -----
     # cargar easyocr, solo cuando se seleeciona
     def _iniciar_easyocr(self):
-        if self._reader is None:
+        if self._easycor is None:
             logger.info("[OCR] Iniciando EasyOCR ...")
             # importar biblioetca
             import easyocr
-            self._reader = easyocr.Reader(
+            self._easycor = easyocr.Reader(
                 self.idiomas,
                 gpu=self.usar_gpu,
                 verbose=False,
             )
             logger.info("[OCR] EasyOCR listo.")
 
+    # ----- TESSERACT -----
     # verificar disponibilidad de Tesseract
     def _verificar_tesseract(self) -> bool:
         if self._tesseract:
@@ -125,27 +146,29 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
             self._tesseract = True
             return True
         except Exception:
-            logger.warning("[OCR] 🛑 Tesseract no disponible.")
+            logger.warning("[OCR] XXXX Tesseract no disponible.")
             return False
 
     
     # ---------------- Motores individuales ----------------
+    
+    # -------- EASYOCR --------
     # Extraer texto con EasyOCR, filtrando por confianza y limpiando texto
     def _extraer_easyocr(self, imagen: np.ndarray) -> list[ResultadoOCR]:
         try:
-            raw = self._reader.readtext(
+            raw = self._easycor.readtext(    # clase easyocr.Reader
                 imagen,
                 detail=1,        # retorna bbox + texto + confianza
-                paragraph=False, # bloques individuales (no agrupar párrafos)
+                paragraph = False, # bloques individuales (no agrupar párrafos)
             )
             resultados = []
             for (bbox, texto, confianza) in raw:
                 texto = texto.strip()
-                if texto and confianza > 0.1:  # filtrar ruido extremo
+                if texto and confianza > 0.1:       # filtrar ruido extremo
                     resultados.append(ResultadoOCR(
-                        texto=texto,
+                        texto = texto,
                         confianza=float(confianza),
-                        bbox=[[int(p[0]), int(p[1])] for p in bbox],
+                        bbox=[[int(p[0]), int(p[1])] for p in bbox],    # redondea con int
                         motor="easyocr",
                     ))
             return resultados
@@ -153,6 +176,24 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
             logger.error(f"[OCR] Error en EasyOCR: {e}")
             return []
         
+    # -------- TESSERACT --------
+    """
+    estructura resultado tesseract:
+    {
+        'level': [1, 2, 3, 4, 5, ...],         # nivel de jerarquía (1=pagina, 2=parrafo, 3=linea, 4=palabra)
+        'page_num': [1, 1, 1, 1, ...],         # número de página
+        'block_num': [0, 0, 0, 0, ...],        # número de bloque
+        'par_num': [0, 0, 0, 0, ...],          # número de párrafo
+        'line_num': [0, 0, 0, 0, ...],         # número de línea
+        'word_num': [0, 0, 0, 0, ...],         # número de palabra
+        'left': [x1, x2, x3, x4,...],          # coordenada izquierda (x)
+        'top': [y1, y2, y3,...],               # coordenada superior (y)
+        'width': [w1,w2,w3,...],               # ancho del bbox
+        'height':[h1,h2,h3,...],               # alto del bbox
+        'conf':[c1,c2,c3,...],                 # confianza (score)
+        'text':['texto1','texto2',...]         # texto detectado
+    }    
+    """
     # Extraer texto con Tesseract, filtrando por confianza y limpiando texto
     def _extraer_tesseract(self, imagen: np.ndarray) -> list[ResultadoOCR]:
         if not self._verificar_tesseract():
@@ -165,12 +206,15 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
             data   = pytesseract.image_to_data(
                 imagen,
                 config=config,
-                output_type=pytesseract.Output.DICT,
+                output_type=pytesseract.Output.DICT,    # da el resuktado en diccionario
             )
+
+            # filtrar resultados por confianza y limpiar texto
             resultados = []
             for i in range(len(data["text"])):
                 texto = data["text"][i].strip()
                 conf  = int(data["conf"][i])
+                # tesseract da confianza 0-100, -1 es nulo
                 if not texto or conf < 10:
                     continue
                 x, y = data["left"][i], data["top"][i]
@@ -188,7 +232,7 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
 
     
     # --------------- Utilidades ---------------
-    # Ordenar resultados por posición: primero por Y (arriba-abajo) con tolerancia de 20px, luego por X (izquierda-derecha)
+    # Ordenar resultados por posición
     def _ordenar_resultados(
         self, resultados: list[ResultadoOCR]
     ) -> list[ResultadoOCR]:
@@ -201,10 +245,10 @@ class OCREngine: # resultados = ocr.extraer_texto(imagen_np, motor="")
     
     # Imprimir resultados en consola con formato legible
     def imprimir_resultados(self, resultados: list[ResultadoOCR]):
-        print(f"\n{'─'*62}")
+        print(f"\n{'-'*62}")
         print(f"  {'TEXTO':<35} {'CONF':>6}  {'MOTOR'}")
-        print(f"{'─'*62}")
+        print(f"{'-'*62}")
         for r in resultados:
             print(f"  {r.texto:<35} {r.confianza:>5.0%}  {r.motor}")
-        print(f"{'─'*62}")
+        print(f"{'-'*62}")
         print(f"  Total: {len(resultados)} bloques\n")

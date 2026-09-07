@@ -14,7 +14,7 @@ from load.db_builder import verificar_conexion
 
 
 def main():
-    print("\n" + "=" * 55)
+    print("\n" + "-" * 55)
     print("   PriceScraper — Dashboard (Django)")
     print("=" * 55)
 

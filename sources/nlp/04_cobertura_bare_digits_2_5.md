@@ -24,20 +24,20 @@ una ambigüedad de precedencia entre dos reglas ya existentes.
 ## Cambios en `nlp/regex_extractor.py`
 
 **Regla B-2** (`PATRON_BARE_DIGITOS_2`): precio entero <$100 sin centavos
-(ej. "15"→$15). Gate: contexto fuerte O producto cerca (igual que B-4).
+(ej. "15"-->$15). Gate: contexto fuerte O producto cerca (igual que B-4).
 Excluye explícitamente "00" (ver bug abajo).
 
 **Regla B-5** (`PATRON_BARE_DIGITOS_5`): precio ≥$100 con centavos (ej.
-"15490"→$154.90). El plan original proponía un gate AND (contexto fuerte Y
+"15490"-->$154.90). El plan original proponía un gate AND (contexto fuerte Y
 producto cerca) por el riesgo de SKU ya documentado para 5-6 dígitos
 (`541583`/`559944`, jul-2026). Medido: el AND dejaba pasar 0/62 casos reales
 del dataset manual (ninguno tenía contexto fuerte). Se relajó a OR, igual que
 B-2/B-4, y se validó que no subieran `precios_mal_clasificados`.
 
 **Fix de ambigüedad B-4 vs Regla A** (`PATRON_DIGITO_ESPURIO`): un string de
-4 dígitos puros puede ser un precio real con centavos (B-4, "6990"→$69.90,
+4 dígitos puros puede ser un precio real con centavos (B-4, "6990"-->$69.90,
 92/93 casos validados) o un "$" mal leído + precio entero (Regla A, "8249"
-→$249, 6 casos confirmados jul-2026, ninguno termina en "0"). Regla A se
+-->$249, 6 casos confirmados jul-2026, ninguno termina en "0"). Regla A se
 evaluaba primero con gate más débil y, si fallaba, mataba la función sin
 darle oportunidad a B-4 -- precios reales terminados en ".90" (69.90, 59.90,
 64.90, 89.90...) se estaban descartando. Fix: para texto sin sufijo, se

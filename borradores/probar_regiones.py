@@ -150,7 +150,7 @@ def main():
             f"{cobertura_confiable:.1%} cobertura confiable" + (f" -> {ruta_salida}" if ruta_salida else "")
         )
 
-    print("\n" + "=" * 80)
+    print("\n" + "-" * 80)
     print("RESUMEN")
     print("=" * 80)
     print(f"{'Tienda':<16} {'Folleto':<9} {'Pagina':<18} {'Candidatas':>10} {'ConPrecio':>10} {'Cobertura':>10}")
@@ -168,7 +168,7 @@ def main():
             acc["candidatas"] += n_cand
             acc["confiables"] += n_conf
             acc["cobertura"] += cob
-        print("\n" + "=" * 80)
+        print("\n" + "-" * 80)
         print("AGREGADO POR TIENDA")
         print("=" * 80)
         print(f"{'Tienda':<16} {'Paginas':>8} {'Candidatas':>10} {'ConPrecio':>10} {'CobPromedio':>12}")

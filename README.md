@@ -103,37 +103,37 @@ Para inspeccionar la base de datos PostgreSQL generada se usa **pgAdmin 4** (con
 
 ```
 PriceScraper_SS/
-├── scraper/
-│   ├── metodos_scraper.py   # Clase base BaseScraper (Playwright)
-│   ├── downloader.py        # Descarga de imagenes
-│   ├── registro.py          # Control de folletos procesados (idempotencia)
-│   └── sources/
-│       ├── tiendeo.py       # Adaptador Tiendeo.com.mx
-│       └── ofertomat.py     # Adaptador Ofertomat.mx
-├── vision/
-│   ├── preprocessor.py      # Pipeline OpenCV (perfiles color_normal / color_suave)
-│   └── ocr_engine.py        # EasyOCR (principal) + Tesseract (fallback/investigacion)
-├── nlp/
-│   ├── regex_extractor.py   # Extractor de entidades via regex
-│   ├── catalogo_productos.py
-│   └── normalizador.py      # API planeada para el ETL (aun no integrada, no es codigo muerto)
-├── load/                    # ETL — EN CONSTRUCCION (frente de trabajo actual)
-│   ├── db_builder.py        # Conexion PostgreSQL (psycopg v3), ejecuta schema.sql
-│   ├── load.py               # Carga: asociacion producto-precio por bounding boxes
-│   ├── schema.sql
-│   └── vistas.sql            # Vistas para BI, aplicadas manualmente via pgAdmin
-├── sources/                  # Comparaciones manuales de perfiles OCR (antecedentes de cambios)
-│   └── analisis_perfiles_v3/
-├── data/                    # <- NO incluido en git (ver .gitignore)
-│   ├── raw/                 # Imagenes descargadas
-│   └── processed/           # Imagenes procesadas + JSONs OCR/NLP
-├── logs/                    # <- NO incluido en git
-├── probar_scraper.py
-├── probar_vision.py
-├── probar_nlp.py
-├── probar_load.py
-├── requirements.txt
-└── Propuesta_PriceScraper_SS.docx   # Documento de servicio social (objetivos, alcance, metricas)
+├-- scraper/
+│   ├-- metodos_scraper.py   # Clase base BaseScraper (Playwright)
+│   ├-- downloader.py        # Descarga de imagenes
+│   ├-- registro.py          # Control de folletos procesados (idempotencia)
+│   └-- sources/
+│       ├-- tiendeo.py       # Adaptador Tiendeo.com.mx
+│       └-- ofertomat.py     # Adaptador Ofertomat.mx
+├-- vision/
+│   ├-- preprocessor.py      # Pipeline OpenCV (perfiles color_normal / color_suave)
+│   └-- ocr_engine.py        # EasyOCR (principal) + Tesseract (fallback/investigacion)
+├-- nlp/
+│   ├-- regex_extractor.py   # Extractor de entidades via regex
+│   ├-- catalogo_productos.py
+│   └-- normalizador.py      # API planeada para el ETL (aun no integrada, no es codigo muerto)
+├-- load/                    # ETL — EN CONSTRUCCION (frente de trabajo actual)
+│   ├-- db_builder.py        # Conexion PostgreSQL (psycopg v3), ejecuta schema.sql
+│   ├-- load.py               # Carga: asociacion producto-precio por bounding boxes
+│   ├-- schema.sql
+│   └-- vistas.sql            # Vistas para BI, aplicadas manualmente via pgAdmin
+├-- sources/                  # Comparaciones manuales de perfiles OCR (antecedentes de cambios)
+│   └-- analisis_perfiles_v3/
+├-- data/                    # <- NO incluido en git (ver .gitignore)
+│   ├-- raw/                 # Imagenes descargadas
+│   └-- processed/           # Imagenes procesadas + JSONs OCR/NLP
+├-- logs/                    # <- NO incluido en git
+├-- probar_scraper.py
+├-- probar_vision.py
+├-- probar_nlp.py
+├-- probar_load.py
+├-- requirements.txt
+└-- Propuesta_PriceScraper_SS.docx   # Documento de servicio social (objetivos, alcance, metricas)
 ```
 
 ---

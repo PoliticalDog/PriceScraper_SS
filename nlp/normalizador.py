@@ -220,7 +220,7 @@ class ResultadoNorm:
             return f"[DESCARTE] '{self.texto_raw}'"
         marca_str = f" [{self.marca}]" if self.marca else ""
         return (f"[{self.metodo.upper()} {self.confianza_norm:.0%}] "
-                f"'{self.texto_raw}' → '{self.nombre_canonico}'{marca_str}")
+                f"'{self.texto_raw}' --> '{self.nombre_canonico}'{marca_str}")
 
 
 
@@ -231,9 +231,9 @@ class Normalizador:
     Normaliza texto OCR de productos en nombres canónicos comparables.
 
     Umbral de confianza fuzzy:
-        >= UMBRAL_ALTO  → match directo, alta confianza (fuzzy)
-        >= UMBRAL_BAJO  → match aceptable (fuzzy con advertencia)
-        <  UMBRAL_BAJO  → sin match (heurístico o sin_match)
+        >= UMBRAL_ALTO  --> match directo, alta confianza (fuzzy)
+        >= UMBRAL_BAJO  --> match aceptable (fuzzy con advertencia)
+        <  UMBRAL_BAJO  --> sin match (heurístico o sin_match)
 
     Args:
         umbral_alto: Confianza mínima para match directo (default: 0.80)
@@ -341,8 +341,8 @@ class Normalizador:
 
         # 4. Match exacto en catálogo (después de normalizar)
         texto_norm_base = self._normalizar_base(texto_limpio)
-        for texto_idx, nombre_canonico in self._indice:
-            if texto_norm_base == texto_idx:
+        for texto_opc, nombre_canonico in self._indice:
+            if texto_norm_base == texto_opc:
                 datos = CATALOGO_CANONICO[nombre_canonico]
                 return ResultadoNorm(
                     texto_raw=texto_raw,
@@ -362,7 +362,7 @@ class Normalizador:
         )
 
         if resultado_fuzzy:
-            match_texto, score, idx = resultado_fuzzy
+            match_texto, score, opc = resultado_fuzzy
             # Guarda de longitud: token_set_ratio puede dar score 100 cuando
             # el alias/nombre entero (a menudo corto: "a/a", "celular") queda
             # contenido como token dentro de un texto mucho mas largo y sin
@@ -383,7 +383,7 @@ class Normalizador:
 
             if ratio_longitud >= self.RATIO_LONGITUD_MINIMO:
                 confianza = score / 100.0
-                nombre_canonico = self._indice[idx][1]
+                nombre_canonico = self._indice[opc][1]
                 datos = CATALOGO_CANONICO[nombre_canonico]
                 metodo = "fuzzy" if confianza >= self.umbral_alto else "fuzzy_bajo"
 
@@ -574,10 +574,10 @@ def main():
         "Ropa interior microfibra", "Lentes de contacto de uso mensual",
     ]
 
-    print(f"\n{'═'*70}")
-    print(f"  Normalizador PriceScraper MX")
+    print(f"\n{'='*70}")
+    print(f"  Normalizador PriceScraper")
     print(f"  Catálogo: {len(CATALOGO_CANONICO)} productos canónicos")
-    print(f"{'═'*70}")
+    print(f"{'='*70}")
     print(f"  {'TEXTO RAW':<38} {'RESULTADO'}")
     print(f"{''*70}")
 

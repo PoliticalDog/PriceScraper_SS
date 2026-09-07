@@ -145,7 +145,7 @@ def main():
     agregados_global = df_paginas[CAMPOS].sum().astype(int).to_dict()
 
     # ---------------- Reporte en consola ----------------
-    print("\n" + "=" * 88)
+    print("\n" + "-" * 88)
     print("EVALUACION DE CALIDAD OCR+NLP vs DATASET MANUAL (tiendeo)")
     print("=" * 88)
     print(f"Folletos en dataset manual:        {len(archivos_manual)}")
