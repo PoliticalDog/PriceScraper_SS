@@ -1,12 +1,4 @@
-"""
-priceScraper_web/settings.py
-PriceScraper — configuracion Django del dashboard interno (migrado desde
-FastAPI el 23-ago-2026 para cumplir el stack tecnologico documentado en
-Propuesta_PriceScraper_SS.docx: Django + Bootstrap 5).
-
-Uso local/interno, sin login -- DEBUG=True es intencional, no hay despliegue
-publico planeado por ahora.
-"""
+# web settings
 
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,6 +8,7 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# cargar variables de entorno desde .env
 load_dotenv(BASE_DIR / ".env", encoding="utf-8")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-key-priceScraper-dashboard-interno")
@@ -23,6 +16,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-key-priceScraper-dashboard
 DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
+# definicion de apps
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -34,6 +28,7 @@ INSTALLED_APPS = [
     "dashboard",
 ]
 
+# definicion de middlewares
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -63,9 +58,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "priceScraper_web.wsgi.application"
 
-# -- Base de datos --------------------------------------------------------------
-# Se parsea DATABASE_URL (mismo .env que usa load/db_builder.py) en vez de
-# agregar dj-database-url como dependencia nueva.
+# ----------------- Base de datos -----------------
+# Se parsea DATABASE_URL (mismo .env que usa load/db_builder.py) en vez de agregar dj-database-url como dependencia nueva.
 _db_url = urlparse(os.getenv("DATABASE_URL", ""))
 
 DATABASES = {

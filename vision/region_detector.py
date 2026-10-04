@@ -1,4 +1,4 @@
-# Deteccion de regiones (ROI) -- recuadros por producto
+# Deteccion de regiones (ROI) --> recuadros por producto
 # Despues de procesar la iamgen --> solo se aplica a (walmart, chedraui, soriana_hiper, soriana_mercado) 
 
 import logging
@@ -14,13 +14,7 @@ AREA_MIN_FRACCION = 0.001   # descarta ruido muy pequeno (iconos, letras sueltas
 AREA_MAX_FRACCION = 0.5     # descarta contenedores casi del tamano de la pagina completa
 RECTANGULARIDAD_MIN = 0.6   # area_contorno / area_bbox -- que tan "rectangular" es la forma
 
-# Proporcion maxima (lado largo / lado corto) para aceptar una candidata. Una
-# caja de producto individual (incluyendo banners de precio anchos, ej. "Precio
-# bajo todos los dias") normalmente cae debajo de esto; una fila de 2+ cajas
-# fusionadas por el fondo continuo entre ellas (revision manual de desacuerdos
-# ROI vs distancia, jul 2026 -- ver sources/vision/05) es notablemente mas
-# ancha/alta que una celda real, y produce asociaciones producto-precio
-# incorrectas si se deja pasar.
+# Proporcion maxima (lado largo / lado corto) para aceptar una candidata. 
 PROPORCION_MAX = 3.0
 
 # Cualquiera de estos patrones dentro de la region cuenta como "hay precio aqui"
@@ -34,25 +28,11 @@ _PATRONES_PRECIO = (
 # Fraccion minima del area del bbox de OCR que debe caer dentro de la region
 # para considerar que ese bloque de texto "pertenece" a la region
 SOLAPE_MIN_FRACCION = 0.5
-
-# Si los productos candidatos dentro de una region confiable estan dispersos
-# horizontalmente mas alla de esta fraccion del ancho de la region, la region
-# probablemente fusiona 2+ celdas de producto (ver PROPORCION_MAX arriba) y no
-# hay forma confiable de saber a cual de los candidatos pertenece el precio --
-# mejor no asociar por ROI que asociar con el vecino equivocado.
 DISPERSION_MAX_FRACCION = 0.5
 
-
+# Detecta recuadros rectangulares candidatos en una imagen de folleto ya
+# preprocesada, filtrando solo por geometria (area/rectangularidad/forma).
 def detectar_regiones(imagen: np.ndarray) -> list[dict]:
-    """
-    Detecta recuadros rectangulares candidatos en una imagen de folleto ya
-    preprocesada, filtrando solo por geometria (area/rectangularidad/forma).
-
-    Retorna una lista de regiones {"x","y","ancho","alto"} (mismo formato que
-    ResultadoOCR.bbox_simple en vision/ocr_engine.py). NO evalua si la region
-    es util para asociar producto-precio -- para eso usar calificar_regiones()
-    con los bloques de OCR de la pagina.
-    """
     if imagen is None or imagen.size == 0:
         return []
 
@@ -103,11 +83,10 @@ def detectar_regiones(imagen: np.ndarray) -> list[dict]:
 
     regiones = _quitar_anidadas(candidatas)
     logger.info(f"[RegionDetector] {len(regiones)} regiones candidatas (geometria)")
-    return regiones
+    return regiones # Retorna una lista de regiones {"x","y","ancho","alto"}
 
-
+# True si al menos `umbral` del area del bbox de OCR cae dentro de la region.
 def _bbox_dentro_de_region(bbox: dict, region: dict, umbral: float = SOLAPE_MIN_FRACCION) -> bool:
-    """True si al menos `umbral` del area del bbox de OCR cae dentro de la region."""
     x1, y1 = max(bbox["x"], region["x"]), max(bbox["y"], region["y"])
     x2 = min(bbox["x"] + bbox["ancho"], region["x"] + region["ancho"])
     y2 = min(bbox["y"] + bbox["alto"], region["y"] + region["alto"])
@@ -119,11 +98,9 @@ def _bbox_dentro_de_region(bbox: dict, region: dict, umbral: float = SOLAPE_MIN_
     return (inter / area_bbox) >= umbral
 
 
+# True si algun bloque de OCR de la pagina (ya extraido, sin OCR adicional)
+# cae dentro de la region y su texto coincide con un patron de precio.
 def region_contiene_precio(region: dict, bloques_ocr: list[dict]) -> bool:
-    """
-    True si algun bloque de OCR de la pagina (ya extraido, sin OCR adicional)
-    cae dentro de la region y su texto coincide con un patron de precio.
-    """
     for bloque in bloques_ocr:
         bbox = bloque.get("bbox")
         if not bbox or not _bbox_dentro_de_region(bbox, region):
@@ -135,12 +112,6 @@ def region_contiene_precio(region: dict, bloques_ocr: list[dict]) -> bool:
 
 
 def calificar_regiones(regiones: list[dict], bloques_ocr: list[dict]) -> list[dict]:
-    """
-    Anade el campo booleano "tiene_precio" a cada region candidata, segun si
-    contiene un bloque de OCR que coincide con un patron de precio. Este es el
-    criterio real de "confiable" para asociacion producto-precio -- reemplaza
-    al heuristico de conteo/cobertura descartado (ver encabezado del modulo).
-    """
     calificadas = [
         {**region, "tiene_precio": region_contiene_precio(region, bloques_ocr)}
         for region in regiones
@@ -149,18 +120,12 @@ def calificar_regiones(regiones: list[dict], bloques_ocr: list[dict]) -> list[di
     logger.info(f"[RegionDetector] {con_precio}/{len(calificadas)} regiones con precio confirmado")
     return calificadas
 
-
+# Solo las regiones que demuestran contener un precio -- utiles para asociar producto-precio
 def filtrar_regiones_confiables(regiones_calificadas: list[dict]) -> list[dict]:
-    """Solo las regiones que demuestran contener un precio -- utiles para asociar producto-precio."""
     return [r for r in regiones_calificadas if r.get("tiene_precio")]
 
-
+# Elimina regiones que estan contenidas dentro de otras regiones
 def _quitar_anidadas(regiones: list[dict]) -> list[dict]:
-    """
-    findContours con RETR_LIST devuelve tanto el borde externo como el interno
-    de una misma linea de recuadro -- produce cajas casi identicas o una
-    contenida en la otra. Se queda con la mas grande de cada grupo solapado.
-    """
     def area(r):
         return r["ancho"] * r["alto"]
 
@@ -180,11 +145,8 @@ def _quitar_anidadas(regiones: list[dict]) -> list[dict]:
             resultado.append(r)
     return resultado
 
-
+# Devuelve True si el centro del bbox cae dentro de la region.
 def _centro_dentro_de_region(bbox: dict, region: dict) -> bool:
-    """True si el centro del bbox cae dentro de la region (contencion simple,
-    no solape parcial -- para decidir a que "contenedor visual" pertenece
-    un bloque, no si un texto se lee dentro de un recuadro)."""
     if not bbox:
         return False
     cx = bbox.get("x", 0) + bbox.get("ancho", 0) / 2
@@ -196,17 +158,6 @@ def _centro_dentro_de_region(bbox: dict, region: dict) -> bool:
 
 
 def asociar_producto_por_region(precio: dict, productos: list[dict], regiones: list[dict]) -> dict | None:
-    """
-    Asocia un precio a un producto usando el contenedor visual (ROI) en vez de
-    distancia bbox: busca la region que contiene al precio, y dentro de esa
-    MISMA region busca un producto. Si el precio no cae en ninguna region, o
-    la region no contiene ningun producto, retorna None -- el llamador debe
-    hacer fallback al metodo de distancia (load.py._asociar_por_cercania).
-
-    Si hay mas de un producto candidato en la region, se toma el mas cercano
-    verticalmente arriba del precio (mismo criterio que el metodo de
-    distancia, para no introducir un desempate distinto).
-    """
     precio_bbox = precio.get("bbox", {})
     region_del_precio = next(
         (r for r in regiones if _centro_dentro_de_region(precio_bbox, r)), None
@@ -238,11 +189,6 @@ def asociar_producto_por_region(precio: dict, productos: list[dict], regiones: l
 
 
 def dibujar_regiones(imagen: np.ndarray, regiones: list[dict]) -> np.ndarray:
-    """
-    Dibuja las regiones detectadas sobre una copia de la imagen, para inspeccion visual.
-    Si la region trae el campo "tiene_precio" (ver calificar_regiones), se colorea
-    en verde las confiables y en rojo las que no demostraron contener un precio.
-    """
     copia = imagen.copy()
     if len(copia.shape) == 2:
         copia = cv2.cvtColor(copia, cv2.COLOR_GRAY2BGR)

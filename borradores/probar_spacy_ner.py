@@ -70,7 +70,7 @@ def construir_matcher(nlp) -> PhraseMatcher:
 def main():
     print("\n" + "-" * 88)
     print("EXPERIMENTO: spaCy (es_core_news_sm) vs regex actual -- recall de PRODUCTO")
-    print("=" * 88)
+    print("-" * 88)
 
     t0 = time.time()
     nlp = spacy.load("es_core_news_sm")
@@ -167,13 +167,13 @@ def main():
 
     print("-" * 88)
     print(f"{'GLOBAL':<18} {pct(g_ner, g_total):>14} {pct(g_matcher, g_total):>16}")
-    print("=" * 88)
+    print("-" * 88)
     print(f"Total articulos evaluados: {g_total}")
     print(f"Distribucion de entidades NER en bloques OCR: {conteo_entidades}")
     print(f"Bloques con match de PhraseMatcher: {total_bloques_con_match} de {len(todos_los_textos)} "
           f"({pct(total_bloques_con_match, len(todos_los_textos))})")
     print(f"\nTiempo spaCy (pipeline completo, {len(todos_los_textos)} bloques): {dt_spacy:.1f}s")
-    print("=" * 88)
+    print("-" * 88)
 
     reporte = {
         "por_tienda": resultados_por_tienda,

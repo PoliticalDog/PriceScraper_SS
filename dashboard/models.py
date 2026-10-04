@@ -1,22 +1,12 @@
-"""
-dashboard/models.py
-PriceScraper - Modelos Django ORM mapeados a las tablas y vistas que ya
-existen en Postgres (definidas en load/schema.sql y load/vistas.sql).
-
-Todos managed=False: Django NO crea, altera ni borra estas tablas via
-migrations -- el schema sigue siendo propiedad de schema.sql/vistas.sql,
-ejecutado por load/db_builder.py. Estos modelos solo describen lo que ya
-existe para poder usar el ORM en la capa de lectura del dashboard.
-"""
+# PriceScraper - Modelos Django ORM mapeados a las tablas 
+# y vistas que ya existen en Postgres (definidas en load/schema.sql y load/vistas.sql).
 
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 
-# =============================================================================
-# Tablas base (load/schema.sql)
-# =============================================================================
-
+# ------------------- Tablas base (load/schema.sql) -------------------
+ 
 class Tienda(models.Model):
     nombre = models.CharField(max_length=100)
     slug = models.CharField(max_length=60, unique=True)
@@ -166,10 +156,10 @@ class Alerta(models.Model):
         db_table = "alertas"
 
 
-# =============================================================================
+# -------------------
 # Vistas BI de solo lectura (load/vistas.sql)
 # Todas managed=False -- son SELECT, Django nunca escribe en ellas.
-# =============================================================================
+# -------------------
 
 class VPreciosActuales(models.Model):
     id = models.BigIntegerField(primary_key=True)

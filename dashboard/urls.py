@@ -10,6 +10,7 @@ urlpatterns = [
     path("historico", views.pagina_historico, name="historico"),
     path("calidad", views.pagina_calidad, name="calidad"),
     path("promociones", views.pagina_promociones, name="promociones"),
+    path("datos", views.pagina_explorador, name="explorador"),
 
     # API
     path("api/filtros/tiendas", views.api_filtros_tiendas),

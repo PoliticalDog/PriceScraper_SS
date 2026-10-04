@@ -1,20 +1,4 @@
-"""
-dashboard/queries.py
-PriceScraper - Consultas del dashboard de visualizacion via Django ORM.
-
-Migrado de SQL crudo (psycopg directo) a QuerySets (23-ago-2026) para cumplir
-"Django ORM para la capa de acceso" segun Propuesta_PriceScraper_SS.docx.
-load/load.py (la fase de ETL/carga) sigue en SQL crudo a proposito -- ver
-memoria de la sesion: reescribirlo se considero mas riesgo que beneficio
-justo despues de haberlo validado a fondo contra Postgres real.
-
-Nota de tipos: columnas definidas como ROUND(...::NUMERIC) en load/vistas.sql
-(descuento_pct, precio_promedio, confianza_ocr_prom, tasa_util_prom) llegan
-como Decimal via el ORM -- Django las serializaria como string en JSON
-(DjangoJSONEncoder), distinto al comportamiento anterior con psycopg+FastAPI
-(que las devolvia como numero). Se castea a float explicitamente donde
-aplica para mantener el mismo contrato de API.
-"""
+# Consultas del dashboard de visualizacion via Django ORM.
 
 from typing import Optional
 
@@ -234,6 +218,56 @@ def calidad_pipeline(
         f["confianza_ocr_prom"] = _num(f["confianza_ocr_prom"])
         f["tasa_util_prom"] = _num(f["tasa_util_prom"])
     return filas
+
+
+# -- Explorador crudo de la BD (sin agregaciones de negocio) --------------------
+
+def listar_tiendas_detalle() -> list[dict]:
+    return list(
+        Tienda.objects
+        .annotate(num_folletos=Count("folletos"))
+        .order_by("nombre")
+        .values("id", "nombre", "slug", "fuente_slug", "activa", "created_at", "num_folletos")
+    )
+
+
+def listar_folletos(tienda_id: Optional[str] = None, limite: int = 200) -> list[dict]:
+    qs = Folleto.objects.all()
+    if tienda_id:
+        qs = qs.filter(tienda_id=tienda_id)
+    qs = qs.order_by("-created_at")[:limite]
+    return list(qs.values(
+        "id", "tienda__nombre", "fuente", "folleto_id_fuente", "titulo",
+        "fecha_inicio", "fecha_fin", "total_paginas", "estado", "scrapeado_at", "created_at",
+    ))
+
+
+def listar_tipos_extraccion() -> list[str]:
+    return list(
+        Extraccion.objects.order_by("tipo").values_list("tipo", flat=True).distinct()
+    )
+
+
+def listar_extracciones(
+    tienda_id: Optional[str] = None,
+    folleto_id: Optional[str] = None,
+    tipo: Optional[str] = None,
+    limite: int = 200,
+) -> list[dict]:
+    qs = Extraccion.objects.all()
+    if tienda_id:
+        qs = qs.filter(tienda_id=tienda_id)
+    if folleto_id:
+        qs = qs.filter(folleto_id=folleto_id)
+    if tipo:
+        qs = qs.filter(tipo=tipo)
+
+    qs = qs.order_by("-created_at")[:limite]
+    return list(qs.values(
+        "id", "tienda__nombre", "folleto_id", "tipo", "texto_raw", "texto_norm",
+        "categoria_nlp", "valor", "valor_anterior", "texto_promo", "confianza_ocr",
+        "producto_canonico__nombre_canonico", "created_at",
+    ))
 
 
 # -- Promociones y eventos ---------------------------------------------------------

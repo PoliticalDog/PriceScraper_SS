@@ -1,11 +1,5 @@
-# Evalua la tasa de captura real del pipeline OCR+NLP contra el dataset
-# de etiquetado manual (data/raw/_revision_manual/tiendeo/), folleto por
-# folleto, tienda por tienda y a nivel global.
-#
-# Compara SOLO los folletos del dataset manual que ya tienen ocr_resultado.json
-# y nlp_resultado.json en data/processed/tiendeo/ -- los que aun no tienen OCR
-# (pendientes de correr en la PC con GPU) se reportan aparte, sin afectar las
-# metricas.
+# Orquestador que valua la tasa de captura real del pipeline OCR+NLP contra el dataset
+# Evalua solo los folletos que tienen ocr y nlp real vs un dataset manual
 
 import json
 import logging
@@ -15,9 +9,18 @@ import pandas as pd
 
 from nlp.evaluador_calidad import comparar_folleto
 
+"""
+- Recall de OCR: ¿el texto llegó a leerse siquiera? (productos_ocr_ok)
+- Recall de NLP: de lo que el OCR sí leyó, ¿el regex lo clasificó bien como PRODUCTO/PRECIO/PROMO? (productos_nlp_ok, precios_ok, promos_ok)
+- Precision de NLP: de todo lo que el regex clasificó en una categoría, ¿cuánto es correcto? (línea 61-63, comparado contra *_nlp_clasificados/*_nlp_correctos)
+- F1-score por categoría y promedio, contra un criterio de éxito explícito del proyecto: "F1 ≥ 70%" (línea 197-203)
+"""
+
+# arranque de login
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger("evaluar_nlp")
 
+# Paths carpetas
 MANUAL     = Path("data/raw/_revision_manual/tiendeo")
 PROCESSED  = Path("data/processed/tiendeo")
 SALIDA_DIR = Path("data/processed/_evaluacion_nlp")
@@ -29,35 +32,23 @@ def cargar_json(ruta: Path) -> dict | None:
     with open(ruta, encoding="utf-8") as f:
         return json.load(f)
 
-
+# porcentaje
 def pct(a: int, b: int) -> str:
     return f"{(a / b * 100):.1f}%" if b else "  n/a"
 
-
+# tasa de acierto (0.0 si b==0)
 def tasa(a: int, b: int) -> float:
     return a / b if b else 0.0
 
-
+# F1-score (0.0 si precision+recall==0)
 def f1_score(precision: float, recall: float) -> float:
     if precision + recall == 0:
         return 0.0
     return 2 * precision * recall / (precision + recall)
 
-
+# Calcula precision, recall y F1 para una categoria
 def precision_recall_f1(agregado: dict, prefijo: str) -> dict:
-    """
-    Precision/recall/F1 para una categoria (producto/precio/promo) a partir
-    de un dict agregado (por tienda o global) con los campos de
-    ResultadoPaginaEval. "prefijo" es "productos"/"precios"/"promos".
-
-    Recall reusa el mismo campo que ya se reportaba antes de F1-score
-    (24-ago-2026, criterio "NLP: F1-score >= 70%" de la propuesta, nunca
-    antes calculado -- solo se media recall). Precision es nuevo: de cada
-    bloque que el NLP clasifico en esta categoria, cuantos son correctos
-    (ver nlp/evaluador_calidad.py, campos *_nlp_clasificados/*_nlp_correctos).
-    "productos_ok" se llama en realidad "productos_nlp_ok" -- unica
-    inconsistencia de nombres heredada del evaluador original.
-    """
+   
     campo_ok = "productos_nlp_ok" if prefijo == "productos" else f"{prefijo}_ok"
     recall = tasa(agregado[campo_ok], agregado[f"{prefijo}_total"])
     precision = tasa(agregado[f"{prefijo}_nlp_correctos"], agregado[f"{prefijo}_nlp_clasificados"])
@@ -67,14 +58,16 @@ def precision_recall_f1(agregado: dict, prefijo: str) -> dict:
         "f1": round(f1_score(precision, recall), 4),
     }
 
-
+# Funcion principal
 def main():
     SALIDA_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Cargar los archivos de datos manual
     archivos_manual = sorted(MANUAL.rglob("*_contenido.json"))
     sin_datos = []
-    resultados_por_folleto = []  # [(tienda, folleto_id, [ResultadoPaginaEval,...])]
+    resultados_por_folleto = [] 
 
+    # Procesar cada archivo de datos
     for archivo in archivos_manual:
         tienda = archivo.parent.name
         folleto_id = archivo.name.replace("_contenido.json", "")
@@ -91,19 +84,11 @@ def main():
         paginas_eval = comparar_folleto(datos_gt, datos_ocr, datos_nlp)
         resultados_por_folleto.append((tienda, folleto_id, paginas_eval))
 
-    # ---------------- Agregacion (pandas) ----------------
-    # Antes: defaultdict anidado sumando campo por campo en un loop manual.
-    # Ahora: una fila por pagina evaluada -> DataFrame -> groupby("tienda").sum()
-    # + .sum() global. Mismo resultado, agregacion tabular real en vez de
-    # acumular a mano -- es exactamente el caso de uso para el que pandas
-    # existe (ver decision de integracion, 23-ago-2026: no se toco load.py
-    # por riesgo sobre codigo de escritura ya validado, pero este script de
-    # evaluacion es de solo lectura/reporte).
+    # cataloga los resultados por pagina y por tienda, para luego calcular agregados y F1-score
     CAMPOS = [
         "productos_total", "productos_ocr_ok", "productos_nlp_ok",
         "precios_total", "precios_ok", "precios_mal_clasificados",
         "promos_total", "promos_ok",
-        # Precision (24-ago-2026, para F1-score -- ver nlp/evaluador_calidad.py)
         "productos_nlp_clasificados", "productos_nlp_correctos",
         "precios_nlp_clasificados", "precios_nlp_correctos",
         "promos_nlp_clasificados", "promos_nlp_correctos",
@@ -114,30 +99,34 @@ def main():
     fallos_precio_muestra   = []
     fallos_promo_muestra    = []
 
+    # Reasignar los resultados de cada folleto a cada pagina, y luego a cada tienda
     for tienda, folleto_id, paginas_eval in resultados_por_folleto:
         for p in paginas_eval:
+            # Agrega una fila por pagina, con los campos de interes
             filas_paginas.append({"tienda": tienda, **{c: getattr(p, c) for c in CAMPOS}})
 
+            # Agrega a la muestra de fallos para el reporte JSON, solo los primeros 5 de cada tipo por pagina
             for nombre, ocr_ok, nlp_ok, ratio in p.productos_fallidos:
                 fallos_producto_muestra.append({
                     "tienda": tienda, "folleto_id": folleto_id, "pagina": p.pagina,
                     "producto": nombre, "ocr_encontrado": ocr_ok, "cobertura_tokens": ratio,
                 })
+            # Agrega a la muestra de fallos de precios
             for nombre, precio, mal_clasificado in p.precios_fallidos:
                 fallos_precio_muestra.append({
                     "tienda": tienda, "folleto_id": folleto_id, "pagina": p.pagina,
                     "producto": nombre, "precio_esperado": precio, "mal_clasificado": mal_clasificado,
                 })
+            # Agrega a la muestra de fallos de promos
             for texto in p.promos_fallidas:
                 fallos_promo_muestra.append({
                     "tienda": tienda, "folleto_id": folleto_id, "pagina": p.pagina, "promo": texto,
                 })
 
+    # Crear un DataFrame con las filas de paginas evaluadas
     df_paginas = pd.DataFrame(filas_paginas, columns=["tienda", *CAMPOS])
 
-    # .astype(int): pandas suma a int64 (numpy) -- se castea a int nativo de
-    # Python para que json.dump() no truene mas abajo (no sabe serializar
-    # numpy.int64).
+    # Agregados por tienda y globales
     agregados_tienda = {
         tienda: fila.astype(int).to_dict()
         for tienda, fila in df_paginas.groupby("tienda")[CAMPOS].sum().iterrows()
@@ -147,7 +136,7 @@ def main():
     # ---------------- Reporte en consola ----------------
     print("\n" + "-" * 88)
     print("EVALUACION DE CALIDAD OCR+NLP vs DATASET MANUAL (tiendeo)")
-    print("=" * 88)
+    print("-" * 88)
     print(f"Folletos en dataset manual:        {len(archivos_manual)}")
     print(f"Folletos evaluados (con OCR+NLP):   {len(resultados_por_folleto)}")
     print(f"Folletos SIN datos (pendiente GPU): {len(sin_datos)}  -> {', '.join(sin_datos)}")
@@ -165,6 +154,7 @@ def main():
             f"{pct(a['promos_ok'], a['promos_total']):>10}"
         )
 
+    # Agregar los agregados globales
     g = agregados_global
     print("-" * 88)
     print(
@@ -174,7 +164,7 @@ def main():
         f"{pct(g['precios_ok'], g['precios_total']):>10} "
         f"{pct(g['promos_ok'], g['promos_total']):>10}"
     )
-    print("=" * 88)
+    print("-" * 88)
     print(f"Total articulos evaluados:  {g['productos_total']}")
     print(f"  Detectados por OCR:       {g['productos_ocr_ok']}  ({pct(g['productos_ocr_ok'], g['productos_total'])})")
     print(f"  Clasificados como PROD:   {g['productos_nlp_ok']}  ({pct(g['productos_nlp_ok'], g['productos_total'])})")
@@ -186,7 +176,7 @@ def main():
     print(f"  Mal clasificados (como precio_anterior/ahorro): {g['precios_mal_clasificados']}")
     print(f"\nTotal promos evaluadas:     {g['promos_total']}")
     print(f"  Detectadas:               {g['promos_ok']}  ({pct(g['promos_ok'], g['promos_total'])})")
-    print("=" * 88)
+    print("-" * 88)
 
     # ---------------- F1-score (criterio "NLP: F1-score >= 70%" de la propuesta) ----------------
     f1_producto = precision_recall_f1(g, "productos")
@@ -201,7 +191,7 @@ def main():
     print(f"{'PROMEDIO':<12} {'':>10} {'':>10} {f1_promedio*100:>9.1f}%")
     print(f"\n{'CUMPLE >= 70%' if f1_promedio >= 0.70 else 'NO CUMPLE 70%'} "
           f"(F1 promedio = {f1_promedio*100:.1f}%)")
-    print("=" * 88)
+    print("-" * 88)
 
     # ---------------- Guardar reporte detallado ----------------
     reporte = {

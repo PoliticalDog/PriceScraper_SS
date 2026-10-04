@@ -1,6 +1,4 @@
 # Convierte el texto OCR crudo de productos en nombres canónicos comparables
-# entre tiendas y semanas. Necesario para que el BI pueda rastrear un mismo
-# producto a lo largo del tiempo sin duplicados por variantes OCR.
 
 import re
 import unicodedata
@@ -11,26 +9,24 @@ from rapidfuzz import process, fuzz
 
 from .catalogo_productos import buscar_categoria, CATALOGO
 
+"""
+ Se busca el nombre canónico de un producto a partir de su texto OCR crudo. Se usan tres métodos:
+ 1. Búsqueda exacta en el catálogo canónico
+ 2. Búsqueda aproximada en el catálogo canónico
+ 3. Búsqueda en el catálogo de productos
+"""
+
+# configura el logger
 logger = logging.getLogger(__name__)
 
-# Mapeo nombre-para-mostrar -> slug de categoria, derivado directamente de
-# catalogo_productos.CATALOGO (clave del dict) en vez de slugificar el
-# nombre para mostrar -- evita que un mismo departamento termine con dos
-# slugs distintos en productos_canonicos.categoria segun si el producto
-# matcheo por CATALOGO_CANONICO (slug corto, ej. "alimentos") o por este
-# fallback (antes generaba "alimentos_y_bebidas" a partir de "Alimentos y
-# Bebidas" -- bug encontrado 23-ago-2026 comparando conteos reales en
-# Postgres: "alimentos" 24895 filas vs "alimentos_y_bebidas" 1667 filas,
-# la MISMA categoria fragmentada en dos).
-# "Frutas y Verduras" se fusiona deliberadamente con "alimentos": el
-# catalogo canonico ya trata produce como parte de alimentos (Platano,
-# Manzana, Naranja... usan categoria="alimentos"), no se crea un slug
-# "frutas_verduras" aparte para no fragmentar la taxonomia otra vez.
-_NOMBRE_A_SLUG: dict[str, str] = {datos["nombre"]: clave for clave, datos in CATALOGO.items()}
+# Mapeo de nombres a slugs
+_NOMBRE_A_SLUG: dict[str, str] = {
+    datos["nombre"]: clave
+    for clave, datos in CATALOGO.items()
+}
 _NOMBRE_A_SLUG["Frutas y Verduras"] = "alimentos"
 
 # Catálogo de productos canónicos
-
 CATALOGO_CANONICO: dict[str, dict] = {
 
     # ---------------------------- Lácteos ----------------------------
@@ -84,11 +80,6 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Cebolla":                 {"categoria": "alimentos", "marca": None,  "aliases": ["cebolca", "cebollas", "ceblla"]},
     "Papa":                    {"categoria": "alimentos", "marca": None,  "aliases": ["papas", "patata"]},
     "Chía":                    {"categoria": "alimentos", "marca": None,  "aliases": ["chia", "semilla de chia", "semilla de chía"]},
-    "Quinoa":                  {"categoria": "alimentos", "marca": None,  "aliases": ["quinua", "quinua real"]},
-    # Agregados 23-ago-2026 -- top frutas/verduras reales mas frecuentes en
-    # el bucket heuristico (analisis de productos_canonicos vs Postgres real,
-    # ver sources/nlp/). "Granel"/unidades de venta se excluyeron a proposito
-    # (no son nombre de producto, ver plan de integracion).
     "Melón":                   {"categoria": "alimentos", "marca": None,  "aliases": ["melon", "melon chino", "melones"]},
     "Papaya":                  {"categoria": "alimentos", "marca": None,  "aliases": ["papaya maradol"]},
     "Lechuga":                 {"categoria": "alimentos", "marca": None,  "aliases": ["lechuga romana", "lechugas"]},
@@ -163,11 +154,6 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Tenis":                   {"categoria": "ropa",          "marca": None, "aliases": ["tnis", "zapatillas deportivas"]},
 
     # ---------------------------- Videojuegos ----------------------------
-    # Agregados 23-ago-2026 -- categoria nueva, no tenia ninguna entrada
-    # canonica pese a que catalogo_productos.py ya reconoce el departamento.
-    # Cuidado: "game" (keyword de catalogo_productos.py) matchea como
-    # substring dentro de "Gamesa" -- ruido de origen ajeno a este catalogo,
-    # ver plan de integracion.
     "FIFA":                    {"categoria": "videojuegos",   "marca": None, "aliases": ["fifao", "fifac", "fifa worldcup"]},
     "Spider-Man":              {"categoria": "videojuegos",   "marca": None, "aliases": ["spiderman", "spider man"]},
     "Mario Kart":              {"categoria": "videojuegos",   "marca": None, "aliases": ["mario kart world"]},
@@ -204,7 +190,6 @@ MARCAS_CONOCIDAS = {
 
 
 # ---------------------------- Resultado del normalizador ----------------------------
-
 @dataclass
 class ResultadoNorm:
     texto_raw:       str
@@ -214,6 +199,7 @@ class ResultadoNorm:
     categoria:       str = ""
     marca:           Optional[str] = None
     descartado:      bool = False   # True si el texto no es un producto válido
+    texto_norm_base: str = ""       # forma normalizada que disparó un match fuzzy (candidato a alias nuevo)
 
     def __str__(self):
         if self.descartado:
@@ -225,7 +211,6 @@ class ResultadoNorm:
 
 
 # ---------------------------- Normalizador principal ----------------------------
-
 class Normalizador:
     """
     Normaliza texto OCR de productos en nombres canónicos comparables.
@@ -234,23 +219,11 @@ class Normalizador:
         >= UMBRAL_ALTO  --> match directo, alta confianza (fuzzy)
         >= UMBRAL_BAJO  --> match aceptable (fuzzy con advertencia)
         <  UMBRAL_BAJO  --> sin match (heurístico o sin_match)
-
-    Args:
-        umbral_alto: Confianza mínima para match directo (default: 0.80)
-        umbral_bajo: Confianza mínima para match aceptable (default: 0.60)
     """
 
-    UMBRAL_ALTO = 0.80
-    UMBRAL_BAJO = 0.60
-
-    # Guarda de longitud para el match fuzzy -- ver comentario en normalizar().
-    # 0.2 discrimina bien entre descripciones largas de producto que matchean
-    # legitimamente un nombre canonico corto (ratio ~0.3-0.45, ej. "Aceite de
-    # coco organico extra virgen 450ml" -> "aceite de coco") y textos largos
-    # sin relacion que matchean por contener de casualidad un alias/token
-    # corto (ratio ~0.08-0.09, ej. un listado de departamentos que contiene
-    # la palabra "celular" -> alias de "Smartphone").
-    RATIO_LONGITUD_MINIMO = 0.2
+    UMBRAL_ALTO = 0.80  # Confianza mínima para match directo
+    UMBRAL_BAJO = 0.60  # Confianza mínima para match aceptable
+    RATIO_LONGITUD_MINIMO = 0.2 # Ratio mínimo de longitud entre texto y nombre canónico para considerar un match fuzzy
 
     # Correcciones OCR específicas antes del fuzzy
     CORRECCIONES_OCR = [
@@ -279,7 +252,7 @@ class Normalizador:
     # Patrones que indican que el texto NO es un producto real
     PATRONES_BASURA = [
         re.compile(r"^\d+$"),                               # solo números
-        re.compile(r"^[a-záéíóú]{1,3}$", re.I),            # muy corto
+        re.compile(r"^[a-záéíóú]{1,3}$", re.I),             # muy corto
         re.compile(r"del\s+videojuego", re.I),              # fragmento de descripción
         re.compile(r"en\s+(?:tienda|línea|linea)", re.I),   # canal de venta
         re.compile(r"visita\s+tu\s+tienda", re.I),
@@ -309,15 +282,9 @@ class Normalizador:
         logger.info(f"[Norm] Catálogo cargado: {len(CATALOGO_CANONICO)} productos, "
                     f"{len(self._indice)} entradas de búsqueda")
 
-    # ---------------------------- API pública ----------------------------
+    # normalizar texto para búsqueda: minúsculas, sin acentos, sin puntuación
+    def normalizar(self, texto: str) -> ResultadoNorm:  # ResultadoNorm con nombre canónico, confianza y método.
 
-    def normalizar(self, texto: str) -> ResultadoNorm:
-        """
-        Normaliza un texto de producto.
-
-        Returns:
-            ResultadoNorm con nombre canónico, confianza y método.
-        """
         if not texto or not texto.strip():
             return ResultadoNorm(
                 texto_raw=texto, nombre_canonico="",
@@ -363,20 +330,7 @@ class Normalizador:
 
         if resultado_fuzzy:
             match_texto, score, opc = resultado_fuzzy
-            # Guarda de longitud: token_set_ratio puede dar score 100 cuando
-            # el alias/nombre entero (a menudo corto: "a/a", "celular") queda
-            # contenido como token dentro de un texto mucho mas largo y sin
-            # relacion real -- confirmado 22-ago-2026 probando contra
-            # Postgres real: "'Sujato,a disponibllidad" matcheaba "Aire
-            # acondicionado" (via alias "a/a") y un listado de departamentos
-            # ("...Telefonia Celular; Linea Blanca...") matcheaba
-            # "Smartphone" (via alias "celular"), ambos con confianza 1.0.
-            # Un texto de producto real mas largo que su nombre canonico
-            # (ej. "Aceite de coco organico extra virgen 450ml" -> "aceite de
-            # coco", ratio ~0.33) nunca es TAN desproporcionado como estos
-            # falsos positivos (ratio ~0.08-0.09) -- la proporcion de
-            # longitud discrimina bien entre ambos casos sin penalizar
-            # descripciones largas legitimas.
+            # Guarda de longitud
             largo_corto = min(len(match_texto), len(texto_norm_base))
             largo_largo = max(len(match_texto), len(texto_norm_base))
             ratio_longitud = largo_corto / largo_largo if largo_largo else 0.0
@@ -394,28 +348,12 @@ class Normalizador:
                     metodo=metodo,
                     categoria=datos["categoria"],
                     marca=marca or datos.get("marca"),
+                    texto_norm_base=texto_norm_base,
                 )
-            # Si no pasa la guarda de longitud, cae al heuristico (paso 6)
-            # en vez de aceptar un match de confianza reportada alta pero
-            # espuria.
-
-        # 6. Sin match en el catálogo canónico (~90 productos, sesgado a
-        # abarrotes/limpieza/cuidado personal) -- devolver heurístico (texto
-        # limpio con capitalización) pero con la categoría amplia del
-        # departamento si catalogo_productos.py la reconoce (17 departamentos,
-        # cubre electrónica/ropa/muebles/etc. que el catálogo canónico no
-        # tiene todavía) en vez de dejarla vacía. Agregado 22-ago-2026: antes
-        # de esto, todo producto "heuristico" quedaba sin categoria alguna en
-        # productos_canonicos, aunque el texto sí calzara con un departamento
-        # conocido (ej. "Licuadora Oster 5 velocidades" -> sin match exacto,
-        # pero sí matchea "licuadora" en catalogo_productos.CATALOGO).
+            
         nombre_heuristico = self._capitalizar(texto_limpio)
         en_catalogo, categoria_amplia, _ = buscar_categoria(texto_raw)
-        # buscar_categoria devuelve el nombre para mostrar ("Línea Blanca"),
-        # no el slug -- se traduce via _NOMBRE_A_SLUG (derivado de
-        # catalogo_productos.CATALOGO) para que productos_canonicos.categoria
-        # sea consistente sin importar si el producto matcheo por catálogo
-        # canónico o por este fallback.
+       
         if en_catalogo:
             categoria_amplia = _NOMBRE_A_SLUG.get(categoria_amplia, categoria_amplia)
         return ResultadoNorm(
@@ -427,20 +365,12 @@ class Normalizador:
             marca=marca,
         )
 
+    # Normaliza una lista de textos. Más eficiente que llamar normalizar() N veces.
     def normalizar_lista(self, textos: list[str]) -> list[ResultadoNorm]:
-        """Normaliza una lista de textos. Más eficiente que llamar normalizar() N veces."""
         return [self.normalizar(t) for t in textos]
 
+    # Normaliza todos los productos de una página del nlp_resultado.json
     def normalizar_pagina(self, pagina: dict) -> dict:
-        """
-        Normaliza todos los productos de una página del nlp_resultado.json.
-
-        Args:
-            pagina: dict con claves 'productos', 'precios', etc.
-
-        Returns:
-            Misma estructura con campo 'norm' añadido a cada producto.
-        """
         pagina_norm = dict(pagina)
         productos_norm = []
         for producto in pagina.get("productos", []):
@@ -457,18 +387,10 @@ class Normalizador:
                 }
             })
         pagina_norm["productos"] = productos_norm
-        return pagina_norm
+        return pagina_norm  # Misma estructura con campo 'norm' añadido a cada producto
 
+    # Normaliza todos los productos de un nlp_resultado.json completo.
     def normalizar_folleto(self, nlp_json: dict) -> dict:
-        """
-        Normaliza todos los productos de un nlp_resultado.json completo.
-
-        Args:
-            nlp_json: dict cargado desde nlp_resultado.json
-
-        Returns:
-            Mismo dict con campo 'norm' añadido a cada producto de cada página.
-        """
         resultado = dict(nlp_json)
         resultado["paginas"] = [
             self.normalizar_pagina(pag)
@@ -514,20 +436,18 @@ class Normalizador:
             if marca in texto_lower:
                 return marca.title()
         return None
-
+    
+    # Limpieza textual: OCR errors, unidades, espacios.
     def _limpiar(self, texto: str) -> str:
-        """Limpieza textual: OCR errors, unidades, espacios."""
         for patron, reemplazo in self.CORRECCIONES_OCR:
             texto = patron.sub(reemplazo, texto)
         texto = " ".join(texto.split())
         return texto.strip()
 
+    #  Normalización profunda para comparación fuzzy:
+    #  minúsculas + sin acentos + sin caracteres especiales.
     @staticmethod
     def _normalizar_base(texto: str) -> str:
-        """
-        Normalización profunda para comparación fuzzy:
-        minúsculas + sin acentos + sin caracteres especiales.
-        """
         texto = texto.lower().strip()
         # Quitar acentos
         texto = unicodedata.normalize("NFD", texto)
@@ -537,9 +457,9 @@ class Normalizador:
         texto = " ".join(texto.split())
         return texto
 
+    # Capitalización de título en español.
     @staticmethod
     def _capitalizar(texto: str) -> str:
-        """Capitalización de título en español."""
         minusculas = {"de", "del", "la", "las", "el", "los", "y", "en", "con", "sin"}
         palabras = texto.lower().split()
         resultado = []
@@ -548,8 +468,7 @@ class Normalizador:
         return " ".join(resultado)
 
 
-# ---------------------------- CLI de prueba rápida ----------------------------
-
+# --------------- prueba del normalizador (jugar manualmente) ---------------
 def main():
     logging.basicConfig(
         level=logging.INFO,

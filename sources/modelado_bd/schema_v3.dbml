@@ -1,0 +1,167 @@
+// PriceScraper MX - Modelo de datos v3 (fuente: load/schema.sql, sep-2026)
+// Pegar tal cual en https://dbdiagram.io -> se genera el ER editable
+// (arrastrar tablas, click en columnas/relaciones para modificar).
+
+Table tiendas {
+  id          integer   [pk, increment]
+  nombre      varchar(100) [not null]
+  slug        varchar(60)  [not null, unique, note: 'Identificador canónico normalizado (post-corrección ETL)']
+  fuente_slug varchar(60)  [note: 'Slug original del scraper, puede ser erróneo']
+  activa      boolean   [not null, default: true]
+  created_at  timestamp [not null, default: `now()`]
+
+  Note: 'Cadenas comerciales scrapeadas'
+}
+
+Table folletos {
+  id                integer   [pk, increment]
+  tienda_id         integer   [not null]
+  folleto_id_fuente varchar(30) [not null, note: 'ID asignado por la fuente (Tiendeo/Ofertomat)']
+  fuente            fuente_enum [not null]
+  titulo            varchar(200)
+  fecha_inicio      date
+  fecha_fin         date [note: 'NULL para Ofertomat, que no expone fecha de fin']
+  url_origen        text
+  total_paginas     integer   [default: 0]
+  perfil_ocr        varchar(40) [note: 'color_normal, color_suave, etc.']
+  motor_ocr         varchar(20) [note: 'easyocr']
+  scrapeado_at      timestamp
+  estado            estado_folleto_enum [not null, default: 'pending']
+  created_at        timestamp [not null, default: `now()`]
+
+  indexes {
+    (fuente, folleto_id_fuente) [unique, name: 'uq_folleto_fuente_id']
+    (tienda_id, fecha_inicio) [name: 'ix_folleto_tienda_fecha']
+    fuente [name: 'ix_folleto_fuente']
+    estado [name: 'ix_folleto_estado']
+  }
+
+  Note: 'Folletos digitales scrapeados con metadata de vigencia'
+}
+
+Table paginas {
+  id                 integer   [pk, increment]
+  folleto_id         integer   [not null]
+  numero_pagina      integer   [not null]
+  archivo_imagen     varchar(100)
+  total_bloques_ocr  integer   [default: 0]
+  confianza_ocr_prom float
+  total_productos    integer   [default: 0]
+  total_precios      integer   [default: 0]
+  total_promos       integer   [default: 0]
+  total_atributos    integer   [default: 0]
+  tasa_util          float     [note: 'Ratio entidades útiles / total bloques OCR']
+  procesado_at       timestamp
+
+  indexes {
+    (folleto_id, numero_pagina) [unique, name: 'uq_pagina_folleto_num']
+  }
+
+  Note: 'Páginas individuales de cada folleto'
+}
+
+Table productos_canonicos {
+  id              integer   [pk, increment]
+  nombre_canonico varchar(150) [not null, unique]
+  categoria       varchar(60)  [note: 'Departamento amplio: alimentos, linea_blanca, etc.']
+  marca           varchar(80)
+  aliases         "text[]"  [not null, default: `'{}'`, note: 'Variantes de texto OCR ya vistas']
+  created_at      timestamp [not null, default: `now()`]
+
+  indexes {
+    categoria [name: 'ix_prodcanon_categoria']
+    nombre_canonico [type: gin, name: 'ix_prodcanon_nombre_trgm']
+  }
+
+  Note: 'Catálogo deduplicado de productos, uno por identidad canónica'
+}
+
+Table extracciones {
+  id                     bigint    [pk, increment]
+  pagina_id              integer   [not null]
+  folleto_id             integer   [not null]
+  tienda_id              integer   [not null]
+  tipo                   tipo_extraccion_enum [not null]
+  texto_raw              text      [not null, note: 'Texto OCR original sin modificar']
+  texto_norm             varchar(300) [note: 'Nombre canónico (PRODUCTO/PRECIO) o texto limpio']
+  categoria_nlp          varchar(60)
+  valor                  float     [note: 'Precio actual en MXN o monto de ahorro']
+  valor_anterior         float     [note: 'Precio anterior por proximidad bbox (≤300px euclidiano)']
+  texto_promo            varchar(300)
+  confianza_ocr          float     [note: 'Score EasyOCR 0.0-1.0']
+  bbox_x                 integer
+  bbox_y                 integer
+  bbox_ancho             integer
+  bbox_alto              integer
+  producto_extraccion_id bigint    [note: 'Self-FK: fila PRODUCTO asociada por cercanía/ROI (solo PRECIO/ATRIBUTO)']
+  producto_canonico_id   integer   [note: 'NULL si se descartó por ruido']
+  confianza_norm         float     [note: 'Score 0.0-1.0 del match contra productos_canonicos']
+  metodo_norm            varchar(20) [note: 'exacto | fuzzy | fuzzy_bajo | heuristico | sin_match']
+  created_at             timestamp [not null, default: `now()`]
+
+  indexes {
+    tipo [name: 'ix_ext_tipo']
+    (tienda_id, tipo) [name: 'ix_ext_tienda_tipo']
+    (folleto_id, pagina_id) [name: 'ix_ext_folleto_pagina']
+    valor [name: 'ix_ext_valor']
+    confianza_ocr [name: 'ix_ext_confianza']
+    texto_norm [type: gin, name: 'ix_ext_texto_norm_trgm']
+    producto_extraccion_id [name: 'ix_ext_producto_extraccion']
+    producto_canonico_id [name: 'ix_ext_producto_canonico']
+  }
+
+  Note: 'Tabla principal del pipeline: un evento por entidad NLP detectada'
+}
+
+Table eventos_promo {
+  id            integer   [pk, increment]
+  folleto_id    integer   [not null]
+  tienda_id     integer   [not null]
+  nombre_evento varchar(100) [not null, note: 'Slug normalizado: julio_regalado, hot_sale, buen_fin, etc.']
+  texto_raw     varchar(200)
+  fecha_inicio  date
+  fecha_fin     date
+  created_at    timestamp [not null, default: `now()`]
+
+  indexes {
+    (folleto_id, nombre_evento) [unique, name: 'uq_evento_folleto']
+    nombre_evento [name: 'ix_evento_nombre']
+    tienda_id [name: 'ix_evento_tienda']
+    (fecha_inicio, fecha_fin) [name: 'ix_evento_fechas']
+  }
+
+  Note: 'Campañas comerciales detectadas en folletos'
+}
+
+Table alertas {
+  id            integer   [pk, increment]
+  tienda_id     integer   [note: 'NULL = aplica a todas las tiendas']
+  slug_producto varchar(200) [not null, note: 'Slug del nombre canónico a monitorear -- SIN FK real a productos_canonicos']
+  umbral_precio float     [not null]
+  activa        boolean   [not null, default: true]
+  disparada_at  timestamp
+  created_at    timestamp [not null, default: `now()`]
+
+  indexes {
+    (tienda_id, slug_producto) [name: 'ix_alerta_tienda_prod']
+    activa [name: 'ix_alerta_activa']
+  }
+
+  Note: 'Alertas de precio por producto (capa BI futura). tienda_id NULL = todas las tiendas'
+}
+
+// --- Relaciones (FKs reales del schema) ---
+Ref: folletos.tienda_id > tiendas.id
+Ref: paginas.folleto_id > folletos.id [delete: cascade]
+Ref: extracciones.pagina_id > paginas.id [delete: cascade]
+Ref: extracciones.folleto_id > folletos.id
+Ref: extracciones.tienda_id > tiendas.id
+Ref: extracciones.producto_extraccion_id > extracciones.id
+Ref: extracciones.producto_canonico_id > productos_canonicos.id
+Ref: eventos_promo.folleto_id > folletos.id
+Ref: eventos_promo.tienda_id > tiendas.id
+Ref: alertas.tienda_id > tiendas.id
+
+// NOTA: alertas.slug_producto NO tiene FK a productos_canonicos.nombre_canonico
+// (ni a un slug derivado de él) -- es una relación solo lógica, no declarada
+// en la BD. No se puede expresar como Ref en DBML porque no existe en el schema.

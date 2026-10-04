@@ -1,3 +1,5 @@
+# confgi Django
+
 from django.urls import include, path
 
 urlpatterns = [

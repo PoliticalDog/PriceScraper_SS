@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Explorador de datos - PriceScraper</title>
+</head>
+<body>
+
+<h1>Explorador de datos</h1>
+<p><a href="/">Volver al dashboard</a></p>
+
+<h2>Tiendas ({{ tiendas|length }})</h2>
+<table border="1" cellpadding="4" cellspacing="0">
+<tr>
+  <th>ID</th><th>Nombre</th><th>Slug</th><th>Fuente</th><th>Activa</th><th>Folletos</th><th>Creada</th>
+</tr>
+{% for t in tiendas %}
+<tr>
+  <td>{{ t.id }}</td>
+  <td>{{ t.nombre }}</td>
+  <td>{{ t.slug }}</td>
+  <td>{{ t.fuente_slug|default:"-" }}</td>
+  <td>{{ t.activa }}</td>
+  <td>{{ t.num_folletos }}</td>
+  <td>{{ t.created_at }}</td>
+</tr>
+{% endfor %}
+</table>
+
+<h2>Folletos ({{ folletos|length }})</h2>
+<form method="get">
+  <input type="hidden" name="folleto_id" value="{{ folleto_id|default:'' }}">
+  <input type="hidden" name="tipo" value="{{ tipo|default:'' }}">
+  <label>Tienda:
+    <select name="tienda_id">
+      <option value="">-- todas --</option>
+      {% for t in tiendas %}
+      <option value="{{ t.id }}" {% if tienda_id == t.id|stringformat:"s" %}selected{% endif %}>{{ t.nombre }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Filtrar</button>
+</form>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr>
+  <th>ID</th><th>Tienda</th><th>Fuente</th><th>ID fuente</th><th>Titulo</th>
+  <th>Inicio</th><th>Fin</th><th>Paginas</th><th>Estado</th><th>Scrapeado</th><th>Datos</th>
+</tr>
+{% for f in folletos %}
+<tr>
+  <td>{{ f.id }}</td>
+  <td>{{ f.tienda__nombre }}</td>
+  <td>{{ f.fuente }}</td>
+  <td>{{ f.folleto_id_fuente }}</td>
+  <td>{{ f.titulo|default:"-" }}</td>
+  <td>{{ f.fecha_inicio|default:"-" }}</td>
+  <td>{{ f.fecha_fin|default:"-" }}</td>
+  <td>{{ f.total_paginas }}</td>
+  <td>{{ f.estado }}</td>
+  <td>{{ f.scrapeado_at|default:"-" }}</td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}">ver</a></td>
+</tr>
+{% endfor %}
+</table>
+
+<h2>
+  Datos cargados / extracciones ({{ extracciones|length }})
+  {% if folleto_id %}&mdash; folleto #{{ folleto_id }}{% endif %}
+</h2>
+<form method="get">
+  <input type="hidden" name="tienda_id" value="{{ tienda_id|default:'' }}">
+  <input type="hidden" name="folleto_id" value="{{ folleto_id|default:'' }}">
+  <label>Tipo:
+    <select name="tipo">
+      <option value="">-- todos --</option>
+      {% for tp in tipos %}
+      <option value="{{ tp }}" {% if tp == tipo %}selected{% endif %}>{{ tp }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit">Filtrar</button>
+  {% if folleto_id %}
+  <a href="?tienda_id={{ tienda_id|default:'' }}&amp;tipo={{ tipo|default:'' }}">Quitar filtro de folleto</a>
+  {% endif %}
+</form>
+
+<table border="1" cellpadding="4" cellspacing="0">
+<tr>
+  <th>ID</th><th>Tienda</th><th>Folleto</th><th>Tipo</th><th>Texto raw</th><th>Texto norm</th>
+  <th>Categoria NLP</th><th>Valor</th><th>Valor ant.</th><th>Promo</th><th>Confianza OCR</th>
+  <th>Producto canonico</th><th>Creado</th>
+</tr>
+{% for e in extracciones %}
+<tr>
+  <td>{{ e.id }}</td>
+  <td>{{ e.tienda__nombre }}</td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ e.folleto_id }}&amp;tipo={{ tipo|default:'' }}">{{ e.folleto_id }}</a></td>
+  <td>{{ e.tipo }}</td>
+  <td>{{ e.texto_raw }}</td>
+  <td>{{ e.texto_norm|default:"-" }}</td>
+  <td>{{ e.categoria_nlp|default:"-" }}</td>
+  <td>{{ e.valor|default:"-" }}</td>
+  <td>{{ e.valor_anterior|default:"-" }}</td>
+  <td>{{ e.texto_promo|default:"-" }}</td>
+  <td>{{ e.confianza_ocr|default:"-" }}</td>
+  <td>{{ e.producto_canonico__nombre_canonico|default:"-" }}</td>
+  <td>{{ e.created_at }}</td>
+</tr>
+{% endfor %}
+</table>
+
+</body>
+</html>

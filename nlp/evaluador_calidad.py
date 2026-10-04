@@ -1,67 +1,87 @@
-# Comparador de calidad OCR+NLP contra el dataset de etiquetado manual
-# (data/raw/_revision_manual/tiendeo/{tienda}/{folleto_id}_contenido.json).
-#
-# La comparacion es a nivel de texto, no de bbox: el ground truth tiene
-# nombres de producto curados a mano (ej. "Panal adulto Predoblado
-# Affective 10pz"), mientras que el pipeline real produce bloques de OCR
-# independientes que pueden fragmentar ese mismo texto en varios bloques.
-# Por eso "encontrado" se mide como cobertura de tokens significativos del
-# nombre dentro del corpus de texto de la pagina, no como igualdad exacta.
-#
-# Se miden dos cosas por separado para poder distinguir la causa raiz:
-#   - ocr_encontrado:  el texto aparece en ALGUN bloque de OCR de la pagina
-#                       (sin importar como lo clasifico el NLP)
-#   - nlp_clasificado:  el texto aparece especificamente en bloques que el
-#                       NLP clasifico como producto/atributo
-# Si ocr_encontrado=True y nlp_clasificado=False -> fallo de clasificacion
-# (probablemente cayo en descartes). Si ocr_encontrado=False -> fallo de
-# OCR (la imagen/EasyOCR no lo leyo con suficiente calidad).
+# funciones del comparador de calidad OCR+NLP contra el dataset de etiquetado manual
 
 import re
 import unicodedata
 from dataclasses import dataclass, field
 
+"""
+FLUJO:
+    normalizar(texto) -> acentis
+    tokens_significativos(texto) -> conectores 
+    corpus_de_bloques(bloques) -> conecta palabras de todos los bloques de una pagina
+    recall_texto(texto_gt, corpus_norm) --> compara un texto del ground truth contra un corpus normalizado de OCR/NLP
+    comparar_pagina(pagina_gt, ocr_pagina, nlp_pagina) -> compara una pagina del ground truth con las salidas de OCR y NLP
+    comparar_folleto(datos_gt, datos_ocr, datos_nlp) -> compara un folleto completo (ground truth) 
+"""
+
+# palabras que no se consideran significativas en la comparacion de texto
 STOPWORDS = {
     "de", "del", "la", "el", "los", "las", "a", "o", "y", "en", "con",
     "sin", "para", "por", "un", "una", "al", "su", "tu", "mi", "que",
     "es", "se", "le", "lo",
 }
 
+# umbral de cobertura de tokens significativos para considerar que un texto del ground truth fue encontrado en el OCR/NLP
 UMBRAL_RECALL_TEXTO = 0.5  # fraccion minima de tokens significativos que deben aparecer
 TOLERANCIA_PRECIO = 0.01
 
-
+# minusculas, sin acentos, solo alfanumerico + espacios, espacios colapsados
 def normalizar(texto: str) -> str:
-    """minusculas, sin acentos, solo alfanumerico + espacios, espacios colapsados."""
+
     if not texto:
         return ""
-    texto = unicodedata.normalize("NFKD", texto)
-    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    
+    # quita acentos, deja solo los caracteres base
+    texto = unicodedata.normalize("NFKD", texto)    # descompone acentos y base
+    caracteres_limpios = []
+
+    for caracter in texto:
+        if not unicodedata.combining(caracter):
+            caracteres_limpios.append(caracter)
+    texto = "".join(caracteres_limpios) 
     texto = texto.lower()
     texto = re.sub(r"[^a-z0-9\s]", " ", texto)
     texto = re.sub(r"\s+", " ", texto).strip()
     return texto
 
-
+# devuelve los tokens significativos de un texto
 def tokens_significativos(texto: str) -> list[str]:
     norm = normalizar(texto)
-    return [t for t in norm.split() if len(t) >= 3 and t not in STOPWORDS]
 
+    tokens = []
 
+    for t in norm.split():
+        if len(t) >= 3 and t not in STOPWORDS:
+            tokens.append(t)
+
+    return tokens
+
+# devuelve un corpus normalizado de todos los bloques de una pagina, para comparacion de recall
 def corpus_de_bloques(bloques: list[dict], campo: str = "texto") -> str:
-    return " ".join(normalizar(b.get(campo, "")) for b in bloques)
+    textos_normalizados = []
 
+    for bloque in bloques:
+        texto = bloque.get(campo, "")
+        texto_normalizado = normalizar(texto)
+        textos_normalizados.append(texto_normalizado)
 
+    corpus = " ".join(textos_normalizados)
+
+    return corpus
+
+# Retorna (encontrado, ratio_cobertura) para texto_gt contra un corpus ya normalizado
 def recall_texto(texto_gt: str, corpus_norm: str, umbral: float = UMBRAL_RECALL_TEXTO) -> tuple[bool, float]:
-    """Retorna (encontrado, ratio_cobertura) para texto_gt contra un corpus ya normalizado."""
     tokens = tokens_significativos(texto_gt)
     if not tokens:
         return False, 0.0
-    encontrados = sum(1 for t in tokens if t in corpus_norm)
+    encontrados = 0
+    for token in tokens:
+        if token in corpus_norm:
+            encontrados += 1
     ratio = encontrados / len(tokens)
     return ratio >= umbral, ratio
 
-
+# -------------------------- Comparador de calidad por pagina --------------------------
 @dataclass
 class ResultadoPaginaEval:
     pagina: str
@@ -77,14 +97,7 @@ class ResultadoPaginaEval:
     precios_fallidos: list = field(default_factory=list)    # [(producto, precio)]
     promos_fallidas: list = field(default_factory=list)     # [texto]
 
-    # ---- Precision (24-ago-2026, para F1-score real vs criterio de la propuesta) ----
-    # Los campos de arriba miden RECALL (de cada item del ground truth, se
-    # encontro?). Estos miden PRECISION en la direccion inversa (de cada
-    # bloque que el NLP clasifico, es correcto?) -- necesarios para F1, que
-    # castiga tanto lo que no se encuentra como el ruido que se clasifica de
-    # mas (ej. slogans marcados como PRODUCTO). Mismo umbral/metodologia de
-    # recall_texto que el resto del evaluador, solo invertido: se busca el
-    # texto del bloque NLP dentro del corpus del ground truth.
+   # Agregados de precision: de cada bloque que el NLP clasifico, cuantos son correctos
     productos_nlp_clasificados: int = 0
     productos_nlp_correctos: int = 0
     precios_nlp_clasificados: int = 0
@@ -92,7 +105,7 @@ class ResultadoPaginaEval:
     promos_nlp_clasificados: int = 0
     promos_nlp_correctos: int = 0
 
-
+# Compara una pagina del ground truth con las salidas de OCR y NLP
 def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict | None) -> ResultadoPaginaEval:
     res = ResultadoPaginaEval(pagina=pagina_gt["pagina"])
 
@@ -143,10 +156,6 @@ def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict |
                 res.precios_fallidos.append((nombre, precio, mal_clasificado))
 
     # ---- Promociones de pagina ----
-    # El ground truth guarda la mecanica real de la promo (ej. "3X2",
-    # "25% de descuento") en "notas" -- "texto" es la descripcion del
-    # producto/categoria al que aplica, casi nunca coincide con lo que el
-    # OCR lee junto al bloque de mecanica de precio.
     for promo in pagina_gt.get("promociones_pagina", []):
         mecanica = promo.get("notas", "") or promo.get("texto", "")
         if not mecanica:
@@ -169,9 +178,6 @@ def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict |
             res.productos_nlp_correctos += 1
 
     # Precios: un bloque PRECIO es correcto si su valor numerico coincide
-    # (tolerancia) con ALGUN precio del ground truth de la pagina -- no se
-    # exige que sea el precio de "su" producto asociado, mismo criterio
-    # laxo que ya usa el bloque de recall de arriba.
     precios_gt_valores = [
         art["precio"] for art in pagina_gt.get("articulos", []) if art.get("precio") is not None
     ]
@@ -182,7 +188,6 @@ def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict |
             res.precios_nlp_correctos += 1
 
     # Promos: mismo criterio de texto que productos, contra la mecanica real
-    # del ground truth (notas/texto, igual que el bloque de recall de arriba).
     textos_gt_promo = [
         (promo.get("notas", "") or promo.get("texto", ""))
         for promo in pagina_gt.get("promociones_pagina", [])
@@ -196,7 +201,7 @@ def comparar_pagina(pagina_gt: dict, ocr_pagina: dict | None, nlp_pagina: dict |
 
     return res
 
-
+# Compara un folleto completo (ground truth) con las salidas de OCR y NLP, pagina por pagina
 def comparar_folleto(datos_gt: dict, datos_ocr: dict | None, datos_nlp: dict | None) -> list[ResultadoPaginaEval]:
     ocr_por_pagina = {p["pagina"]: p for p in (datos_ocr.get("paginas", []) if datos_ocr else [])}
     nlp_por_pagina = {p["pagina"]: p for p in (datos_nlp.get("paginas", []) if datos_nlp else [])}

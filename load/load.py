@@ -39,15 +39,8 @@ def _obtener_preprocesador_roi():
         _preprocesador_roi = obtener_preprocesador("color_normal")
     return _preprocesador_roi
 
-
+# Clase principal para cargar datos en la base de datos
 class Loader:
-    """
-    Carga nlp_resultado.json en PostgreSQL.
-    Uso recomendado como context manager:
-
-        with Loader() as loader:
-            loader.cargar_folleto(ruta)
-    """
 
     def __init__(self):
         self.conn = get_connection()
@@ -72,8 +65,7 @@ class Loader:
     def __exit__(self, *_):
         self.cerrar()
 
-    # -- API publica ----------------------------------------------------------
-
+    # ----------------- API publica -----------------
     def cargar_folleto(self, ruta_nlp: Path, metadata: dict | None = None) -> dict:
         ruta_nlp = Path(ruta_nlp)
         if not ruta_nlp.exists():
@@ -125,6 +117,7 @@ class Loader:
         )
         return resumen
 
+    # ----------------- Carga batch -----------------
     def cargar_batch(self, data_processed: Path = DATA_PROCESSED, forzar: bool = False) -> dict:
         data_processed = Path(data_processed)
         rutas = sorted(data_processed.rglob("nlp_resultado.json"))
@@ -165,16 +158,9 @@ class Loader:
         )
         return totales
 
-    # -- Procesamiento de pagina ----------------------------------------------
-
+    # --------------- Procesamiento de pagina ---------------
+    # Corre deteccion ROI solo para las tiendas grid-friendly validadas
     def _detectar_regiones_pagina(self, fuente: str, slug_raw: str, folleto_id: str, pag_data: dict) -> list[dict] | None:
-        """
-        Corre deteccion ROI solo para las tiendas grid-friendly validadas
-        (TIENDAS_ROI_HIBRIDO). Devuelve None si la tienda no aplica, si no
-        existe la imagen original, o si algo falla -- en todos esos casos el
-        llamador debe hacer fallback puro al metodo de distancia (mismo
-        comportamiento que antes de esta integracion).
-        """
         if slug_raw not in TIENDAS_ROI_HIBRIDO:
             return None
 
@@ -209,13 +195,6 @@ class Loader:
 
         contadores = {"extracciones": 0, "sin_producto": 0, "eventos": 0}
 
-        # Productos: normalizar contra productos_canonicos e insertar como
-        # filas propias tipo=PRODUCTO (v3, 22-ago-2026; antes se calculaban y
-        # se descartaban, solo su texto quedaba embebido en la fila PRECIO
-        # asociada). Los descartados por el normalizador (ruido: eslóganes,
-        # nombres de tienda, fragmentos OCR) NO se insertan y NO se ofrecen
-        # como candidatos de asociación -- antes cualquier bloque clasificado
-        # como PRODUCTO, sin filtrar, era candidato valido.
         productos_utiles = self._insertar_productos(cur, pagina_id, folleto_id, tienda_id, productos)
         contadores["extracciones"] += len(productos_utiles)
 
@@ -327,7 +306,7 @@ class Loader:
 
         return contadores
 
-    # -- Productos y normalización ---------------------------------------------
+    # ----------------- Productos y normalización ---------------------------------------------
 
     def _insertar_productos(self, cur, pagina_id: int, folleto_id: int, tienda_id: int,
                             productos: list[dict]) -> list[dict]:
@@ -388,26 +367,45 @@ class Loader:
         return utiles
 
     def _upsert_producto_canonico(self, cur, resultado) -> int:
+        # Alias nuevo: solo cuando el match fue por fuzzy (no exacto, no
+        # heuristico -- ahi el texto YA ES el nombre_canonico, no hace falta
+        # guardarlo aparte). Se persiste la forma normalizada que disparo el
+        # match para que la proxima vez ese mismo texto OCR matchee "exacto".
+        alias_nuevo = (
+            resultado.texto_norm_base
+            if resultado.metodo in ("fuzzy", "fuzzy_bajo") and resultado.texto_norm_base
+            else None
+        )
         cur.execute("""
-            INSERT INTO productos_canonicos (nombre_canonico, categoria, marca)
-            VALUES (%s, %s, %s)
+            INSERT INTO productos_canonicos (nombre_canonico, categoria, marca, aliases)
+            VALUES (%s, %s, %s, CASE WHEN %s::text IS NULL THEN '{}' ELSE ARRAY[%s] END)
             ON CONFLICT (nombre_canonico) DO UPDATE SET
                 categoria = COALESCE(productos_canonicos.categoria, EXCLUDED.categoria),
-                marca     = COALESCE(productos_canonicos.marca, EXCLUDED.marca)
+                marca     = COALESCE(productos_canonicos.marca, EXCLUDED.marca),
+                aliases   = CASE
+                    WHEN %s::text IS NULL THEN productos_canonicos.aliases
+                    WHEN %s = ANY(productos_canonicos.aliases) THEN productos_canonicos.aliases
+                    ELSE array_append(productos_canonicos.aliases, %s)
+                END
             RETURNING id
-        """, (resultado.nombre_canonico, resultado.categoria or None, resultado.marca))
+        """, (
+            resultado.nombre_canonico, resultado.categoria or None, resultado.marca,
+            alias_nuevo, alias_nuevo,
+            alias_nuevo, alias_nuevo, alias_nuevo,
+        ))
         return cur.fetchone()["id"]
 
-    # -- Asociacion bbox ------------------------------------------------------
+    # ----------------- Asociacion bbox -----------------
 
-    def _asociar_por_cercania(self, item: dict, productos: list) -> dict | None:
-        """
+    """
         Empareja un item (precio o atributo) con el producto reconocido mas
         cercano verticalmente arriba, dentro de una tolerancia horizontal de
         400px. Antes se llamaba "_asociar_producto" y solo se usaba para
         precios -- generalizado (22-ago-2026) para reutilizarse tambien con
         atributos.
-        """
+    """
+    def _asociar_por_cercania(self, item: dict, productos: list) -> dict | None:
+        
         if not productos:
             return None
 
@@ -450,7 +448,7 @@ class Loader:
 
         return mejor_valor
 
-    # -- Upserts SQL ----------------------------------------------------------
+    # ----------------- Upserts SQL -----------------
 
     def _upsert_tienda(self, cur, slug: str, nombre: str, fuente_slug: str) -> int:
         cur.execute("""
@@ -528,7 +526,7 @@ class Loader:
         """, (folleto_id, tienda_id, nombre_evento, texto_raw))
         return cur.fetchone() is not None
 
-    # -- Utilidades -----------------------------------------------------------
+    # ----------------- Utilidades -----------------
 
     def _corregir_tienda(self, fuente: str, slug_raw: str) -> tuple[str, str]:
         if (fuente, slug_raw) in CORRECCION_TIENDAS:
@@ -581,9 +579,6 @@ class Loader:
         except Exception:
             return False
 
-    # Lee la metadata (titulo, vigencia, url) del registro del scraper (data/registro_folletos_scrapeados.json,
-    # ver scraper/registro.py), keyed por "fuente:folleto_id". "procesado_at" ahi es el momento
-    # del scrape (no confundir con paginas.procesado_at en la BD, que es el momento del OCR).
     def _leer_metadata(self, fuente: str, folleto_id: str) -> dict:
         if not RUTA_REGISTRO_SCRAPER.exists():
             return {}

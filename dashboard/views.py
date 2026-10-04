@@ -1,11 +1,4 @@
-"""
-dashboard/views.py
-PriceScraper - Vistas del dashboard interno (Django).
-
-Migrado desde FastAPI (dashboard/app.py, 23-ago-2026) para cumplir el stack
-documentado en Propuesta_PriceScraper_SS.docx. dashboard/queries.py no se
-tocó -- sigue siendo SQL crudo vía load/db_builder.py, reusado tal cual.
-"""
+# PriceScraper - Vistas del dashboard interno (Django).
 
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -37,6 +30,27 @@ def pagina_calidad(request):
 
 def pagina_promociones(request):
     return render(request, "dashboard/promociones.html", {"activo": "promociones"})
+
+
+def pagina_explorador(request):
+    """Vista plana de solo lectura sobre la BD cruda (tiendas/folletos/extracciones),
+    sin agregaciones de negocio, para inspeccionar datos cargados sin escribir SQL."""
+    tienda_id = request.GET.get("tienda_id") or None
+    folleto_id = request.GET.get("folleto_id") or None
+    tipo = request.GET.get("tipo") or None
+
+    contexto = {
+        "tiendas": queries.listar_tiendas_detalle(),
+        "folletos": queries.listar_folletos(tienda_id=tienda_id),
+        "tipos": queries.listar_tipos_extraccion(),
+        "extracciones": queries.listar_extracciones(
+            tienda_id=tienda_id, folleto_id=folleto_id, tipo=tipo
+        ),
+        "tienda_id": tienda_id,
+        "folleto_id": folleto_id,
+        "tipo": tipo,
+    }
+    return render(request, "dashboard/explorador.html", contexto)
 
 
 # -- API (JSON) -------------------------------------------------------------------
