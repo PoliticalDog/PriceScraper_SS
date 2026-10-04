@@ -129,10 +129,10 @@ CATALOGO_CANONICO: dict[str, dict] = {
     "Lavadora":                {"categoria": "linea_blanca",  "marca": None, "aliases": ["labadera", "lavdora", "lavadora automatica"]},
     "Estufa":                  {"categoria": "linea_blanca",  "marca": None, "aliases": ["estfa", "cocina integral"]},
     "Secadora":                {"categoria": "linea_blanca",  "marca": None, "aliases": ["secadora de ropa", "secadora de gas"]},
-    "Microondas":              {"categoria": "linea_blanca",  "marca": None, "aliases": ["horno microondas", "microonda"]},
+    "Microondas":              {"categoria": "pequenos_electrodomesticos", "marca": None, "aliases": ["horno microondas", "microonda"]},
     "Licuadora":               {"categoria": "pequenos_electrodomesticos", "marca": None, "aliases": ["licuadra", "licuaora"]},
     "Cafetera":                {"categoria": "pequenos_electrodomesticos", "marca": None, "aliases": ["caftera", "cafetera electrica"]},
-    "Ventilador":              {"categoria": "linea_blanca",  "marca": None, "aliases": ["ventiladr", "abanico electrico"]},
+    "Ventilador":              {"categoria": "pequenos_electrodomesticos", "marca": None, "aliases": ["ventiladr", "abanico electrico"]},
     "Aire acondicionado":      {"categoria": "linea_blanca",  "marca": None, "aliases": ["aire acon", "minisplit", "a/a"]},
 
     # ---------------------------- Tecnología ----------------------------

@@ -38,6 +38,7 @@ CATALOGO = {
             "mpx", "pulgadas",
             "tv", "multifuncional", "teclado", "barra de sonido", "subwoofer",
             "roku", "streaming", "eco tank", "ecotank", "tinta continua",
+            "pilas", "pilas recargables", "pila alcalina", "pila aa", "pila aaa", "energizer", "duracell",  # sin "pila" suelto (chocaria con "pilates")
         ]
     },
 
@@ -102,7 +103,7 @@ CATALOGO = {
             "refresco", "agua natural", "jugo", "café", "chocolate",
             "cerveza", "vino", "bebida",
             "mayonesa", "ketchup", "salsa", "vinagre", "mostaza",
-            "chocolate", "nescafé", "quesos",
+            "chocolate", "nescafé", "quesos", "atún", "chia", "chía", "aceite de aguacate",
             # (detergente, jabón, shampoo y acondicionador ya viven en limpieza / cuidado personal)
             # despensa
             "frijol", "lenteja", "maiz", "maíz", "maseca", "quaker",
@@ -161,7 +162,11 @@ CATALOGO = {
             "bolsas de basura", "bolsa basura",
             "papel de cocina", "papel higiénico", "papel higienico",
             "servilletas", "pañuelos",
-            "insecticida", "raid", "off",
+            "insecticida", "raid", "off", "repelente",
+            # desechables (no "desechable" suelto: chocaria con rastrillos/toallitas/pañales desechables)
+            "plato termico", "platos termicos", "vaso termico", "vasos termicos", "charola termica",
+            "charolas termicas", "vaso de plastico", "cuchara de plastico", "cuchara bio",
+            "platos desechables", "vasos desechables", "charolas desechables", "reyma", "unicel",
             "lavatrastes", "acido muriatico", "ácido muriático", "aceite de pino",
             "para trastes", "jabon para trastos",
         ]
@@ -197,6 +202,7 @@ CATALOGO = {
             "cuadro", "espejo", "reloj de pared",
             "ventilador de techo", "abanico",
             "vasos", "tazon", "tazón",
+            "encendedor", "carbon de encino", "carbon vegetal", "carbón", "mantel", "desayunador",
         ]
     },
 
@@ -211,7 +217,7 @@ CATALOGO = {
             "lija", "brocha", "rodillo",
             "extensión", "extension electrica", "multicontacto",
             "foco", "socket",
-            "aceite para motor", "aceite de motor", "motor oil", "aceite para transmision",
+            # (aceites de motor / transmisión --> automotriz)
         ]
     },
 
@@ -232,7 +238,7 @@ CATALOGO = {
         "keywords": [
             "bicicleta", "caminadora", "eliptica", "elíptica", "pesa",
             "mancuerna", "colchoneta", "mat yoga", "pelota ejercicio",
-            "mochila", "bolsa deportiva", "termo",
+            "bolsa deportiva", "termo",  # (mochila --> papelería y útiles escolares)
             "jersey", "uniforme deportivo",
         ]
     },
@@ -266,6 +272,46 @@ CATALOGO = {
         "keywords": [
             "lentes", "armazón", "armazon", "gafas", "anteojos",
             "lentes de sol", "lentes de contacto",
+        ]
+    },
+
+    # ----------------------- Papelería y útiles escolares -----------------------
+    "papeleria": {
+        "nombre": "Papelería y Útiles Escolares",
+        "keywords": [
+            "papeleria", "papelería", "utiles escolares", "útiles escolares",
+            "cuaderno", "libreta", "boligrafo", "bolígrafo", "lapiz", "lápiz", "lapices", "lápices",
+            "lapicero", "lapicera", "plumon", "plumón", "plumones", "marcatextos", "resaltador",
+            "marcador permanente", "marcadores", "crayon", "crayones", "crayola", "gises",
+            "sacapuntas", "borrador", "goma de borrar", "pegamento", "lapiz adhesivo",
+            "tijera escolar", "juego de geometria", "juego de geometría", "compas",
+            "corrector liquido", "corrector en cinta", "corrector de cinta", "cinta correctora", "corrector en pluma",
+            "hojas de maquina", "hojas blancas", "plastilina", "temperas", "acuarelas",
+            "calculadora", "estuche escolar", "cinta adhesiva", "cinta de empaque",
+            "mochila", "lonchera",
+        ]
+    },
+
+    # ----------------------- Automotriz -----------------------
+    "automotriz": {
+        "nombre": "Automotriz",
+        "keywords": [
+            "aceite para motor", "aceite de motor", "motor oil", "aceite para transmision",
+            "aceite para transmisión", "aceite lubricante", "aceites y lubricantes", "anticongelante", "liquido para frenos",
+            "líquido para frenos", "llanta", "llantas", "inflallantas", "cable pasa corriente",
+            "bateria para auto", "batería para auto", "acumulador", "limpiaparabrisas",
+            "shampoo ceramico", "shampoo para auto", "protector de vinil", "armor all",
+            "turtle wax", "bardahl", "gonher",
+        ]
+    },
+
+    # ----------------------- Motocicletas y movilidad -----------------------
+    # Sin "moto" suelto: chocaria con los celulares Motorola ("Moto G17", "Moto Edge 70").
+    "motocicletas": {
+        "nombre": "Motocicletas y Movilidad",
+        "keywords": [
+            "motocicleta", "motocicletas", "motoneta", "motonetas", "motobici", "cuatrimoto",
+            "moto electrica", "moto eléctrica", "scooter", "scooters", "italika",
         ]
     },
 
