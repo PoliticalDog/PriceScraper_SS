@@ -1,4 +1,7 @@
 # Catalogo de productos por categoría
+# buscar_categoria --> es la unica funcion y busca una aparición de keywords en el texto y devuelve la categoría correspondiente
+
+import re
 
 # Catalogo de categorías y sus keywords asociadas para clasificación de productos mas comunes
 CATALOGO = {
@@ -10,8 +13,9 @@ CATALOGO = {
             "lavadora", "lavasecadora", "secadora", "refrigerador", "refri",
             "congelador", "estufa", "horno", "lavavajillas",
             "lava trastes", "campana", "extractor", "minisplit", "aire acondicionado",
-            "calentador", "boiler", "tanque de gas", "calefactor", "ventilador",
-            "enfriador", "climatizador", "purificador", "despachador",
+            "calentador", "boiler", "tanque de gas", "calefactor",
+            # ventilador / enfriador --> pequeños electrodomésticos (criterio del ground truth)
+            "climatizador", "purificador", "despachador",
             "mabe", "whirlpool", "lg", "samsung appliances", "acros",
             "koblenz estufa", "teka", "bosch lavadora",
         ]
@@ -32,6 +36,8 @@ CATALOGO = {
             "cargador", "power bank", "cable hdmi",
             "4k uhd", "oled", "qled", "webos", "android tv",
             "mpx", "pulgadas",
+            "tv", "multifuncional", "teclado", "barra de sonido", "subwoofer",
+            "roku", "streaming", "eco tank", "ecotank", "tinta continua",
         ]
     },
 
@@ -59,6 +65,7 @@ CATALOGO = {
             "multicocina", "instant pot",
             "oster", "hamilton beach", "black decker", "cuisinart",
             "taurus", "atvio", "daewoo", "t-fal", "tfal",
+            "ventilador", "enfriador", "microondas",
         ]
     },
 
@@ -95,7 +102,36 @@ CATALOGO = {
             "refresco", "agua natural", "jugo", "café", "chocolate",
             "cerveza", "vino", "bebida",
             "mayonesa", "ketchup", "salsa", "vinagre", "mostaza",
-            "detergente", "jabón", "jabón de barra", "shampoo", "acondicionador",
+            "chocolate", "nescafé", "quesos",
+            # (detergente, jabón, shampoo y acondicionador ya viven en limpieza / cuidado personal)
+            # despensa
+            "frijol", "lenteja", "maiz", "maíz", "maseca", "quaker",
+            "cafe", "nescafe", "dolca", "soluble",
+            "galleta", "gamesa", "marinela", "oreo",
+            "pan", "telera", "pastel", "pizza",
+            "mole", "consome", "consomé", "catsup", "aderezo", "mermelada", "miel", "jarabe",
+            "manteca", "achiote", "chamoy", "gelatina", "flan", "helado", "bolis",
+            "botana", "chips", "totopos", "palomitas", "cacahuate", "dulce", "tamarindo",
+            "sabritas", "barcel", "doritos", "ruffles", "tostitos", "papas",
+            # lácteos
+            "yoghurt", "yoplait", "danonino", "lala", "alpura", "yakult", "lacteo", "lácteo", "carnation",
+            # carnes y mariscos
+            "bistec", "filete", "costilla", "chuleta", "arrachera", "sirloin", "t bone", "molida",
+            "pierna", "tocino", "salchichon", "pechuga", "pavo", "boneless", "cochinita",
+            "camaron", "camarón", "mojarra", "tilapia", "basa", "bagre", "salmon", "salmón",
+            "surimi", "almeja", "pulpa",
+            # bebidas
+            "agua purificada", "agua mineral", "agua de manantial", "agua tonica", "agua tónica",
+            "coca-cola", "coca cola", "pepsi", "nectar", "néctar", "gatorlyte", "suerox", "electrolit",
+            "tequila", "mezcal", "whisky", "vodka", "ginebra", "ron", "licor", "sangrita",
+            "clamato", "kermato",
+            # marcas de abarrotes
+            "herdez", "la costena", "la costeña", "clemente jacques", "isadora",
+            # verdura/fruta procesada: más específica que la fresca, gana por longitud
+            "pure de tomate", "puré de tomate", "coctel de tomate", "tomates molidos",
+            "concentrado de tomate", "grano de elote", "elote dorado", "rajas", "chipotle",
+            "jalapeno", "jalapeño", "chile en polvo", "papa congelada", "en tiras",
+            "almibar", "almíbar", "postre", "mousse", "tortitas",
         ]
     },
 
@@ -107,6 +143,11 @@ CATALOGO = {
             "chile", "cebolla", "tomate", "jitomate", "aguacate", "limon", "limón",
             "zanahoria", "elote", "brocoli", "brócoli", "lechuga", "pepino",
             "manzana", "platano", "plátano", "naranja", "granel",
+            "fresa", "frambuesa", "arandano", "arándano", "zarzamora", "uva", "uvas",
+            "pina", "piña", "mango", "durazno", "cereza", "mandarina", "pera", "tuna",
+            "acelga", "espinaca", "calabacita", "calabaza", "chayote", "cilantro",
+            "champinones", "champiñones", "tomatillo", "cebollita", "aguacatito",
+            "manojo", "fruta", "verdura",
         ]
     },
 
@@ -121,6 +162,8 @@ CATALOGO = {
             "papel de cocina", "papel higiénico", "papel higienico",
             "servilletas", "pañuelos",
             "insecticida", "raid", "off",
+            "lavatrastes", "acido muriatico", "ácido muriático", "aceite de pino",
+            "para trastes", "jabon para trastos",
         ]
     },
 
@@ -136,6 +179,8 @@ CATALOGO = {
             "pañales", "pañal", "toallitas", "toallas sanitarias",
             "tampones", "protectores",
             "perfume", "colonia",
+            "crema dental", "crema corporal", "crema de manos", "desodorante",
+            "jabon liquido corporal", "jabón líquido corporal", "jabon", "jabón",
         ]
     },
 
@@ -151,6 +196,7 @@ CATALOGO = {
             "estante", "anaquel", "rack",
             "cuadro", "espejo", "reloj de pared",
             "ventilador de techo", "abanico",
+            "vasos", "tazon", "tazón",
         ]
     },
 
@@ -165,6 +211,7 @@ CATALOGO = {
             "lija", "brocha", "rodillo",
             "extensión", "extension electrica", "multicontacto",
             "foco", "socket",
+            "aceite para motor", "aceite de motor", "motor oil", "aceite para transmision",
         ]
     },
 
@@ -209,6 +256,7 @@ CATALOGO = {
             "termómetro", "termometro", "tensiómetro", "oximetro",
             "cubrebocas", "guantes", "alcohol", "gel antibacterial",
             "aspirina", "paracetamol", "ibuprofeno",
+            "tabletas", "capsulas", "cápsulas",
         ]
     },
 
@@ -259,36 +307,37 @@ CATALOGO = {
 
 }
 
-# ----------------------- Función de búsqueda -----------------------
+
+# ----------------------------------- Función de búsqueda -----------------------------------
+
+# Reglas de coincidencia (oct-2026):
+#  - keywords de <=3 letras exigen palabra completa
+#  - las demás no pueden empezar a mitad de palabra (evita "pollo" en "Apollo", "game" en
+#    "Pegamento"), pero sí pueden ir pegadas a un número ("48mpx"), a un "de" que el OCR
+#    pegó ("DEPOLLO") o a una letra basura al inicio del token ("IQUESO")
+#  - si coinciden varias categorías gana la keyword MÁS LARGA (más específica), no la primera
+#    del catálogo: "camaron" > "cama", "frijol" > "refri", "crema dental" > "crema"
+_LETRA = "a-záéíóúñü"
+_PATRONES = []
+for _clave, _datos in CATALOGO.items():
+    for _kw in _datos["keywords"]:
+        _k = _kw.lower()
+        if len(_k) <= 3:
+            _pat = re.compile(r"\b" + re.escape(_k) + r"\b")
+        else:
+            _pat = re.compile(
+                rf"(?:(?<![{_LETRA}])|(?<=de)|(?<=^[{_LETRA}])|(?<=[^{_LETRA}][{_LETRA}]))" + re.escape(_k)
+            )
+        _PATRONES.append((len(_k), _clave, _datos["nombre"], _pat))
+# más largas primero; en empate se respeta el orden del catálogo (sort estable)
+_PATRONES.sort(key=lambda x: -x[0])
+
 
 # Busca similitud de texto con catalogo de categorías y keywords
-# Retorna (encontrado, nombre_categoria, es_atributo)
-def buscar_categoria(texto: str) -> tuple[bool, str, bool]:
-    """
-    Match:
-      - Keywords de 4+ caracteres --> substring match (flexible)
-      - Keywords de 1-3 caracteres --> word boundary match (evita falsos positivos)
-
-    Retorna:
-      (True, nombre_categoria, es_atributo) si hay match
-      (False, "", False) si no hay match
-
-    es_atributo=True indica que es una característica técnica de producto,
-    no un nombre de producto en sí — se guarda como ATRIBUTO en el extractor.
-    """
-    import re as _re
+# (True, nombre_categoria, es_atributo) si hay match (False, "", False) si no hay match
+def buscar_categoria(texto: str) -> tuple[bool, str, bool]: # # Retorna (encontrado, nombre_categoria, es_atributo)
     texto_lower = texto.lower()
-
-    for clave, datos in CATALOGO.items():
-        for keyword in datos["keywords"]:
-            kw = keyword.lower()
-            if len(kw) <= 3:
-                if _re.search(r"\b" + _re.escape(kw) + r"\b", texto_lower):
-                    es_atributo = (clave == "atributos_tecnicos")
-                    return True, datos["nombre"], es_atributo
-            else:
-                if kw in texto_lower:
-                    es_atributo = (clave == "atributos_tecnicos")
-                    return True, datos["nombre"], es_atributo
-
+    for _, clave, nombre, patron in _PATRONES:
+        if patron.search(texto_lower):
+            return True, nombre, clave == "atributos_tecnicos"
     return False, "", False

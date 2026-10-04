@@ -1,16 +1,9 @@
-# Catch-up dirigido de OCR+NLP SOLO para la fuente "tiendeo".
-# Reusa la logica de probar_vision.py / probar_nlp.py (mismos parametros de
-# produccion: easyocr + color_normal + resolucion default 1500px) pero
-# filtra data/raw/ y data/processed/ a fuente == "tiendeo" y corre sin
-# prompts interactivos, para poder lanzarse en background.
-#
-# Decision del usuario (06-ago-2026): "ofertomat" queda pausado a proposito,
-# no tocar hasta que se pida explicitamente.
+# script SOLO para la fuente "tiendeo" que automatiza OCR+NLP 
 
 import logging
 from pathlib import Path
 
-from vision.preprocessor import obtener_preprocesador
+from vision.preprocessor import obtener_preprocesador, resolucion_para_tienda
 from vision.ocr_engine import OCREngine
 from nlp.regex_extractor import RegexExtractor
 
@@ -23,15 +16,7 @@ DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 FUENTE         = "tiendeo"
 
-# Resolucion de escalado por tienda -- ver investigacion completa en
-# sources/vision/08_experimento_resolucion_ocr_por_tienda.md. De las 16
-# tiendas, casa_ley es la UNICA donde subir resolucion mejora el OCR
-# (PROD_OCR 50.4%->81.8% a 2500px, fuente nativa ~15px). En el resto no ayuda
-# (walmart/bodega_aurrera/merco/s-mart quedan planas) o empeora (alsuper,
-# por fragmentacion de texto de EasyOCR). Tiendas no listadas usan el default
-# de Preprocessor (1500px, ver ANCHO_OBJETIVO_DEFAULT).
-RESOLUCION_POR_TIENDA = {"casa_ley": 2500}
-
+# La resolucion por tienda vive en vision/preprocessor.py (RESOLUCION_POR_TIENDA)
 
 def catchup_vision():
     carpetas = sorted([
@@ -51,11 +36,11 @@ def catchup_vision():
     ocr           = OCREngine(idiomas=["es", "en"], usar_gpu=False)
     nombre_perfil = "color_normal"
     # Un preprocesador por ancho_objetivo distinto (cache), en vez de uno solo
-    # para todo el batch, porque casa_ley usa una resolucion distinta al resto.
+    # para todo el batch, porque cada tienda puede usar una resolucion distinta.
     preprocesadores = {}
 
     def preprocesador_para(tienda: str):
-        ancho = RESOLUCION_POR_TIENDA.get(tienda)
+        ancho = resolucion_para_tienda(tienda)
         if ancho not in preprocesadores:
             preprocesadores[ancho] = obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
         return preprocesadores[ancho]

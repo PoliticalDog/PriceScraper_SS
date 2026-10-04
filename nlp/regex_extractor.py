@@ -8,9 +8,87 @@ from dataclasses import dataclass, field
 from typing import Optional
 from .catalogo_productos import buscar_categoria
 
+"""
+    Flujo de clasificación (orden de prioridad):
+      1. Limpiar texto OCR
+      2. ¿Es descarte?          --> DESCARTE
+      3. ¿Es precio anterior?   --> PRECIO_ANTERIOR
+      4. ¿Es ahorro?            --> AHORRO
+      5. ¿Es evento promo?      --> EVENTO_PROMO
+      6. ¿Es precio?            --> PRECIO
+      7. ¿Es promoción?         --> PROMO
+      8. ¿En catálogo?          --> PRODUCTO o ATRIBUTO
+      9. ¿Heurística producto?  --> PRODUCTO
+     10. Ninguno                --> DESCARTE
+"""
+
+# Resumen de las reglas mas relevantes
+"""
+1. DESCARTE (se evalúa primero, "elimina ruido antes de intentar clasificar")
+- Bloques de 1-2 caracteres (excepto "2 dígitos puros", que podrían ser un precio sin centavos)
+- Solo símbolos, URLs (www., .com/.mx/.org)
+- Texto de vigencia/vencimiento y pie de página legal ("sujeto a...", "términos y condiciones")
+- Nombres de tienda sueltos (Walmart, Soriana, Chedraui, Costco, etc.)
+- Metadata de tallas y specs técnicas sueltas (GB, MHz, watts, pulgadas)
+- Estados y abreviaturas geográficas de México
+- Bancos/financiero (BBVA, Banamex, "meses sin intereses", "tarjetas participantes", montos "$X MN")
+- Slogans de campaña genéricos ("consiente", "renueva", "aprovecha", "celebra"...)
+- Condiciones de "meses sin intereses" (listas de categorías separadas por coma)
+- Slogans propios de tienda ("en tienda y en línea", "sólo en tienda", "híper", "cashback", "precios bajos todos los días")
+- Palabras sueltas típicas de folleto en mayúsculas ("desde", "oferta", "descuento", "vigente"...)
+- Logos de marca de envase (ej. variantes OCR de "Golden Hills")
+- Ruido OCR puro (consonantes sin vocales)
+- Calendario de campaña (día de la semana + fecha, ej. "Sábado 30 de Mayo")
+- "También en App/tienda/línea"
+- Restricciones de compra ("máximo N kg por cliente", "aplican restricciones")
+- Frases de marketing completas y específicas (no palabras sueltas genéricas, para no perder cobertura de producto)
+- Regla genérica de respaldo: más del 40% de caracteres raros en el texto
+
+1b. Condiciones de compra (antes de intentar precio): "en compras...", "compras mayores a $X" → DESCARTE
+
+2. PRECIO_ANTERIOR
+- Prefijos "antes:", "antos;" (typo de OCR), "precio anterior"
+- Patrón "DE $X A $Y" → el primer monto es el anterior
+
+3. AHORRO
+- Palabra "ahorra/ahorras" seguida de un monto (tolera "$" leído como "5" por el OCR)
+
+4. PROMO
+- Fuerte (no requiere que haya un precio real en la página): mecánicas tipo "NxM" (3x2), "$X por cada $Y", "mitad de precio", "compra uno y llévate", paquetes repetidos "1x$Y 3x$Z"
+- Débil (sólo cuenta si la página ya tiene un precio real, para no capturar banners sueltos): "%", "off/descuento", "te regalamos/lleva/paga/gratis", "hasta X%"
+
+5. EVENTO_PROMO (metadata de campaña, no mecánica de precio)
+- Campañas mexicanas conocidas: Julio Regalado, Hot Sale, Buen Fin, Cyber Monday, Black Friday, Navidad, Día de las Madres/Niño/Reyes, Regreso a Clases, Semana Santa, Día de Muertos
+- Etiquetas de oferta genéricas: "precio bajo/especial", "oferta especial/de temporada", "liquidación", "descuento exclusivo"
+
+6. PRECIO (con símbolo $)
+- "$" + número (miles/decimales), con prefijos "desde"/"a sólo" y sufijos "c/u"/"MXN"/"pesos"
+- Caso especial: "$" leído corrupto por el OCR como "s"/"8"/"S" pegado a dígitos
+
+7. PRECIO sin símbolo (fallback — sólo si hay contexto de precio cerca)
+- Dígito espurio inicial (5/6/8/s/S confundido con "$") + resto del número, con o sin coma de miles/decimal
+- Números sueltos con coma de miles (no ambiguo, no exige contexto)
+- Números "pelones" de 2 a 5 dígitos, cada longitud con su propio nivel de exigencia de contexto (calibrado empíricamente contra el dataset manual — ver sources/nlp/04_cobertura_bare_digits_2_5.md)
+- Contexto "fuerte" que valida estos casos: "a sólo", "de oferta", "antes", "ahorra(s)", "cada uno/a", "paquete", "c/u"
+- Contexto de unidad (kg, ml, g, pza) — solo refuerza, nunca basta solo
+- Exclusión: la palabra "puntos" (de lealtad) cerca anula cualquier contexto de precio
+- Nunca interpreta un año (2020-2029) como precio
+
+8. Precios fusionados en 2 bloques (pre-paso especial, antes de todo lo demás)
+- Un entero de 1-2 dígitos + un bloque más chico de 2 dígitos justo a su derecha (superíndice) → se arman como un solo precio decimal
+
+9. PRODUCTO / ATRIBUTO por catálogo
+- Consulta catalogo_productos.buscar_categoria() — catálogo externo de nombres/categorías conocidas (vive en otro archivo, no en este módulo)
+
+10. PRODUCTO por heurística (si no está en catálogo)
+- Palabras clave de producto (lámpara, aceite, detergente, leche, kg, ml, pza, etc.)
+- Texto todo en MAYÚSCULAS (4-60 caracteres)
+- Palabra única de 4+ letras
+- Frase de 2+ palabras (4-80 caracteres)
+
+"""
 # configuración de logging
 logger = logging.getLogger(__name__)
-
 
 # --------------- Modelos de datos ---------------
 
@@ -48,22 +126,12 @@ class ResultadoPagina:
 
 # --------------- Extractor principal ---------------
 
+# clase prnicpal que verifica entidades
+# VERBOSE --> permite comentarios y saltos de linea en el patron
+# IGNORECASE --> ignora mayusculas/minusculas
 class RegexExtractor:
-    """
-    Flujo de clasificación (orden de prioridad):
-      1. Limpiar texto OCR
-      2. ¿Es descarte?          --> DESCARTE
-      3. ¿Es precio anterior?   --> PRECIO_ANTERIOR
-      4. ¿Es ahorro?            --> AHORRO
-      5. ¿Es evento promo?      --> EVENTO_PROMO
-      6. ¿Es precio?            --> PRECIO
-      7. ¿Es promoción?         --> PROMO
-      8. ¿En catálogo?          --> PRODUCTO o ATRIBUTO
-      9. ¿Heurística producto?  --> PRODUCTO
-     10. Por defecto            --> DESCARTE
-    """
-
-    # --------------- PRECIO ANTERIOR ---------------
+    
+    # -------------------------- PRECIO ANTERIOR --------------------------
     # "Antes: $699" / "Antos; $3495" / "precio anterior $1,200" / "'Antes:$2495"
     PATRON_PRECIO_ANTERIOR = re.compile(
         r"""
@@ -80,7 +148,7 @@ class RegexExtractor:
         re.VERBOSE | re.IGNORECASE
     )
 
-    # --------------- AHORRO ---------------
+    # -------------------------- AHORRO --------------------------
     # "Ahorras $32.90" / "Ahorra $49.90" / "Ahorras 5755.00" (OCR $ --> 5)
     PATRON_AHORRO = re.compile(
         r"""
@@ -96,8 +164,8 @@ class RegexExtractor:
         re.VERBOSE | re.IGNORECASE
     )
 
-    # --------------- PRECIO ---------------
-    # v3: añade prefijos DESDE/A sólo/desde:/a solo: y sufijo C/U
+    # -------------------------- PRECIO --------------------------
+    # ya tiene igual prefijos DESDE/A sólo/desde:/a solo: y sufijo C/U
     # Captura: $18.50 / $1,568 / $2,498 / $10,999 / $10.999 / $359c
     # También: DESDE $69.90 / A sólo $149.00 / $99.90 C/U
     PATRON_PRECIO = re.compile(
@@ -132,7 +200,6 @@ class RegexExtractor:
         re.VERBOSE
     )
 
-    # ERROR #18 — "DE $5,490 A $X" (soriana rebajas)
     # El primer precio es el anterior, el segundo es el actual.
     # Se detecta ANTES del PATRON_PRECIO normal para no extraer solo el primer número.
     PATRON_DE_A = re.compile(
@@ -145,36 +212,17 @@ class RegexExtractor:
         re.VERBOSE | re.IGNORECASE
     )
 
-    # --------------- PRECIO SIN SIMBOLO ("$" perdido o mal leido por el OCR) ---------------
-    # Tipografia de "tag de oferta" (digito entero grande + centavos en superindice, sin "$"
-    # ni punto decimal como caracteres separados) hace que EasyOCR pierda el "$" por completo
-    # o lo lea como 5/6/8 (confundible con el glifo "$" en esa fuente). Confirmado empiricamente
-    # en Casa Ley, S-Mart, Soriana Hiper/Mercado, Walmart, Bodega Aurrera, HEB y Chedraui (jul 2026).
-    # Solo se activa si hay contexto de precio cerca del bloque (ver _hay_contexto_precio) --
-    # nunca se aplica a un bloque aislado, para no confundir SKUs/cantidades/paginas con precios.
-
-    # Regla A: caracter espurio (el "$" mal leido) + precio ENTERO sin centavos. Ej: "8249" -> $249
-    # Remanente fijo a 3 digitos -- es lo unico validado empiricamente (299/266/249/169/229/599).
-    # No se generaliza a 2 o 4 digitos por falta de casos confirmados.
-    # "s/S" se agrega ademas de 5/6/8 porque ya es un sustituto de "$" conocido y documentado
-    # (ver PATRON_PRECIO_OCR_CORRUPTO) -- confirmado en folleto de referencia: "s599" -> $599.
-    # Sufijo opcional tolerado despues del digito espurio + 3 digitos: unidades/cortes
-    # de OCR pegados directo al numero (ej. "5199c/u" -> $199 c/u, confirmado en
-    # bodega_aurrera). No participa en el valor extraido, solo se tolera para no
-    # romper el anclaje ^...$.
+    # -------------------------- PRECIO SIN SIMBOLO ("$" perdido o mal leido por el OCR) -----------------------------------------
+    
+    # Rescatar "$"" confundido 5, 6, 8, s o S.
     PATRON_DIGITO_ESPURIO = re.compile(r"^[568sS](\d{3})(?:c/u|c\.u\.|[a-zA-Z]{1,4})?$")
 
-    # Regla A2: digito espurio + numero que YA trae su propio punto decimal + sufijo
-    # opcional de unidad (ej. "824.95k6" -> $24.95/kg, confirmado en HEB -- el sufijo
-    # tolera digitos porque el OCR confunde "kg" con "k6"). Se separa de la Regla A
-    # porque esta no sintetiza centavos -- el decimal ya viene explicito.
+
+    # Rescatar precio / kg --> "824.95k6" -> $24.95/kg "kg" con "k6")
     PATRON_DIGITO_ESPURIO_DECIMAL = re.compile(r"^[568sS](\d{1,3}[.,]\d{2})[a-zA-Z0-9]{0,4}$")
 
-    # Regla A-miles: digito espurio + remanente con coma de miles (ej. "58,999" ->
-    # $8,999, "53,999" -> $3,999 -- verificado contra la imagen real: el "5" inicial
-    # SI era el "$" corrompido, no un digito real del precio). Tiene prioridad sobre
-    # la Regla C cuando el string empieza con un digito espurio valido, porque en los
-    # casos reales verificados esa interpretacion fue siempre la correcta.
+    # Rescata miles con $  al inicio (ej. "58,999" -> $8,999, "53,999" -> $3,999)
+    #(ej. "58,999" -> $8,999, "53,999" -> $3,999 -- verificado contra la imagen real: el "5" inicial
     PATRON_DIGITO_ESPURIO_MILES = re.compile(r"^[568sS](\d{1,3},\d{3})[a-zA-Z]{0,4}$")
 
     # Regla C: numero suelto con coma de miles que NO empieza con un digito espurio
@@ -269,8 +317,10 @@ class RegexExtractor:
     DISTANCIA_MAX_CONTEXTO_PRECIO = 220
 
     # Ancho (px) contra el que estan calibrados DISTANCIA_MAX_CONTEXTO_PRECIO y
-    # GAP_HORIZONTAL_MIN/MAX de _detectar_precios_fusionados -- debe coincidir con
-    # preprocessor.ANCHO_OBJETIVO_DEFAULT (el estandar historico de produccion).
+    # GAP_HORIZONTAL_MIN/MAX de _detectar_precios_fusionados. Es el ancho con el que
+    # se calibraron esos valores (default historico), NO tiene que coincidir con
+    # preprocessor.ANCHO_OBJETIVO_DEFAULT (1800px desde oct-2026): factor_escala ajusta
+    # los umbrales al ancho real de cada pagina. No cambiar sin recalibrar.
     ANCHO_REFERENCIA_UMBRALES = 1500
 
     # --------------- PROMOCIONES ---------------
@@ -302,7 +352,7 @@ class RegexExtractor:
     # Compatibilidad: union de ambos grupos, usada donde no importa la distincion
     PATRONES_PROMO = PATRONES_PROMO_FUERTE + PATRONES_PROMO_DEBIL
 
-    # --------------- EVENTOS PROMOCIONALES ---------------
+    # -------------------------- EVENTOS PROMOCIONALES --------------------------
     # Campañas, eventos comerciales y etiquetas de oferta que NO son mecánica de precio.
     # Se guardan como metadata de campaña — útiles para análisis temporal en BI.
     PATRONES_EVENTO_PROMO = re.compile(
@@ -328,7 +378,7 @@ class RegexExtractor:
         re.VERBOSE | re.IGNORECASE
     )
 
-    # --------------- DESCARTE ---------------
+# -------------------------- DESCARTE --------------------------
     PATRONES_DESCARTE = [
         # 1-2 caracteres -- EXCEPTO 2 digitos puros ("15", "69"), que pueden
         # ser un precio entero sin centavos (ver PATRON_BARE_DIGITOS_2/Regla
@@ -615,16 +665,14 @@ class RegexExtractor:
     def __init__(self, confianza_minima: float = None):
         self.confianza_minima = confianza_minima or self.CONFIANZA_MINIMA
 
-    # --------------- Método principal ---------------
+# -------------------------------------- Método principal --------------------------------------
 
+    # Procesa una sola pagina de OCR (diccionario con "imagen" y "bloques") y devuelve un objeto ResultadoPagina
     def procesar_pagina(self, datos_pagina: dict) -> ResultadoPagina:
         resultado = ResultadoPagina(imagen=datos_pagina["imagen"])
         bloques_pagina = datos_pagina["bloques"]  # contexto espacial para precios sin simbolo
 
-        # Factor de escala de los umbrales de distancia en px (ver
-        # ANCHO_REFERENCIA_UMBRALES). "ancho_pagina" es opcional -- si el OCR no lo
-        # trae (datos generados antes de este campo), se asume el ancho de
-        # referencia y el factor queda en 1.0 (comportamiento identico al anterior).
+        # Ajuste de escala: la distancia de contexto y los umbrales de fusion de precios
         ancho_pagina = datos_pagina.get("ancho_pagina") or self.ANCHO_REFERENCIA_UMBRALES
         factor_escala = ancho_pagina / self.ANCHO_REFERENCIA_UMBRALES
 
@@ -683,6 +731,7 @@ class RegexExtractor:
 
         return resultado
 
+# -------------------------- Procesamiento de JSON OCR --------------------------
     def procesar_json_ocr(self, datos_ocr: list[dict]) -> list[ResultadoPagina]:
         resultados = []
         for pagina in datos_ocr:
@@ -691,7 +740,7 @@ class RegexExtractor:
             logger.info(r.resumen())
         return resultados
 
-    # --------------- Clasificador ---------------
+# --------------- Clasificador ---------------
 
     def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None,
                     hay_precio_en_pagina: bool = True, factor_escala: float = 1.0) -> EntidadExtraida:

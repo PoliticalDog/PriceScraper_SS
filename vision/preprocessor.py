@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Perfiles de color - pensadi para EasyOCR (3 perfiles):
 """
-    Perfil suave: Escalado a 1500px
+    Perfil suave: Escalado a 1800px
     Perfil normal: Escalado, sharpening
     Perfil fuerte:  Escalado, sharpening, clahe
 """
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class Preprocessor:
     
     # Ancho del escalado por default
-    ANCHO_OBJETIVO_DEFAULT = 1500  # px valor por defecto
+    ANCHO_OBJETIVO_DEFAULT = 1800  # px valor por defecto (antes 1500, cambiado oct-2026 tras experimento 4 resoluciones)
 
     # Constructor
     def __init__(self,
@@ -35,7 +35,7 @@ class Preprocessor:
         # --------------- Parámetros compartidos entre perfiles ---------------
         escalar:        bool       = True,   # siempre se escala
         escala_factor:  float|None = None,   # None --> adaptativo por ancho_objetivo (se ajusta sobre la marcha)
-        ancho_objetivo: int        = None,   # None --> usa ANCHO_OBJETIVO_DEFAULT (1500px)
+        ancho_objetivo: int        = None,   # None --> usa ANCHO_OBJETIVO_DEFAULT (1800px)
         
         corregir_rot:   bool  = True,       # La verdad no es util aqui, pero se deja porque asi decia el tutorial
 
@@ -295,7 +295,7 @@ _PERFILES_COLOR = {
         sharpening=False, clahe=False,
     ),
     "color_normal": Preprocessor(
-        escalar=True, escala_factor=None, ancho_objetivo=1500,  # estándar de producción
+        escalar=True, escala_factor=None, ancho_objetivo=1800,  # estándar de producción
         # Escala + sharpening: realza bordes de texto sin quitar color
         escala_grises=False, reducir_ruido=False, binarizar=False, corregir_rot=False,
         sharpening=True, clahe=False,
@@ -354,6 +354,24 @@ def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocess
         return p_custom
 
     return p
+
+# ----------------- Resolución por tienda -----------------
+# Mejor ancho por tienda según el experimento de 4 resoluciones (sources/vision/09_..., criterio:
+# promedio de F1 producto y F1 precio) y la comparativa casa_ley 1800 vs 2500 (_v9_B_...).
+# Las tiendas que no aparecen aquí usan ANCHO_OBJETIVO_DEFAULT (1800px): o ganaron con 1800
+# (bodega_aurrera, heb, s-mart, waldos) o no se han medido todavía.
+RESOLUCION_POR_TIENDA = {
+    "chedraui": 1200,
+    "alsuper":  1350,
+    "costco":   1350,
+    "merco":    1350,
+    "walmart":  1500,
+    "casa_ley": 2500,
+}
+
+# Devuelve el ancho objetivo de una tienda (None --> default del preprocesador)
+def resolucion_para_tienda(tienda: str) -> int | None:
+    return RESOLUCION_POR_TIENDA.get(tienda)
 
 # Lista completa de perfiles disponibles (para validación externa)
 LISTA_PERFILES = list(PERFILES.keys())

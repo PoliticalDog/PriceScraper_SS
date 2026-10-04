@@ -10,7 +10,7 @@ import numpy as np
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from vision.preprocessor import obtener_preprocesador, Preprocessor
+from vision.preprocessor import obtener_preprocesador, Preprocessor, resolucion_para_tienda
 from vision.ocr_engine import OCREngine, MOTORES_DISPONIBLES
 
 # configuración de logging
@@ -104,17 +104,16 @@ def menu_resolucion() -> int | None:
     print("   Resolución objetivo (escalado adaptativo):")
     print("   1. 1200px  --> (mejor para imagenes grandes)")
     print("   2. 1350px   ")
-    print("   3. 1500px  --> predeterminado (mejor para imágenes pequeñas)")
-    print("   4. 1800px   ")
+    print("   3. 1500px  --> (mejor para imágenes pequeñas)")
+    print("   4. 1800px --> mejor resultado promedio (default global)")
+    print("   Enter --> la mejor de cada tienda (RESOLUCION_POR_TIENDA)")
     print("-" * 55)
     opciones = [1200, 1350, 1500, 1800]
     try:
-        raw = input("   Resolución (Enter = 1500px): ").strip() or "3"
-        opc = int(raw) - 1
-        resolucion = opciones[opc]
-        if resolucion == 1500:
-            return None  # default, no necesita cambio
-        return resolucion
+        raw = input("   Resolución (Enter = por tienda): ").strip()
+        if not raw:
+            return None  # None --> resolución por tienda
+        return opciones[int(raw) - 1]
     except (ValueError, IndexError):
         return None
 
@@ -312,9 +311,16 @@ def modo_batch(ocr: OCREngine):
     motor         = menu_motor()
     nombre_perfil = menu_perfil()
     resolucion    = menu_resolucion()
-    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=resolucion)
 
-    res_str = f"{resolucion}px" if resolucion else "1500px (default)"
+    # Enter (default) --> cada tienda usa su resolución (RESOLUCION_POR_TIENDA, 1800px si no aparece)
+    # Elegir una resolución explícita la fuerza para todo el batch
+    def preprocesador_para(carpeta: Path) -> Preprocessor:
+        ruta_rel = carpeta.relative_to(DATA_RAW).parts
+        tienda   = ruta_rel[1] if len(ruta_rel) > 1 else ""
+        ancho    = resolucion or resolucion_para_tienda(tienda)
+        return obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
+
+    res_str = f"{resolucion}px" if resolucion else "por tienda (1800px default)"
     print(f"\n  Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
     print(f"  Se procesarán {len(pendientes)} folletos.")
     if input("  ¿Continuar? (s/n): ").strip().lower() != "s":
@@ -331,7 +337,7 @@ def modo_batch(ocr: OCREngine):
         try:
             r = procesar_carpeta(
                 carpeta_raw=carpeta,
-                preprocessor=preprocessor,
+                preprocessor=preprocesador_para(carpeta),
                 ocr=ocr,
                 motor=motor,
                 nombre_perfil=nombre_perfil,
@@ -361,10 +367,15 @@ def modo_prueba(ocr: OCREngine):
     motor         = menu_motor()
     nombre_perfil = menu_perfil()
     resolucion    = menu_resolucion()
-    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=resolucion)
+
+    # Enter --> resolución de la tienda del folleto (1800px si la tienda no aparece)
+    ruta_rel = carpeta.relative_to(DATA_RAW).parts
+    tienda   = ruta_rel[1] if len(ruta_rel) > 1 else ""
+    ancho    = resolucion or resolucion_para_tienda(tienda)
+    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
 
     # resolucion_str para mostrar en consola
-    res_str = f"{resolucion}px" if resolucion else "1500px (default)"
+    res_str = f"{preprocessor.ancho_objetivo}px" + ("" if resolucion else f" (por tienda: {tienda})")
     logger.info(f"[Vision] Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
 
     resultado = procesar_carpeta(
