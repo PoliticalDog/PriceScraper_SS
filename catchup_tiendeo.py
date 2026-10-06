@@ -1,9 +1,15 @@
-# script SOLO para la fuente "tiendeo" que automatiza OCR+NLP 
+# script que automatiza OCR+NLP de los folletos pendientes de una fuente (por defecto "tiendeo")
+#
+# Uso:
+#   python catchup_tiendeo.py                        # tiendeo, CPU
+#   python catchup_tiendeo.py --gpu                  # tiendeo, GPU
+#   python catchup_tiendeo.py --gpu --fuente todas   # tiendeo + ofertomat, GPU
 
+import argparse
 import logging
 from pathlib import Path
 
-from vision.preprocessor import obtener_preprocesador, resolucion_para_tienda
+from vision.preprocessor import obtener_preprocesador, resolucion_para_tienda, perfil_para_tienda
 from vision.ocr_engine import OCREngine
 from nlp.regex_extractor import RegexExtractor
 
@@ -14,13 +20,13 @@ logger = logging.getLogger("catchup_tiendeo")
 
 DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
-FUENTE         = "tiendeo"
+FUENTES        = ["tiendeo", "ofertomat"]
 
-# La resolucion por tienda vive en vision/preprocessor.py (RESOLUCION_POR_TIENDA)
+# El perfil y la resolucion por tienda viven en vision/preprocessor.py (PERFIL_POR_TIENDA, RESOLUCION_POR_TIENDA)
 
-def catchup_vision():
+def catchup_vision(fuente: str, usar_gpu: bool = False):
     carpetas = sorted([
-        p for p in (DATA_RAW / FUENTE).rglob("*")
+        p for p in (DATA_RAW / fuente).rglob("*")
         if p.is_dir() and list(p.glob("pagina_*.webp"))
     ])
     pendientes = [
@@ -28,28 +34,28 @@ def catchup_vision():
         if not (DATA_PROCESSED / c.relative_to(DATA_RAW) / "ocr_resultado.json").exists()
     ]
 
-    logger.info(f"[Vision/{FUENTE}] {len(carpetas)} folletos totales, {len(pendientes)} pendientes")
+    logger.info(f"[Vision/{fuente}] {len(carpetas)} folletos totales, {len(pendientes)} pendientes")
     if not pendientes:
-        logger.info(f"[Vision/{FUENTE}] Nada pendiente.")
+        logger.info(f"[Vision/{fuente}] Nada pendiente.")
         return
 
-    ocr           = OCREngine(idiomas=["es", "en"], usar_gpu=False)
-    nombre_perfil = "color_normal"
-    # Un preprocesador por ancho_objetivo distinto (cache), en vez de uno solo
-    # para todo el batch, porque cada tienda puede usar una resolucion distinta.
+    ocr           = OCREngine(idiomas=["es", "en"], usar_gpu=usar_gpu)
+    # Un preprocesador por (perfil, ancho_objetivo) distinto (cache), en vez de uno solo
+    # para todo el batch, porque cada tienda puede usar un perfil y una resolucion distintos.
     preprocesadores = {}
 
     def preprocesador_para(tienda: str):
-        ancho = resolucion_para_tienda(tienda)
-        if ancho not in preprocesadores:
-            preprocesadores[ancho] = obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
-        return preprocesadores[ancho]
+        clave = (perfil_para_tienda(tienda), resolucion_para_tienda(tienda))
+        if clave not in preprocesadores:
+            preprocesadores[clave] = obtener_preprocesador(clave[0], ancho_objetivo=clave[1])
+        return preprocesadores[clave]
 
     procesados, total_bloques, errores = 0, 0, 0
     for i, carpeta in enumerate(pendientes, 1):
-        tienda = carpeta.relative_to(DATA_RAW / FUENTE).parts[0]
+        tienda = carpeta.relative_to(DATA_RAW / fuente).parts[0]
+        nombre_perfil = perfil_para_tienda(tienda)
         preprocessor = preprocesador_para(tienda)
-        logger.info(f"[Vision/{FUENTE}] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_RAW)}")
+        logger.info(f"[Vision/{fuente}] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_RAW)}")
         try:
             r = probar_vision.procesar_carpeta(
                 carpeta_raw=carpeta,
@@ -64,50 +70,62 @@ def catchup_vision():
                 procesados    += 1
                 total_bloques += r["total_bloques"]
         except Exception as e:
-            logger.error(f"[Vision/{FUENTE}] Error en {carpeta}: {e}")
+            logger.error(f"[Vision/{fuente}] Error en {carpeta}: {e}")
             errores += 1
 
     logger.info(
-        f"[Vision/{FUENTE}] Completado — {procesados} folletos, "
+        f"[Vision/{fuente}] Completado — {procesados} folletos, "
         f"{total_bloques} bloques, {errores} errores"
     )
 
 
-def catchup_nlp():
+def catchup_nlp(fuente: str):
     carpetas = sorted([
-        p.parent for p in (DATA_PROCESSED / FUENTE).rglob("ocr_resultado.json")
+        p.parent for p in (DATA_PROCESSED / fuente).rglob("ocr_resultado.json")
     ])
     pendientes = [c for c in carpetas if not (c / "nlp_resultado.json").exists()]
 
-    logger.info(f"[NLP/{FUENTE}] {len(carpetas)} folletos con OCR, {len(pendientes)} pendientes de NLP")
+    logger.info(f"[NLP/{fuente}] {len(carpetas)} folletos con OCR, {len(pendientes)} pendientes de NLP")
     if not pendientes:
-        logger.info(f"[NLP/{FUENTE}] Nada pendiente.")
+        logger.info(f"[NLP/{fuente}] Nada pendiente.")
         return
 
     extractor = RegexExtractor(confianza_minima=0.15)
 
     procesados, errores = 0, 0
     for i, carpeta in enumerate(pendientes, 1):
-        logger.info(f"[NLP/{FUENTE}] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_PROCESSED)}")
+        logger.info(f"[NLP/{fuente}] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_PROCESSED)}")
         try:
             r = probar_nlp.procesar_carpeta(carpeta, extractor, forzar=False)
             if r:
                 procesados += 1
         except Exception as e:
-            logger.error(f"[NLP/{FUENTE}] Error en {carpeta}: {e}")
+            logger.error(f"[NLP/{fuente}] Error en {carpeta}: {e}")
             errores += 1
 
-    logger.info(f"[NLP/{FUENTE}] Completado — {procesados} folletos, {errores} errores")
+    logger.info(f"[NLP/{fuente}] Completado — {procesados} folletos, {errores} errores")
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Catch-up OCR+NLP de folletos pendientes")
+    ap.add_argument("--fuente", choices=FUENTES + ["todas"], default="tiendeo")
+    ap.add_argument("--gpu", action="store_true", help="EasyOCR en GPU (requiere torch con CUDA)")
+    a = ap.parse_args()
+    fuentes = FUENTES if a.fuente == "todas" else [a.fuente]
+
+    if a.gpu:
+        import torch
+        if not torch.cuda.is_available():
+            raise SystemExit("ERROR: --gpu pedido pero torch.cuda.is_available() es False.")
+
     logger.info("=" * 55)
-    logger.info(f"Catch-up OCR+NLP — fuente restringida: {FUENTE}")
+    logger.info(f"Catch-up OCR+NLP — fuentes: {', '.join(fuentes)}  |  GPU: {a.gpu}")
     logger.info("=" * 55)
-    catchup_vision()
-    catchup_nlp()
+    for fuente in fuentes:
+        catchup_vision(fuente, usar_gpu=a.gpu)
+        catchup_nlp(fuente)
     logger.info("=" * 55)
-    logger.info("Catch-up tiendeo terminado.")
+    logger.info("Catch-up terminado.")
     logger.info("=" * 55)
 
 

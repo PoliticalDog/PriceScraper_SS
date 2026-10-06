@@ -360,18 +360,33 @@ def obtener_preprocesador(nombre: str, ancho_objetivo: int = None) -> Preprocess
 # promedio de F1 producto y F1 precio) y la comparativa casa_ley 1800 vs 2500 (_v9_B_...).
 # Las tiendas que no aparecen aquí usan ANCHO_OBJETIVO_DEFAULT (1800px): o ganaron con 1800
 # (bodega_aurrera, heb, s-mart, waldos) o no se han medido todavía.
+# Confirmada en oct-2026 por el experimento GPU perfil x resolución (sources/vision/10_..., _v9_C_...).
 RESOLUCION_POR_TIENDA = {
     "chedraui": 1200,
     "alsuper":  1350,
     "costco":   1350,
     "merco":    1350,
     "walmart":  1500,
-    "casa_ley": 2500,
+    "casa_ley": 1800,   # = default; antes 2500 con color_normal. Con bn_suave gana a 1800 (_v9_C_...)
 }
 
 # Devuelve el ancho objetivo de una tienda (None --> default del preprocesador)
 def resolucion_para_tienda(tienda: str) -> int | None:
     return RESOLUCION_POR_TIENDA.get(tienda)
+
+# ----------------- Perfil por tienda -----------------
+# Solo las excepciones con mejora robusta en el experimento GPU perfil x resolución
+# (sources/vision/10_..., _v9_C_...): mejoran en todos sus folletos y con IC 95% > 0
+# por página y por folleto. El resto de tiendas usa PERFIL_DEFAULT.
+PERFIL_DEFAULT = "color_normal"
+PERFIL_POR_TIENDA = {
+    "casa_ley": "bn_suave",
+    "s-mart":   "bn_suave",
+}
+
+# Devuelve el perfil de preprocesamiento de una tienda (PERFIL_DEFAULT si no aparece)
+def perfil_para_tienda(tienda: str) -> str:
+    return PERFIL_POR_TIENDA.get(tienda, PERFIL_DEFAULT)
 
 # Lista completa de perfiles disponibles (para validación externa)
 LISTA_PERFILES = list(PERFILES.keys())

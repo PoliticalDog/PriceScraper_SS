@@ -10,7 +10,7 @@ import numpy as np
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from vision.preprocessor import obtener_preprocesador, Preprocessor, resolucion_para_tienda
+from vision.preprocessor import obtener_preprocesador, Preprocessor, resolucion_para_tienda, perfil_para_tienda
 from vision.ocr_engine import OCREngine, MOTORES_DISPONIBLES
 
 # configuración de logging
@@ -79,24 +79,25 @@ def menu_motor() -> str:
         return "easyocr"
 
 # Menú perfil
-def menu_perfil(tienda: str = "") -> str:
+def menu_perfil(tienda: str = "") -> str | None:
     print("\n" + "-" * 55)
     print("   Perfil de preprocesamiento:")
     print("   1. Color         - suave")
-    print("   2. Color         - normal  (mejor)")
+    print("   2. Color         - normal  (default global)")
     print("   3. Color         - fuerte")
     print("   4. Blanco y Negro - suave")
     print("   5. Blanco y Negro - normal")
     print("   6. Blanco y Negro - fuerte")
+    print("   Enter --> el de cada tienda (PERFIL_POR_TIENDA, Color normal si no aparece)")
     print("-" * 55)
     try:
-        raw = input("   Perfil (Enter = Color normal): ").strip()
+        raw = input("   Perfil (Enter = por tienda): ").strip()
         if not raw:
-            return "color_normal"
+            return None  # None --> perfil por tienda
         opc = int(raw) - 1
         return _OPCIONES_PERFIL[opc]
     except (ValueError, IndexError):
-        return "color_normal"
+        return None
 
 # Menú resolución px
 def menu_resolucion() -> int | None:
@@ -312,16 +313,18 @@ def modo_batch(ocr: OCREngine):
     nombre_perfil = menu_perfil()
     resolucion    = menu_resolucion()
 
-    # Enter (default) --> cada tienda usa su resolución (RESOLUCION_POR_TIENDA, 1800px si no aparece)
-    # Elegir una resolución explícita la fuerza para todo el batch
-    def preprocesador_para(carpeta: Path) -> Preprocessor:
+    # Enter (default) --> cada tienda usa su perfil y su resolución (PERFIL_POR_TIENDA y RESOLUCION_POR_TIENDA;
+    # color_normal y 1800px si no aparece). Elegir uno explícito lo fuerza para todo el batch
+    def config_para(carpeta: Path) -> tuple[str, Preprocessor]:
         ruta_rel = carpeta.relative_to(DATA_RAW).parts
         tienda   = ruta_rel[1] if len(ruta_rel) > 1 else ""
+        perfil   = nombre_perfil or perfil_para_tienda(tienda)
         ancho    = resolucion or resolucion_para_tienda(tienda)
-        return obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
+        return perfil, obtener_preprocesador(perfil, ancho_objetivo=ancho)
 
+    perfil_str = nombre_perfil or "por tienda (color_normal default)"
     res_str = f"{resolucion}px" if resolucion else "por tienda (1800px default)"
-    print(f"\n  Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
+    print(f"\n  Motor: {motor}  |  Perfil: {perfil_str}  |  Resolución: {res_str}")
     print(f"  Se procesarán {len(pendientes)} folletos.")
     if input("  ¿Continuar? (s/n): ").strip().lower() != "s":
         return
@@ -335,12 +338,13 @@ def modo_batch(ocr: OCREngine):
     for i, carpeta in enumerate(pendientes, 1):
         logger.info(f"\n[Vision] [{i}/{len(pendientes)}] {carpeta.relative_to(DATA_RAW)}")
         try:
+            perfil, preprocessor = config_para(carpeta)
             r = procesar_carpeta(
                 carpeta_raw=carpeta,
-                preprocessor=preprocesador_para(carpeta),
+                preprocessor=preprocessor,
                 ocr=ocr,
                 motor=motor,
-                nombre_perfil=nombre_perfil,
+                nombre_perfil=perfil,
                 forzar=False,
                 guardar_comparacion=True,   # ← esto es todo
             )
@@ -368,22 +372,24 @@ def modo_prueba(ocr: OCREngine):
     nombre_perfil = menu_perfil()
     resolucion    = menu_resolucion()
 
-    # Enter --> resolución de la tienda del folleto (1800px si la tienda no aparece)
+    # Enter --> perfil y resolución de la tienda del folleto (color_normal y 1800px si la tienda no aparece)
     ruta_rel = carpeta.relative_to(DATA_RAW).parts
     tienda   = ruta_rel[1] if len(ruta_rel) > 1 else ""
+    perfil   = nombre_perfil or perfil_para_tienda(tienda)
     ancho    = resolucion or resolucion_para_tienda(tienda)
-    preprocessor  = obtener_preprocesador(nombre_perfil, ancho_objetivo=ancho)
+    preprocessor  = obtener_preprocesador(perfil, ancho_objetivo=ancho)
 
-    # resolucion_str para mostrar en consola
+    # perfil/resolucion_str para mostrar en consola
+    perfil_str = perfil + ("" if nombre_perfil else f" (por tienda: {tienda})")
     res_str = f"{preprocessor.ancho_objetivo}px" + ("" if resolucion else f" (por tienda: {tienda})")
-    logger.info(f"[Vision] Motor: {motor}  |  Perfil: {nombre_perfil}  |  Resolución: {res_str}")
+    logger.info(f"[Vision] Motor: {motor}  |  Perfil: {perfil_str}  |  Resolución: {res_str}")
 
     resultado = procesar_carpeta(
         carpeta_raw=carpeta,
         preprocessor=preprocessor,
         ocr=ocr,
         motor=motor,
-        nombre_perfil=nombre_perfil,
+        nombre_perfil=perfil,
         forzar=True,
         guardar_comparacion=True,
     )
