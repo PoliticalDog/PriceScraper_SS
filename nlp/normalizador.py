@@ -224,6 +224,7 @@ class Normalizador:
     UMBRAL_ALTO = 0.80  # Confianza mínima para match directo
     UMBRAL_BAJO = 0.60  # Confianza mínima para match aceptable
     RATIO_LONGITUD_MINIMO = 0.2 # Ratio mínimo de longitud entre texto y nombre canónico para considerar un match fuzzy
+    LARGO_MAXIMO_HEURISTICO = 150  # = VARCHAR(150) de productos_canonicos.nombre_canonico; más largo es letra chica, no producto
 
     # Correcciones OCR específicas antes del fuzzy
     CORRECCIONES_OCR = [
@@ -352,6 +353,13 @@ class Normalizador:
                 )
             
         nombre_heuristico = self._capitalizar(texto_limpio)
+        # Sucursales, vigencias y otra letra chica: no cabe en la BD y no es producto
+        if len(nombre_heuristico) > self.LARGO_MAXIMO_HEURISTICO:
+            return ResultadoNorm(
+                texto_raw=texto_raw, nombre_canonico="",
+                confianza_norm=0.0, metodo="sin_match", descartado=True
+            )
+
         en_catalogo, categoria_amplia, _ = buscar_categoria(texto_raw)
        
         if en_catalogo:

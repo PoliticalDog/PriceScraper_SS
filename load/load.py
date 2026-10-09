@@ -23,9 +23,9 @@ DATA_PROCESSED = Path("data/processed")
 DATA_RAW = Path("data/raw")
 RUTA_REGISTRO_SCRAPER = Path("data/registro_folletos_scrapeados.json")
 
-CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {
-    ("tiendeo", "walmart"): ("soriana", "Soriana"),
-}
+# (fuente, slug_scraper) -> (slug, nombre). La entrada ("tiendeo", "walmart") -> soriana
+# se quito el 08-oct-2026: los folletos de tiendeo/walmart si son de Walmart.
+CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {}
 
 # tiendas que se benefician de ROI
 TIENDAS_ROI_HIBRIDO = {"walmart", "chedraui", "soriana_hiper", "soriana_mercado"}
