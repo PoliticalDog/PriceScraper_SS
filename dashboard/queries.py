@@ -5,6 +5,7 @@ from typing import Optional
 from django.db.models import Count, F, Max, Q
 
 from dashboard.models import (
+    ErrorCarga,
     Extraccion,
     Folleto,
     ProductoCanonico,
@@ -290,3 +291,59 @@ def eventos_promo(
     qs = qs.order_by("-fecha_inicio")[:limite]
 
     return list(qs.values("nombre_evento", "tienda", "fecha_inicio", "fecha_fin", "num_precios_asociados"))
+
+
+# -- Errores de carga (tabla errores_carga) ---------------------------------------
+
+def listar_tiendas_error() -> list[str]:
+    return list(
+        ErrorCarga.objects
+        .exclude(tienda_slug__isnull=True)
+        .order_by("tienda_slug")
+        .values_list("tienda_slug", flat=True)
+        .distinct()
+    )
+
+
+def _filtrar_errores(categorias, tiendas, fuente, estado):
+    qs = ErrorCarga.objects.all()
+    if categorias:
+        qs = qs.filter(categoria__in=categorias)
+    if tiendas:
+        qs = qs.filter(tienda_slug__in=tiendas)
+    if fuente:
+        qs = qs.filter(fuente=fuente)
+    if estado == "abiertos":
+        qs = qs.filter(resuelto=False)
+    elif estado == "resueltos":
+        qs = qs.filter(resuelto=True)
+    return qs
+
+
+def errores_carga(
+    categorias: Optional[list[str]] = None,
+    tiendas: Optional[list[str]] = None,
+    fuente: Optional[str] = None,
+    estado: Optional[str] = None,
+    limite: int = 1000,
+) -> dict:
+    # KPIs sobre toda la tabla (estado general); grafica y tabla respetan los filtros
+    abiertos = ErrorCarga.objects.filter(resuelto=False)
+    kpis = {
+        "abiertos": abiertos.count(),
+        "folletos_afectados": abiertos.values("fuente", "folleto_id_fuente").distinct().count(),
+        "resueltos": ErrorCarga.objects.filter(resuelto=True).count(),
+        "ultima_corrida": ErrorCarga.objects.aggregate(m=Max("corrida_at"))["m"],
+    }
+
+    qs = _filtrar_errores(categorias, tiendas, fuente, estado)
+
+    # Todas las categorias, aunque tengan 0, para que el eje no cambie con los filtros
+    conteo = dict(qs.values_list("categoria").annotate(n=Count("id")))
+    por_categoria = [{"categoria": c, "n": conteo.get(c, 0)} for c in ErrorCarga.CATEGORIAS]
+
+    filas = list(qs.order_by("-corrida_at", "fuente", "folleto_id_fuente", "pagina")[:limite].values(
+        "id", "corrida_at", "fuente", "tienda_slug", "folleto_id_fuente", "pagina",
+        "categoria", "sqlstate", "mensaje", "detalle", "ruta_archivo", "resuelto", "resuelto_at",
+    ))
+    return {"kpis": kpis, "por_categoria": por_categoria, "filas": filas}

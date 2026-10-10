@@ -8,11 +8,11 @@
   <div class="row g-2 align-items-end">
     <div class="col-md-3">
       <label class="form-label">Tienda</label>
-      <select id="fTienda" class="form-select" multiple size="4"></select>
+      <select id="fTienda" multiple hidden></select>
     </div>
     <div class="col-md-3">
       <label class="form-label">Categoría</label>
-      <select id="fCategoria" class="form-select" multiple size="4"></select>
+      <select id="fCategoria" multiple hidden></select>
     </div>
     <div class="col-md-2">
       <label class="form-label">Vigente desde</label>
@@ -46,10 +46,8 @@
 async function cargarFiltros() {
   const tiendas = await fetchJSON("/api/filtros/tiendas");
   const categorias = await fetchJSON("/api/filtros/categorias");
-  document.getElementById("fTienda").innerHTML =
-    tiendas.map((t) => `<option value="${t.nombre}">${t.nombre}</option>`).join("");
-  document.getElementById("fCategoria").innerHTML =
-    categorias.map((c) => `<option value="${c}">${c}</option>`).join("");
+  crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
+  crearFiltroLista("fCategoria", categorias, "Todas");
 }
 
 async function cargarTabla() {

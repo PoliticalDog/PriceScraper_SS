@@ -156,6 +156,34 @@ class Alerta(models.Model):
         db_table = "alertas"
 
 
+class ErrorCarga(models.Model):
+    # Sin FK a folletos/tiendas a proposito (ver schema.sql): si falla el folleto
+    # completo no existe su fila en folletos. tienda_slug es el slug del scraper.
+    CATEGORIAS = [
+        "tamano_excesivo", "valor_fuera_de_rango", "formato_invalido",
+        "violacion_integridad", "json_corrupto", "archivo_faltante", "otro",
+    ]
+
+    id = models.BigAutoField(primary_key=True)
+    corrida_at = models.DateTimeField()
+    fuente = models.CharField(max_length=20)
+    tienda_slug = models.CharField(max_length=60, null=True)
+    folleto_id_fuente = models.CharField(max_length=30)
+    pagina = models.CharField(max_length=100, null=True)
+    categoria = models.CharField(max_length=30)
+    sqlstate = models.CharField(max_length=5, null=True)
+    mensaje = models.TextField(null=True)
+    detalle = models.TextField(null=True)
+    ruta_archivo = models.TextField(null=True)
+    resuelto = models.BooleanField(default=False)
+    resuelto_at = models.DateTimeField(null=True)
+    created_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = "errores_carga"
+
+
 # -------------------
 # Vistas BI de solo lectura (load/vistas.sql)
 # Todas managed=False -- son SELECT, Django nunca escribe en ellas.

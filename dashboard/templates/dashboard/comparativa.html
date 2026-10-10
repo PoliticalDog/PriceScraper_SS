@@ -8,7 +8,7 @@
   <div class="row g-2 align-items-end">
     <div class="col-md-4">
       <label class="form-label">Categoría</label>
-      <select id="fCategoria" class="form-select" multiple size="4"></select>
+      <select id="fCategoria" multiple hidden></select>
     </div>
     <div class="col-md-4">
       <label class="form-label">Producto</label>
@@ -41,8 +41,7 @@
 <script>
 async function cargarFiltros() {
   const categorias = await fetchJSON("/api/filtros/categorias");
-  document.getElementById("fCategoria").innerHTML =
-    categorias.map((c) => `<option value="${c}">${c}</option>`).join("");
+  crearFiltroLista("fCategoria", categorias, "Todas");
 }
 
 async function cargarGraficoProducto(producto) {

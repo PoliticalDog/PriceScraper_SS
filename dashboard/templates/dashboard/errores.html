@@ -1,0 +1,173 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Errores de carga — PriceScraper{% endblock %}
+
+{% block contenido %}
+<h4 class="mb-3">Errores de carga</h4>
+<p class="text-muted">Folletos y páginas que fallaron al cargarse a la BD (tabla <code>errores_carga</code>).
+  Un error queda resuelto cuando el folleto se vuelve a cargar sin fallar.</p>
+
+<div class="row g-3 mb-4" id="kpis"></div>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label">Categoría</label>
+      <select id="fCategoria" multiple hidden></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Tienda</label>
+      <select id="fTienda" multiple hidden></select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Fuente</label>
+      <select id="fFuente" class="form-select">
+        <option value="">Todas</option>
+        <option value="tiendeo">tiendeo</option>
+        <option value="ofertomat">ofertomat</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label">Estado</label>
+      <select id="fEstado" class="form-select">
+        <option value="abiertos" selected>Abiertos</option>
+        <option value="resueltos">Resueltos</option>
+        <option value="">Todos</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="chart-card">
+      <h6>Errores por categoría (con los filtros aplicados)</h6>
+      <canvas id="chartCategorias" height="220"></canvas>
+      <p id="sinErroresGrafica" class="text-muted mb-0 mt-2" hidden>Sin errores con estos filtros.</p>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="chart-card h-100">
+      <h6>Qué significa cada categoría</h6>
+      <dl class="row small mb-0">
+        <dt class="col-sm-5">tamano_excesivo</dt><dd class="col-sm-7">Texto más largo que su columna en la BD (SQLSTATE 22001)</dd>
+        <dt class="col-sm-5">valor_fuera_de_rango</dt><dd class="col-sm-7">Número que no cabe en su columna (22003)</dd>
+        <dt class="col-sm-5">formato_invalido</dt><dd class="col-sm-7">Número o fecha mal formado (22P02, 22007, 22008)</dd>
+        <dt class="col-sm-5">violacion_integridad</dt><dd class="col-sm-7">Llave duplicada, referencia rota o campo obligatorio vacío (23xxx)</dd>
+        <dt class="col-sm-5">json_corrupto</dt><dd class="col-sm-7"><code>nlp_resultado.json</code> truncado o ilegible</dd>
+        <dt class="col-sm-5">archivo_faltante</dt><dd class="col-sm-7">No existe el JSON o la imagen</dd>
+        <dt class="col-sm-5">otro</dt><dd class="col-sm-7">Cualquier otro error; revisar el mensaje</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<table id="tablaErrores" class="table table-striped table-hover w-100"></table>
+{% endblock %}
+
+{% block script %}
+<script>
+function tarjetaKpi(icono, valor, etiqueta, claseValor = "") {
+  return `
+    <div class="col-6 col-lg-3">
+      <div class="card kpi-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="kpi-icono"><i class="ti ${icono}"></i></div>
+          <div>
+            <div class="kpi-valor ${claseValor}">${valor}</div>
+            <div class="kpi-etiqueta">${etiqueta}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function formatoFecha(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" });
+}
+
+async function cargarFiltros() {
+  const filtros = await fetchJSON("/api/filtros/errores");
+  crearFiltroLista("fCategoria", filtros.categorias || [], "Todas");
+  crearFiltroLista("fTienda", filtros.tiendas || [], "Todas");
+}
+
+async function cargar() {
+  const params = {
+    categoria: valoresSeleccionados(document.getElementById("fCategoria")),
+    tienda: valoresSeleccionados(document.getElementById("fTienda")),
+    fuente: document.getElementById("fFuente").value,
+    estado: document.getElementById("fEstado").value,
+  };
+  const datos = await fetchJSON(`/api/errores${qs(params)}`);
+  const k = datos.kpis || {};
+
+  document.getElementById("kpis").innerHTML = [
+    tarjetaKpi("ti-alert-circle", (k.abiertos ?? 0).toLocaleString("es-MX"), "Errores abiertos"),
+    tarjetaKpi("ti-files", (k.folletos_afectados ?? 0).toLocaleString("es-MX"), "Folletos con errores abiertos"),
+    tarjetaKpi("ti-circle-check", (k.resueltos ?? 0).toLocaleString("es-MX"), "Errores resueltos"),
+    tarjetaKpi("ti-clock", formatoFecha(k.ultima_corrida), "Última corrida con errores", "kpi-valor-chico"),
+  ].join("");
+
+  // Una sola serie: sin leyenda, el titulo de la tarjeta la nombra (skill dataviz)
+  const cats = datos.por_categoria || [];
+  const total = cats.reduce((s, c) => s + c.n, 0);
+  // Sin errores, unos ejes vacios solo meten ruido: se muestra solo el mensaje
+  document.getElementById("sinErroresGrafica").hidden = total > 0;
+  document.getElementById("chartCategorias").hidden = total === 0;
+  renderChart("chartCategorias", {
+    type: "bar",
+    data: {
+      labels: cats.map((c) => c.categoria),
+      datasets: [{
+        label: "Errores",
+        data: cats.map((c) => c.n),
+        backgroundColor: "#4A3AA7",
+        borderRadius: 4,
+        maxBarThickness: 28,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: { x: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  renderTabla("#tablaErrores", datos.filas || [], [
+    { data: "corrida_at", title: "Corrida", render: (d, tipo) => (tipo === "display" ? formatoFecha(d) : d) },
+    { data: "fuente", title: "Fuente" },
+    { data: "tienda_slug", title: "Tienda", render: (d) => escaparHtml(d ?? "—") },
+    {
+      data: "folleto_id_fuente", title: "Folleto",
+      render: (d, tipo, fila) => tipo === "display"
+        ? `<span title="${escaparHtml(fila.ruta_archivo)}">${escaparHtml(d)}</span>` : d,
+    },
+    { data: "pagina", title: "Página", render: (d) => (d ? escaparHtml(d) : "<em>folleto completo</em>") },
+    { data: "categoria", title: "Categoría" },
+    { data: "sqlstate", title: "SQLSTATE", render: (d) => escaparHtml(d ?? "—") },
+    {
+      data: "mensaje", title: "Mensaje",
+      render: (d, tipo, fila) => tipo === "display"
+        ? `<span class="celda-mensaje" title="${escaparHtml(fila.detalle)}">${escaparHtml(d)}</span>` : d,
+    },
+    {
+      data: "resuelto", title: "Estado", className: "text-nowrap",
+      // Color de estado siempre con icono + texto (skill dataviz)
+      render: (d, tipo, fila) => {
+        if (tipo !== "display") return d ? "resuelto" : "abierto";
+        return d
+          ? `<i class="ti ti-circle-check text-success"></i> Resuelto <span class="text-muted small">${formatoFecha(fila.resuelto_at)}</span>`
+          : `<i class="ti ti-alert-circle text-danger"></i> Abierto`;
+      },
+    },
+  ], { order: [[0, "desc"]] });
+}
+
+document.getElementById("btnAplicar").addEventListener("click", cargar);
+cargarFiltros().then(cargar);
+</script>
+{% endblock %}

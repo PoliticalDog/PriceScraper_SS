@@ -10,6 +10,7 @@ urlpatterns = [
     path("historico", views.pagina_historico, name="historico"),
     path("calidad", views.pagina_calidad, name="calidad"),
     path("promociones", views.pagina_promociones, name="promociones"),
+    path("errores", views.pagina_errores, name="errores"),
     path("datos", views.pagina_explorador, name="explorador"),
 
     # API
@@ -23,4 +24,6 @@ urlpatterns = [
     path("api/productos/sugerencias", views.api_productos_sugerencias),
     path("api/calidad", views.api_calidad),
     path("api/eventos", views.api_eventos),
+    path("api/filtros/errores", views.api_filtros_errores),
+    path("api/errores", views.api_errores),
 ]

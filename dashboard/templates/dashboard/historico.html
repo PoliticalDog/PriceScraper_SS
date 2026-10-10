@@ -13,7 +13,7 @@
     </div>
     <div class="col-md-3">
       <label class="form-label">Tienda (opcional)</label>
-      <select id="fTienda" class="form-select" multiple size="4"></select>
+      <select id="fTienda" multiple hidden></select>
     </div>
     <div class="col-md-2">
       <label class="form-label">Desde</label>
@@ -45,8 +45,7 @@ const coloresPaleta = ["#4A3AA7", "#2A78D6", "#EB6834", "#1BAF7A", "#EDA100", "#
 
 async function cargarFiltros() {
   const tiendas = await fetchJSON("/api/filtros/tiendas");
-  document.getElementById("fTienda").innerHTML =
-    tiendas.map((t) => `<option value="${t.nombre}">${t.nombre}</option>`).join("");
+  crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
 }
 
 let debounceId;

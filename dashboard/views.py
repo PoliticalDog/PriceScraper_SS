@@ -32,6 +32,10 @@ def pagina_promociones(request):
     return render(request, "dashboard/promociones.html", {"activo": "promociones"})
 
 
+def pagina_errores(request):
+    return render(request, "dashboard/errores.html", {"activo": "errores"})
+
+
 def pagina_explorador(request):
     """Vista plana de solo lectura sobre la BD cruda (tiendas/folletos/extracciones),
     sin agregaciones de negocio, para inspeccionar datos cargados sin escribir SQL."""
@@ -129,3 +133,20 @@ def api_eventos(request):
         hasta=request.GET.get("hasta") or None,
     )
     return JsonResponse(datos, safe=False)
+
+
+def api_filtros_errores(request):
+    return JsonResponse({
+        "categorias": queries.ErrorCarga.CATEGORIAS,
+        "tiendas": queries.listar_tiendas_error(),
+    })
+
+
+def api_errores(request):
+    datos = queries.errores_carga(
+        categorias=request.GET.getlist("categoria") or None,
+        tiendas=request.GET.getlist("tienda") or None,
+        fuente=request.GET.get("fuente") or None,
+        estado=request.GET.get("estado") or None,
+    )
+    return JsonResponse(datos)
