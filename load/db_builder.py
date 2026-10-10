@@ -26,7 +26,7 @@ _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 _TABLAS_REQUERIDAS = {
     "tiendas", "folletos", "paginas",
     "extracciones", "eventos_promo", "alertas",
-    "productos_canonicos",
+    "productos_canonicos", "errores_carga",
 }
 
 #  Configuracion 
@@ -127,7 +127,7 @@ def verificar_conexion() -> bool:
 # Conteo de registros por tabla
 def resumen_bd() -> dict:
     tablas = ["tiendas", "folletos", "paginas", "extracciones",
-              "eventos_promo", "alertas", "productos_canonicos"]
+              "eventos_promo", "alertas", "productos_canonicos", "errores_carga"]
     resultado = {}
     try:
         conn = get_connection()

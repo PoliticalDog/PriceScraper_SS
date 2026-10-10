@@ -39,6 +39,19 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN
+    CREATE TYPE categoria_error_enum AS ENUM (
+        'tamano_excesivo',        -- SQLSTATE 22001: texto mas largo que su columna
+        'valor_fuera_de_rango',   -- 22003
+        'formato_invalido',       -- 22P02, 22007, 22008: numero/fecha mal formado
+        'violacion_integridad',   -- 23xxx: llave duplicada, FK, NOT NULL
+        'json_corrupto',          -- nlp_resultado.json ilegible
+        'archivo_faltante',       -- falta el JSON o la imagen
+        'otro'
+    );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 
 -- 2. TABLAS
 
@@ -55,7 +68,7 @@ CREATE TABLE IF NOT EXISTS tiendas (
 
 COMMENT ON TABLE  tiendas             IS 'Cadenas comerciales scrapeadas';
 COMMENT ON COLUMN tiendas.slug        IS 'Identificador canónico normalizado (post-corrección ETL)';
-COMMENT ON COLUMN tiendas.fuente_slug IS 'Slug original del scraper, puede ser erróneo (ej. walmart cuando es soriana)';
+COMMENT ON COLUMN tiendas.fuente_slug IS 'Slug original del scraper (antes de CORRECCION_TIENDAS en load.py)';
 
 
 -- folletos
@@ -236,6 +249,37 @@ COMMENT ON TABLE  alertas               IS 'Alertas de precio por producto. tien
 COMMENT ON COLUMN alertas.slug_producto IS 'Slug del nombre canónico del producto a monitorear';
 
 
+-- errores_carga
+-- Fallas al cargar folletos/paginas desde nlp_resultado.json (08-oct-2026).
+-- Antes solo quedaban en logs/load.log y un error SQL en una pagina revertia
+-- el folleto completo sin marcarlo como fallido. Sin FK a folletos a proposito:
+-- si falla el folleto completo, no existe fila en folletos.
+CREATE TABLE IF NOT EXISTS errores_carga (
+    id                  BIGSERIAL               PRIMARY KEY,
+    corrida_at          TIMESTAMP               NOT NULL,
+    fuente              VARCHAR(20)             NOT NULL,
+    tienda_slug         VARCHAR(60),
+    folleto_id_fuente   VARCHAR(30)             NOT NULL,
+    pagina              VARCHAR(100),
+    categoria           categoria_error_enum    NOT NULL,
+    sqlstate            CHAR(5),
+    mensaje             TEXT,
+    detalle             TEXT,
+    ruta_archivo        TEXT,
+    resuelto            BOOLEAN                 NOT NULL DEFAULT FALSE,
+    resuelto_at         TIMESTAMP,
+    created_at          TIMESTAMP               NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE  errores_carga             IS 'Errores de carga por folleto o pagina, categorizados para monitoreo';
+COMMENT ON COLUMN errores_carga.corrida_at  IS 'Inicio de la corrida (batch o carga individual) que produjo el error';
+COMMENT ON COLUMN errores_carga.fuente      IS 'VARCHAR y no fuente_enum: registrar el error nunca debe fallar por el valor de la fuente';
+COMMENT ON COLUMN errores_carga.pagina      IS 'Archivo de la pagina; NULL = el error afecto al folleto completo';
+COMMENT ON COLUMN errores_carga.sqlstate    IS 'Codigo de error PostgreSQL; NULL si el error no vino de la BD';
+COMMENT ON COLUMN errores_carga.detalle     IS 'Diagnostico extra de PostgreSQL (detail/context) o tipo de excepcion Python';
+COMMENT ON COLUMN errores_carga.resuelto    IS 'TRUE cuando una carga posterior del mismo folleto termino sin error a nivel folleto';
+
+
 -- 3. ÍNDICES
 
 -- folletos
@@ -267,3 +311,7 @@ CREATE INDEX IF NOT EXISTS ix_evento_fechas         ON eventos_promo (fecha_inic
 -- alertas
 CREATE INDEX IF NOT EXISTS ix_alerta_tienda_prod    ON alertas (tienda_id, slug_producto);
 CREATE INDEX IF NOT EXISTS ix_alerta_activa         ON alertas (activa);
+
+-- errores_carga
+CREATE INDEX IF NOT EXISTS ix_error_folleto         ON errores_carga (fuente, folleto_id_fuente);
+CREATE INDEX IF NOT EXISTS ix_error_abiertos        ON errores_carga (categoria) WHERE NOT resuelto;

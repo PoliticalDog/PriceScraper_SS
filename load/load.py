@@ -23,6 +23,18 @@ DATA_PROCESSED = Path("data/processed")
 DATA_RAW = Path("data/raw")
 RUTA_REGISTRO_SCRAPER = Path("data/registro_folletos_scrapeados.json")
 
+# = fuente_enum de schema.sql. Solo data/processed/<fuente>/<tienda>/<folleto>/ es produccion;
+# las demas carpetas (_v*, *_anterior_*) son experimentos o respaldos con los mismos folleto_id.
+FUENTES = ("tiendeo", "ofertomat")
+
+
+def rutas_nlp(data_processed: Path = DATA_PROCESSED) -> list[Path]:
+    data_processed = Path(data_processed)
+    rutas = []
+    for fuente in FUENTES:
+        rutas += (data_processed / fuente).glob("*/*/nlp_resultado.json")
+    return sorted(rutas)
+
 # (fuente, slug_scraper) -> (slug, nombre). La entrada ("tiendeo", "walmart") -> soriana
 # se quito el 08-oct-2026: los folletos de tiendeo/walmart si son de Walmart.
 CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {}
@@ -39,12 +51,45 @@ def _obtener_preprocesador_roi():
         _preprocesador_roi = obtener_preprocesador("color_normal")
     return _preprocesador_roi
 
+
+# SQLSTATE -> categoria_error_enum (schema.sql). Se usa el codigo y no el texto
+# del mensaje porque el mensaje depende del idioma del servidor.
+_CATEGORIA_POR_SQLSTATE = {
+    "22001": "tamano_excesivo",
+    "22003": "valor_fuera_de_rango",
+    "22P02": "formato_invalido",
+    "22007": "formato_invalido",
+    "22008": "formato_invalido",
+}
+
+
+def categorizar_error(e: Exception) -> tuple[str, str | None]:
+    sqlstate = getattr(e, "sqlstate", None)
+    if sqlstate:
+        if sqlstate in _CATEGORIA_POR_SQLSTATE:
+            return _CATEGORIA_POR_SQLSTATE[sqlstate], sqlstate
+        if sqlstate.startswith("23"):
+            return "violacion_integridad", sqlstate
+        return "otro", sqlstate
+    if isinstance(e, json.JSONDecodeError):
+        return "json_corrupto", None
+    if isinstance(e, FileNotFoundError):
+        return "archivo_faltante", None
+    return "otro", None
+
+
+def _detalle_error(e: Exception) -> str:
+    diag = getattr(e, "diag", None)
+    partes = [p for p in (getattr(diag, "message_detail", None), getattr(diag, "context", None)) if p]
+    return " | ".join(partes) if partes else type(e).__name__
+
 # Clase principal para cargar datos en la base de datos
 class Loader:
 
     def __init__(self):
         self.conn = get_connection()
         self._normalizador = Normalizador()
+        self._corrida_at = None
         logger.info("[Load] Loader inicializado")
 
     @classmethod
@@ -52,6 +97,7 @@ class Loader:
         instance = cls.__new__(cls)
         instance.conn = conn
         instance._normalizador = Normalizador()
+        instance._corrida_at = None
         return instance
 
     def cerrar(self):
@@ -66,93 +112,177 @@ class Loader:
         self.cerrar()
 
     # ----------------- API publica -----------------
-    def cargar_folleto(self, ruta_nlp: Path, metadata: dict | None = None) -> dict:
+    def cargar_folleto(self, ruta_nlp: Path, metadata: dict | None = None,
+                       reemplazar: bool = False) -> dict:
         ruta_nlp = Path(ruta_nlp)
-        if not ruta_nlp.exists():
-            raise FileNotFoundError(f"[Load] No existe: {ruta_nlp}")
+        corrida_at = self._corrida_at or datetime.now()
+        # Identidad desde la ruta (processed/<fuente>/<tienda>/<folleto>/) por si el JSON no se puede leer
+        partes = ruta_nlp.parts
+        fuente, slug_raw, folleto_id = (partes[-4], partes[-3], partes[-2]) if len(partes) >= 4 else ("", "", "")
+        errores: list[dict] = []
 
-        with open(ruta_nlp, encoding="utf-8") as f:
-            nlp = json.load(f)
-
-        fuente     = nlp.get("fuente", "")
-        slug_raw   = nlp.get("tienda", "")
-        folleto_id = nlp.get("folleto_id", "")
-        meta       = metadata or self._leer_metadata(fuente, folleto_id)
-        slug, nombre_tienda = self._corregir_tienda(fuente, slug_raw)
-
-        logger.info(f"[Load] -- {fuente}/{slug}/{folleto_id} --")
+        def registrar(e: Exception, pagina: str | None = None):
+            categoria, sqlstate = categorizar_error(e)
+            errores.append({
+                "pagina": pagina, "categoria": categoria, "sqlstate": sqlstate,
+                "mensaje": str(e).strip(), "detalle": _detalle_error(e),
+            })
 
         resumen = {
-            "fuente": fuente, "tienda": slug, "folleto_id": folleto_id,
+            "fuente": fuente, "tienda": slug_raw, "folleto_id": folleto_id,
             "extracciones_insertadas": 0, "precios_sin_producto": 0,
             "eventos_insertados": 0, "paginas_procesadas": 0, "errores": 0,
+            "errores_por_categoria": {},
         }
 
         try:
+            if not ruta_nlp.exists():
+                raise FileNotFoundError(f"[Load] No existe: {ruta_nlp}")
+
+            with open(ruta_nlp, encoding="utf-8") as f:
+                nlp = json.load(f)
+
+            fuente     = nlp.get("fuente", "") or fuente
+            slug_raw   = nlp.get("tienda", "") or slug_raw
+            folleto_id = nlp.get("folleto_id", "") or folleto_id
+            meta       = dict(metadata or self._leer_metadata(fuente, folleto_id))
+            ocr        = self._leer_ocr(ruta_nlp)
+            ocr_por_pagina = {p.get("pagina"): p for p in ocr.get("paginas", [])}
+            # El registro del scraper no trae estos campos; salen de los JSON del pipeline
+            meta["perfil_ocr"]    = meta.get("perfil_ocr") or ocr.get("perfil_imagen")
+            meta["motor_ocr"]     = meta.get("motor_ocr") or ocr.get("motor_ocr") or "easyocr"
+            meta["total_paginas"] = nlp.get("total_paginas") or len(nlp.get("paginas", []))
+            slug, nombre_tienda = self._corregir_tienda(fuente, slug_raw)
+            resumen.update(fuente=fuente, tienda=slug, folleto_id=folleto_id)
+
+            logger.info(f"[Load] -- {fuente}/{slug}/{folleto_id} --")
+
             with get_cursor(self.conn) as cur:
                 tienda_id     = self._upsert_tienda(cur, slug, nombre_tienda, slug_raw)
-                folleto_id_bd = self._upsert_folleto(cur, tienda_id, folleto_id, fuente, meta)
+                folleto_id_bd = self._upsert_folleto(cur, tienda_id, folleto_id, fuente, meta, reemplazar)
+
+                # Sin esto, recargar un folleto ya cargado duplica sus extracciones
+                # (extracciones no tiene llave natural). Va en la misma transaccion:
+                # si la carga falla, el rollback deshace tambien el borrado.
+                if reemplazar:
+                    cur.execute("DELETE FROM eventos_promo WHERE folleto_id = %s", (folleto_id_bd,))
+                    cur.execute("DELETE FROM paginas WHERE folleto_id = %s", (folleto_id_bd,))  # cascada a extracciones
 
                 for pag_data in nlp.get("paginas", []):
+                    nombre_pag = pag_data.get("pagina", "?")
                     try:
                         regiones_confiables = self._detectar_regiones_pagina(fuente, slug_raw, folleto_id, pag_data)
-                        r = self._procesar_pagina(cur, tienda_id, folleto_id_bd, pag_data, regiones_confiables)
+                        # SAVEPOINT por pagina: un error SQL descarta solo esta pagina. Sin el,
+                        # la transaccion quedaba abortada y el commit final revertia el folleto entero.
+                        with self.conn.transaction():
+                            r = self._procesar_pagina(cur, tienda_id, folleto_id_bd, pag_data, regiones_confiables,
+                                                      ocr_por_pagina.get(nombre_pag))
                         resumen["extracciones_insertadas"] += r["extracciones"]
                         resumen["precios_sin_producto"]    += r["sin_producto"]
                         resumen["eventos_insertados"]      += r["eventos"]
                         resumen["paginas_procesadas"]      += 1
                     except Exception as e:
-                        logger.error(f"[Load] Error en pagina {pag_data.get('pagina','?')}: {e}")
+                        logger.error(f"[Load] Error en pagina {nombre_pag}: {e}")
                         resumen["errores"] += 1
+                        registrar(e, nombre_pag)
 
         except Exception as e:
             logger.error(f"[Load] Error cargando {folleto_id}: {e}")
+            registrar(e)
+            self._guardar_errores(errores, corrida_at, fuente, slug_raw, folleto_id, ruta_nlp, folleto_ok=False)
             raise
+
+        self._guardar_errores(errores, corrida_at, fuente, slug_raw, folleto_id, ruta_nlp, folleto_ok=True)
+        for err in errores:
+            resumen["errores_por_categoria"][err["categoria"]] = resumen["errores_por_categoria"].get(err["categoria"], 0) + 1
 
         logger.info(
             f"[Load] OK {folleto_id} -> "
             f"{resumen['extracciones_insertadas']} extracciones | "
             f"{resumen['precios_sin_producto']} sin producto | "
             f"{resumen['eventos_insertados']} eventos"
+            + (f" | {resumen['errores']} paginas con error" if resumen["errores"] else "")
         )
         return resumen
+
+    def _guardar_errores(self, errores: list[dict], corrida_at: datetime, fuente: str, tienda_slug: str,
+                         folleto_id: str, ruta_nlp: Path, folleto_ok: bool) -> None:
+        """
+        Corre DESPUES de que la transaccion del folleto termino (commit o rollback), asi el
+        rollback de un folleto fallido no se lleva tambien su registro de error.
+        Si el folleto cargo, los errores abiertos de cargas anteriores quedan resueltos:
+        la carga nueva reemplaza a la anterior y los que sigan ocurriendo se registran de nuevo.
+        """
+        try:
+            with get_cursor(self.conn) as cur:
+                if folleto_ok:
+                    cur.execute("""
+                        UPDATE errores_carga SET resuelto = TRUE, resuelto_at = NOW()
+                        WHERE fuente = %s AND folleto_id_fuente = %s AND NOT resuelto
+                    """, (fuente, folleto_id))
+                for err in errores:
+                    cur.execute("""
+                        INSERT INTO errores_carga (
+                            corrida_at, fuente, tienda_slug, folleto_id_fuente, pagina,
+                            categoria, sqlstate, mensaje, detalle, ruta_archivo
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        corrida_at, fuente, tienda_slug, folleto_id, err["pagina"],
+                        err["categoria"], err["sqlstate"], err["mensaje"], err["detalle"], str(ruta_nlp),
+                    ))
+        except Exception as e:
+            # Registrar el error nunca debe tumbar la carga
+            logger.error(f"[Load] No se pudo registrar errores de {folleto_id} en errores_carga: {e}")
 
     # ----------------- Carga batch -----------------
     def cargar_batch(self, data_processed: Path = DATA_PROCESSED, forzar: bool = False) -> dict:
         data_processed = Path(data_processed)
-        rutas = sorted(data_processed.rglob("nlp_resultado.json"))
+        rutas = rutas_nlp(data_processed)
 
         if not rutas:
             logger.warning(f"[Load] Sin nlp_resultado.json en {data_processed}")
             return {}
 
         logger.info(f"[Load] {len(rutas)} folletos encontrados")
-        totales = {"procesados": 0, "omitidos": 0, "errores": 0,
-                   "extracciones_total": 0, "eventos_total": 0}
+        totales = {"procesados": 0, "omitidos": 0, "errores": 0, "paginas_con_error": 0,
+                   "extracciones_total": 0, "eventos_total": 0, "errores_por_categoria": {}}
 
-        for i, ruta in enumerate(rutas, 1):
-            ruta_rel = ruta.parent.relative_to(data_processed)
+        def sumar_categoria(categoria: str, n: int = 1):
+            totales["errores_por_categoria"][categoria] = totales["errores_por_categoria"].get(categoria, 0) + n
 
-            if not forzar and self._ya_cargado(ruta):
-                logger.info(f"[Load] [{i}/{len(rutas)}] Ya cargado: {ruta_rel}")
-                totales["omitidos"] += 1
-                continue
+        self._corrida_at = datetime.now()
+        totales["corrida_at"] = self._corrida_at
+        try:
+            for i, ruta in enumerate(rutas, 1):
+                ruta_rel = ruta.parent.relative_to(data_processed)
 
-            logger.info(f"[Load] [{i}/{len(rutas)}] {ruta_rel}")
-            try:
-                r = self.cargar_folleto(ruta)
-                totales["procesados"]         += 1
-                totales["extracciones_total"] += r["extracciones_insertadas"]
-                totales["eventos_total"]      += r["eventos_insertados"]
-            except Exception as e:
-                logger.error(f"[Load] Error en {ruta_rel}: {e}")
-                totales["errores"] += 1
+                if not forzar and self._ya_cargado(ruta):
+                    logger.info(f"[Load] [{i}/{len(rutas)}] Ya cargado: {ruta_rel}")
+                    totales["omitidos"] += 1
+                    continue
+
+                logger.info(f"[Load] [{i}/{len(rutas)}] {ruta_rel}")
+                try:
+                    r = self.cargar_folleto(ruta, reemplazar=forzar)
+                    totales["procesados"]         += 1
+                    totales["paginas_con_error"]  += r["errores"]
+                    totales["extracciones_total"] += r["extracciones_insertadas"]
+                    totales["eventos_total"]      += r["eventos_insertados"]
+                    for categoria, n in r["errores_por_categoria"].items():
+                        sumar_categoria(categoria, n)
+                except Exception as e:
+                    logger.error(f"[Load] Error en {ruta_rel}: {e}")
+                    totales["errores"] += 1
+                    sumar_categoria(categorizar_error(e)[0])
+        finally:
+            self._corrida_at = None
 
         logger.info(
             f"[Load] Batch completo: "
             f"procesados={totales['procesados']} "
             f"omitidos={totales['omitidos']} "
-            f"errores={totales['errores']} | "
+            f"errores={totales['errores']} "
+            f"paginas_con_error={totales['paginas_con_error']} | "
             f"extracciones={totales['extracciones_total']} "
             f"eventos={totales['eventos_total']}"
         )
@@ -181,7 +311,8 @@ class Loader:
             return None
 
     def _procesar_pagina(self, cur, tienda_id: int, folleto_id: int, pag_data: dict,
-                         regiones_confiables: list[dict] | None = None) -> dict:
+                         regiones_confiables: list[dict] | None = None,
+                         ocr_pagina: dict | None = None) -> dict:
         nombre_pag = pag_data.get("pagina", "")
         num_pagina = self._extraer_numero_pagina(nombre_pag)
         pagina_id  = self._upsert_pagina(cur, folleto_id, num_pagina, nombre_pag)
@@ -292,15 +423,32 @@ class Loader:
             if self._upsert_evento_promo(cur, folleto_id, tienda_id, nombre_norm, texto_evento):
                 contadores["eventos"] += 1
 
+        # Metricas OCR de la pagina (ocr_resultado.json). Sin OCR quedan NULL, no 0,
+        # para distinguir "no hay dato" de "la pagina no tenia texto".
+        total_bloques = confianza_ocr = tasa_util = None
+        if ocr_pagina is not None:
+            total_bloques = len(ocr_pagina.get("bloques", []))
+            confianza_ocr = ocr_pagina.get("confianza_prom")
+            # = schema.sql: entidades utiles / total bloques OCR. Utiles = todo lo que el NLP
+            # no descarto (mismas clases que la tasa_util del resumen de probar_nlp.py)
+            utiles = sum(len(pag_data.get(k, [])) for k in (
+                "productos", "precios", "precios_anteriores", "ahorros",
+                "promos", "eventos_promo", "atributos",
+            ))
+            tasa_util = round(utiles / total_bloques, 3) if total_bloques else None
+
         # Actualizar metricas de pagina
         cur.execute("""
             UPDATE paginas SET
                 total_productos = %s, total_precios = %s,
-                total_promos = %s, total_atributos = %s, procesado_at = %s
+                total_promos = %s, total_atributos = %s,
+                total_bloques_ocr = %s, confianza_ocr_prom = %s, tasa_util = %s,
+                procesado_at = %s
             WHERE id = %s
         """, (
             len(productos), len(precios),
             len(promos) + len(eventos_promo), len(atributos),
+            total_bloques, confianza_ocr, tasa_util,
             datetime.utcnow(), pagina_id,
         ))
 
@@ -467,14 +615,29 @@ class Loader:
         return cur.fetchone()["id"]
 
     def _upsert_folleto(self, cur, tienda_id: int, folleto_id_fuente: str,
-                        fuente: str, meta: dict) -> int:
-        cur.execute("""
+                        fuente: str, meta: dict, reemplazar: bool = False) -> int:
+        # Al reemplazar se actualiza la tienda y la metadata que venga; si un campo viene
+        # vacio se conserva el que ya estaba (el registro del scraper no siempre lo trae).
+        conflicto = """
+            DO UPDATE SET
+                tienda_id    = EXCLUDED.tienda_id,
+                titulo       = COALESCE(EXCLUDED.titulo,       folletos.titulo),
+                fecha_inicio = COALESCE(EXCLUDED.fecha_inicio, folletos.fecha_inicio),
+                fecha_fin    = COALESCE(EXCLUDED.fecha_fin,    folletos.fecha_fin),
+                url_origen   = COALESCE(EXCLUDED.url_origen,   folletos.url_origen),
+                perfil_ocr   = COALESCE(EXCLUDED.perfil_ocr,   folletos.perfil_ocr),
+                motor_ocr    = COALESCE(EXCLUDED.motor_ocr,    folletos.motor_ocr),
+                total_paginas = EXCLUDED.total_paginas,
+                scrapeado_at = COALESCE(EXCLUDED.scrapeado_at, folletos.scrapeado_at),
+                estado       = EXCLUDED.estado
+        """ if reemplazar else "DO NOTHING"
+        cur.execute(f"""
             INSERT INTO folletos (
                 tienda_id, folleto_id_fuente, fuente,
                 titulo, fecha_inicio, fecha_fin, url_origen,
-                perfil_ocr, motor_ocr, scrapeado_at, estado
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (fuente, folleto_id_fuente) DO NOTHING
+                perfil_ocr, motor_ocr, total_paginas, scrapeado_at, estado
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (fuente, folleto_id_fuente) {conflicto}
             RETURNING id
         """, (
             tienda_id, folleto_id_fuente, fuente,
@@ -484,6 +647,7 @@ class Loader:
             meta.get("url_origen"),
             meta.get("perfil_ocr"),
             meta.get("motor_ocr", "easyocr"),
+            meta.get("total_paginas", 0),
             self._parsear_datetime(meta.get("scrapeado_at")),
             "done",
         ))
@@ -578,6 +742,17 @@ class Loader:
                 return cur.fetchone() is not None
         except Exception:
             return False
+
+    def _leer_ocr(self, ruta_nlp: Path) -> dict:
+        # ocr_resultado.json vive junto a nlp_resultado.json. Si falta o esta roto el folleto
+        # se carga igual, solo sin metricas OCR (quedan NULL en paginas).
+        ruta_ocr = Path(ruta_nlp).with_name("ocr_resultado.json")
+        try:
+            with open(ruta_ocr, encoding="utf-8") as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.warning(f"[Load] Sin metricas OCR para {ruta_ocr.parent}: {e}")
+            return {}
 
     def _leer_metadata(self, fuente: str, folleto_id: str) -> dict:
         if not RUTA_REGISTRO_SCRAPER.exists():

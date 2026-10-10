@@ -37,7 +37,7 @@ logger = logging.getLogger("probar_load")
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from load.load import Loader
+from load.load import Loader, rutas_nlp
 from load.db_builder import verificar_conexion, resumen_bd
 
 DATA_PROCESSED = Path("data/processed")
@@ -62,7 +62,7 @@ def menu_principal() -> int:
 
 
 def menu_folleto() -> Path | None:
-    rutas = sorted(DATA_PROCESSED.rglob("nlp_resultado.json"))
+    rutas = rutas_nlp(DATA_PROCESSED)
     if not rutas:
         print("\n  ⚠️  Sin nlp_resultado.json en data/processed/")
         print("     Ejecuta primero: python probar_nlp.py")
@@ -95,14 +95,14 @@ def modo_prueba(loader: Loader):
         return
     print(f"\n   Cargando: {ruta.parent.relative_to(DATA_PROCESSED)}")
     try:
-        r = loader.cargar_folleto(ruta)
+        r = loader.cargar_folleto(ruta, reemplazar=True)
         _imprimir_resumen_folleto(r)
     except Exception as e:
         logger.error(f"Error al cargar folleto: {e}")
 
 
 def modo_batch(loader: Loader, forzar: bool = False):
-    rutas = list(DATA_PROCESSED.rglob("nlp_resultado.json"))
+    rutas = rutas_nlp(DATA_PROCESSED)
     if not rutas:
         print("\n  ⚠️  Sin nlp_resultado.json disponibles.")
         return
@@ -150,7 +150,8 @@ def _imprimir_resumen_folleto(r: dict):
     print(f"  Sin producto:       {r['precios_sin_producto']}")
     print(f"  Eventos promo:      {r['eventos_insertados']}")
     if r["errores"]:
-        print(f"  ⚠️  Errores:         {r['errores']}")
+        print(f"  ⚠️  Páginas con error: {r['errores']}")
+        _imprimir_categorias(r["errores_por_categoria"])
     print(f"{'-' * 50}")
 
     if r["extracciones_insertadas"] > 0 and r["precios_sin_producto"] > 0:
@@ -166,11 +167,21 @@ def _imprimir_resumen_batch(totales: dict):
     print(f"{'-' * 50}")
     print(f"  Procesados:         {totales.get('procesados', 0)}")
     print(f"  Omitidos (ya BD):   {totales.get('omitidos', 0)}")
-    print(f"  Errores:            {totales.get('errores', 0)}")
+    print(f"  Folletos con error: {totales.get('errores', 0)}")
+    print(f"  Páginas con error:  {totales.get('paginas_con_error', 0)}")
     print(f"{'-' * 50}")
     print(f"  Extracciones total: {totales.get('extracciones_total', 0):,}")
     print(f"  Eventos promo:      {totales.get('eventos_total', 0):,}")
+    if totales.get("errores_por_categoria"):
+        print(f"{'-' * 50}")
+        print("  Errores por categoría (detalle en tabla errores_carga):")
+        _imprimir_categorias(totales["errores_por_categoria"])
     print(f"{'=' * 50}")
+
+
+def _imprimir_categorias(por_categoria: dict):
+    for categoria, n in sorted(por_categoria.items(), key=lambda kv: -kv[1]):
+        print(f"    {categoria:<22} {n:>6,}")
 
 
 # -- Main ----------------------------------------------------------------------
