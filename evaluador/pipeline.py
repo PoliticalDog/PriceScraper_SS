@@ -17,6 +17,7 @@ from nlp.regex_extractor import RegexExtractor
 from nlp.salida_json import clasificar_paginas_ocr, resultado_nlp
 
 from .gt import FUENTE_GT, PaginaGT
+from .ocr_experimental import carpeta_exp
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +66,16 @@ class FuentePipeline:
     """
     nlp="disco":   lee data/processed/<fuente>/<tienda>/<folleto>/nlp_resultado.json (lo cargado en la BD)
     nlp="memoria": regenera el NLP desde ocr_resultado.json con el codigo actual, sin escribirlo
+    ocr_exp:       lee el OCR de data/processed/_eval/ocr_exp/<nombre>/ (evaluador/ocr_experimental.py)
+                   en vez del de produccion; obliga a nlp="memoria"
     """
 
-    def __init__(self, nlp: str = "disco", usar_cache_regiones: bool = True):
+    def __init__(self, nlp: str = "disco", usar_cache_regiones: bool = True, ocr_exp: str | None = None):
         if nlp not in ("disco", "memoria"):
             raise ValueError(f"nlp debe ser 'disco' o 'memoria', no {nlp!r}")
+        if ocr_exp and nlp != "memoria":
+            raise ValueError("Con ocr_exp el NLP se regenera en memoria: usa nlp='memoria'")
+        self.ocr_exp = ocr_exp
         self.modo_nlp = nlp
         self.usar_cache = usar_cache_regiones
         self.normalizador = Normalizador()
@@ -85,7 +91,7 @@ class FuentePipeline:
         llave = (tienda, folleto)
         if llave not in self._folletos:
             carpeta = self._carpeta(tienda, folleto)
-            ruta_ocr = carpeta / "ocr_resultado.json"
+            ruta_ocr = (carpeta_exp(self.ocr_exp) / tienda / folleto if self.ocr_exp else carpeta) / "ocr_resultado.json"
             ocr = json.load(open(ruta_ocr, encoding="utf-8")) if ruta_ocr.exists() else {}
             if self.modo_nlp == "memoria":
                 nlp = resultado_nlp(ocr, clasificar_paginas_ocr(ocr, self._extractor)) if ocr else {}

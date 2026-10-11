@@ -7,6 +7,8 @@ Evaluador de registros finales contra el ground truth.
     python -m evaluador sellar --motivo "..."        (decision humana)
     python -m evaluador splits --generar             (una sola vez; no regenera)
     python -m evaluador validacion muestra|concordancia --respuestas DIR
+    python -m evaluador ocr --nombre N [--tienda T] [--max-paginas K]   (OCR experimental en CPU, dev)
+    python -m evaluador correr --ocr-exp N [--tienda T]
 """
 import argparse
 import json
@@ -37,12 +39,21 @@ def cmd_correr(args) -> int:
     paginas = splits.filtrar(cargar_gt(), args.split, splits.cargar())
     if args.tienda:
         paginas = [p for p in paginas if p.tienda == args.tienda]
-    fuente = FuentePipeline(nlp=args.nlp)
+    if args.ocr_exp:
+        from .ocr_experimental import paginas_disponibles
+        if args.split != "dev":
+            print("El OCR experimental solo existe para dev.")
+            return 1
+        disponibles = paginas_disponibles(args.ocr_exp)
+        paginas = [p for p in paginas if p.clave in disponibles]
+        args.nlp = "memoria"
+    fuente = FuentePipeline(nlp=args.nlp, ocr_exp=args.ocr_exp)
     resultados = [comparar_pagina(fuente.pagina(pg)) for pg in paginas]
 
     metricas = agregar_por_tienda(resultados)
     estado = integridad.verificar()
     meta = {"fecha": datetime.now().isoformat(timespec="seconds"), "split": args.split, "nlp": args.nlp,
+            "ocr_exp": args.ocr_exp,
             "tienda": args.tienda, "paginas": len(paginas), "version_vision": version_vision(),
             "codigo": reporte.version_codigo()}
     reporte.imprimir_resumen(metricas, estado, meta)
@@ -61,9 +72,21 @@ def cmd_comparar(args) -> int:
             print(f"!! La corrida {nombre} NO es valida: {corrida['integridad']['problemas']}")
     if base["meta"]["split"] != nueva["meta"]["split"]:
         print(f"!! Splits distintos: {base['meta']['split']} vs {nueva['meta']['split']}")
+    if (base["meta"]["paginas"], base["meta"].get("tienda")) != (nueva["meta"]["paginas"], nueva["meta"].get("tienda")):
+        print(f"!! Conjuntos de paginas distintos: {base['meta']['paginas']} vs {nueva['meta']['paginas']} paginas "
+              "(con OCR experimental, base y cambio deben cubrir las mismas paginas)")
     comp = comparar_corridas(base["metricas"], nueva["metricas"])
     imprimir_comparacion(comp)
     return 1 if any(r["bloquea"] for r in comp["regresiones"]) else 0
+
+
+def cmd_ocr(args) -> int:
+    from .ocr_experimental import correr_ocr
+    ruta = correr_ocr(args.nombre, args.tienda, args.max_paginas, args.perfil, args.resolucion, args.forzar)
+    print(f"OCR experimental listo: {ruta}")
+    print(f"Midelo con: python -m evaluador correr --ocr-exp {args.nombre}"
+          + (f" --tienda {args.tienda}" if args.tienda else ""))
+    return 0
 
 
 def cmd_verificar(_args) -> int:
@@ -134,6 +157,14 @@ def main() -> int:
                    help="disco = nlp_resultado.json cargado; memoria = regenerar con el codigo actual sin escribir")
     c.add_argument("--tienda")
     c.add_argument("--sin-guardar", action="store_true")
+    c.add_argument("--ocr-exp", help="usa el OCR experimental <nombre> (solo dev, solo sus paginas, NLP en memoria)")
+    o = sub.add_parser("ocr", help="OCR experimental en CPU sobre paginas de dev, sin tocar produccion")
+    o.add_argument("--nombre", required=True)
+    o.add_argument("--tienda")
+    o.add_argument("--max-paginas", type=int)
+    o.add_argument("--perfil", help="fuerza un perfil de preprocessor (default: el de cada tienda)")
+    o.add_argument("--resolucion", type=int, help="fuerza un ancho objetivo (default: el de cada tienda)")
+    o.add_argument("--forzar", action="store_true", help="rehace las paginas aunque ya existan")
     k = sub.add_parser("comparar", help="deltas y regresiones por tienda entre dos corridas")
     k.add_argument("base", type=Path)
     k.add_argument("nueva", type=Path)
@@ -147,7 +178,7 @@ def main() -> int:
     v.add_argument("--respuestas", help="carpeta con las respuestas exportadas (concordancia)")
 
     args = p.parse_args()
-    return {"correr": cmd_correr, "comparar": cmd_comparar, "verificar": cmd_verificar,
+    return {"correr": cmd_correr, "comparar": cmd_comparar, "verificar": cmd_verificar, "ocr": cmd_ocr,
             "sellar": cmd_sellar, "splits": cmd_splits, "validacion": cmd_validacion}[args.cmd](args)
 
 

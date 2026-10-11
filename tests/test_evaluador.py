@@ -214,3 +214,17 @@ def test_concordancia_excluye_paginas_sin_precio():
     ]}
     r = concordancia(muestra, {"c1": {"producto": "si", "precio": "si"}, "c2": {"producto": "si", "precio": "si"}}, {"costco/p"})
     assert (r["evaluados"], r["acuerdos"], r["excluidos"]) == (1, 1, ["c1"])
+
+
+def test_ocr_experimental_nombre_seguro():
+    from evaluador.ocr_experimental import carpeta_exp
+    assert carpeta_exp("base_heb").name == "base_heb"
+    for malo in ("../x", "a/b", r"a\b", "x.y", "", " x"):
+        with pytest.raises(ValueError):
+            carpeta_exp(malo)
+
+
+def test_ocr_exp_obliga_nlp_memoria():
+    from evaluador.pipeline import FuentePipeline
+    with pytest.raises(ValueError):
+        FuentePipeline(nlp="disco", ocr_exp="base_heb")
