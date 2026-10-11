@@ -21,7 +21,8 @@ ARCHIVOS_REGLAS = ("gt.py", "comparar.py", "metricas.py", "splits.py", "integrid
 
 
 def _sha(ruta: Path) -> str:
-    return hashlib.sha256(ruta.read_bytes()).hexdigest()
+    # Saltos de linea normalizados: con core.autocrlf un checkout no debe invalidar el sello
+    return hashlib.sha256(ruta.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def huellas_actuales(raiz_gt: Path = RAIZ_GT) -> dict:

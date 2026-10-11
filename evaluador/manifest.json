@@ -1,6 +1,6 @@
 {
-  "sellado_at": "2026-10-11T16:05:17",
-  "motivo": "Paginas del GT sin precios no entran en metricas; conteos en cero para tiendas sin paginas evaluables (11-oct-2026, aprobado por el usuario)",
+  "sellado_at": "2026-10-11T16:17:23",
+  "motivo": "Hash de reglas con saltos de linea normalizados (CRLF/LF); sin cambio de criterio",
   "gt": {
     "alsuper/416306_contenido.json": "47d86f16926e9d578f87300e67cfc1e2a8bc2a4799fc8eb9d64b07f267a33996",
     "alsuper/423209_contenido.json": "12c6e5d95c5382fb8bae89c537f505aa9a60f90fcfda9f578e6e3e4e07155f4a",
@@ -80,12 +80,12 @@
     "walmart/413647_contenido.json": "b9375161cd2dd97cc6a03930884ba341fe8f043128f9783f6ceda9f18a61dca3",
     "walmart/423249_contenido.json": "72b820950ea6a53a35ecce9e87e20b2369d3f8341dbd3e415ba0dcbcd92f386c"
   },
-  "splits": "2c9f86bc91703e18c3d6e3f0b6b39bd7d2e1d31486f8010ee976470c89591ca3",
+  "splits": "6eeaa9f2cfeed6e994047cd99c066834d960b26a5730fe7dc6b33a3b5d90989d",
   "reglas": {
     "gt.py": "d5ee7954fb5ab008739f34b75142cc8351d2a1be6d31a207de71622eefbde77b",
-    "comparar.py": "ca353a4fb77cb847732a54687810536878f4e8119d2e59b48287b38be5d0f483",
-    "metricas.py": "017aabf64123819551d9c41cac4577dd5918d544fce5bf2ec350d435221fabfb",
+    "comparar.py": "22902085f78f96e626242d787a58a7caa333cc6e7af93073d013afa6e141f91f",
+    "metricas.py": "5c18b1b3adbccaa67b308d0f8133fcc16f84b6dc0dee53be6fa1bcc638165c27",
     "splits.py": "e692ca4df8b461274792c6da6e020e677048d01762c913052cb2fae32ecedc5c",
-    "integridad.py": "118c3620db7f0a30f1aa8530154a223c2a0fa4d3f8b3730007113c3ec9b3ff74"
+    "integridad.py": "271f19347d3fcbd437531772636e53ae5c5b24649ba127a94695f60f17210362"
   }
 }
