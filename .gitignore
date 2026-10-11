@@ -71,6 +71,5 @@ diagnostico_hero.py
 diagnostico_redirect.py
 diagnostico_tarjetas.py
 
-# ------------------ Claude Code: skills locales del proyecto ------------------
-# Por el momento no se comitean al repo (decisión 07-ago-2026).
-.claude/skills/
+# ------------------ Claude Code ------------------
+# .claude/skills/ se versiona desde el 11-oct-2026 (antes ignorado, decisión 07-ago-2026).
