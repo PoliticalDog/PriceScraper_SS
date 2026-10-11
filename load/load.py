@@ -116,6 +116,116 @@ def emparejar_precios_anteriores(precios: list[dict], precios_ant: list[dict]) -
     return resultado
 
 
+# -- Asociacion de una pagina (sin BD) ----------------------------------------------
+# Todo lo que load decide en una pagina, separado de los INSERT: que productos sobreviven
+# al normalizador y que producto y precio anterior lleva cada precio. El evaluador
+# (evaluador/) llama a estas mismas funciones para medir exactamente lo que llega al dashboard.
+
+def candidatas_roi_pagina(fuente: str, slug_raw: str, folleto_id: str, nombre_pag: str) -> list[dict] | None:
+    """Recuadros candidatos de la imagen, solo por geometria (lo costoso: preprocesa la imagen).
+    None si la tienda no usa ROI o falta la imagen."""
+    if slug_raw not in TIENDAS_ROI_HIBRIDO:
+        return None
+    ruta_imagen = DATA_RAW / fuente / slug_raw / folleto_id / nombre_pag
+    if not ruta_imagen.exists():
+        return None
+    return detectar_regiones(_obtener_preprocesador_roi().procesar(ruta_imagen))
+
+
+def regiones_con_precio(candidatas: list[dict], precios: list[dict]) -> list[dict]:
+    """Candidatas que contienen al menos un precio del NLP (las que usa la asociacion ROI)."""
+    bloques_precio = [{"texto": p.get("texto", ""), "bbox": p.get("bbox", {})} for p in precios]
+    return [r for r in calificar_regiones(candidatas, bloques_precio) if r["tiene_precio"]]
+
+
+def asociar_por_cercania(item: dict, productos: list) -> dict | None:
+    """
+    Empareja un item (precio o atributo) con el producto reconocido mas
+    cercano verticalmente arriba, dentro de una tolerancia horizontal de
+    400px. Antes se llamaba "_asociar_producto" y solo se usaba para
+    precios -- generalizado (22-ago-2026) para reutilizarse tambien con
+    atributos.
+    """
+    if not productos:
+        return None
+
+    item_x = item.get("bbox", {}).get("x", 0)
+    item_y = item.get("bbox", {}).get("y", 0)
+    mejor, menor_dist = None, float("inf")
+
+    for prod in productos:
+        prod_bbox = prod.get("bbox", {})
+        prod_x    = prod_bbox.get("x", 0)
+        prod_y    = prod_bbox.get("y", 0)
+
+        if abs(prod_x - item_x) > 400:
+            continue
+
+        diff_y = item_y - prod_y
+        if 0 < diff_y < menor_dist:
+            menor_dist = diff_y
+            mejor = prod
+
+    return mejor
+
+
+def productos_aceptados(productos: list[dict], normalizador: Normalizador) -> list[dict]:
+    """
+    Productos que el normalizador no descarta, en su orden original, enriquecidos con:
+      _idx          -> posicion en esta lista (load la usa para ligar el id de la fila insertada)
+      _resultado    -> ResultadoNorm completo
+      _nombre_norm  -> nombre canonico o heuristico
+      categoria     -> sobreescrita con la categoria del normalizador
+
+    Son los unicos candidatos validos para asociar precios/atributos: antes CUALQUIER
+    bloque PRODUCTO (incluyendo ruido: "Exclusivo en", nombres de tienda, fragmentos OCR)
+    era candidato.
+    """
+    aceptados = []
+    for prod in productos:
+        resultado = normalizador.normalizar(prod.get("texto", ""))
+        if resultado.descartado:
+            continue
+        aceptados.append({
+            **prod,
+            "_idx": len(aceptados),
+            "_resultado": resultado,
+            "_nombre_norm": resultado.nombre_canonico or prod.get("texto", ""),
+            "categoria": resultado.categoria or prod.get("categoria", ""),
+        })
+    return aceptados
+
+
+def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] | None,
+                               normalizador: Normalizador) -> dict:
+    """
+    Registros de una pagina tal como load los insertaria, sin tocar la BD:
+      productos -> productos_aceptados()
+      precios   -> [{"precio", "producto" (de `productos` o None), "valor_anterior"}], orden del NLP
+      atributos -> [{"atributo", "producto"}]
+    Precio: primero ROI (solo tiendas de TIENDAS_ROI_HIBRIDO, si hay regiones), si no cercania.
+    Atributos: solo cercania (ROI no validado para atributos todavia).
+    """
+    productos = productos_aceptados(pag_data.get("productos", []), normalizador)
+    precios = pag_data.get("precios", [])
+    anteriores = emparejar_precios_anteriores(precios, pag_data.get("precios_anteriores", []))
+
+    registros_precio = []
+    for precio, valor_anterior in zip(precios, anteriores):
+        producto = None
+        if regiones_confiables:
+            producto = asociar_producto_por_region(precio, productos, regiones_confiables)
+        if producto is None:
+            producto = asociar_por_cercania(precio, productos)
+        registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
+
+    registros_atributo = [
+        {"atributo": atributo, "producto": asociar_por_cercania(atributo, productos)}
+        for atributo in pag_data.get("atributos", [])
+    ]
+    return {"productos": productos, "precios": registros_precio, "atributos": registros_atributo}
+
+
 def _obtener_preprocesador_roi():
     global _preprocesador_roi
     if _preprocesador_roi is None:
@@ -362,21 +472,12 @@ class Loader:
     # --------------- Procesamiento de pagina ---------------
     # Corre deteccion ROI solo para las tiendas grid-friendly validadas
     def _detectar_regiones_pagina(self, fuente: str, slug_raw: str, folleto_id: str, pag_data: dict) -> list[dict] | None:
-        if slug_raw not in TIENDAS_ROI_HIBRIDO:
-            return None
-
         nombre_pag = pag_data.get("pagina", "")
-        ruta_imagen = DATA_RAW / fuente / slug_raw / folleto_id / nombre_pag
-        if not ruta_imagen.exists():
-            return None
-
         try:
-            imagen_proc = _obtener_preprocesador_roi().procesar(ruta_imagen)
-            candidatas = detectar_regiones(imagen_proc)
-            precios = pag_data.get("precios", [])
-            bloques_precio = [{"texto": p.get("texto", ""), "bbox": p.get("bbox", {})} for p in precios]
-            regiones = calificar_regiones(candidatas, bloques_precio)
-            return [r for r in regiones if r["tiene_precio"]]
+            candidatas = candidatas_roi_pagina(fuente, slug_raw, folleto_id, nombre_pag)
+            if candidatas is None:
+                return None
+            return regiones_con_precio(candidatas, pag_data.get("precios", []))
         except Exception as e:
             logger.warning(f"[Load] ROI fallo en {slug_raw}/{folleto_id}/{nombre_pag}: {e} -- fallback a distancia")
             return None
@@ -390,24 +491,21 @@ class Loader:
 
         productos     = pag_data.get("productos", [])
         precios       = pag_data.get("precios", [])
-        precios_ant   = pag_data.get("precios_anteriores", [])
         promos        = pag_data.get("promos", [])
         eventos_promo = pag_data.get("eventos_promo", [])
         atributos     = pag_data.get("atributos", [])
 
         contadores = {"extracciones": 0, "sin_producto": 0, "eventos": 0}
 
-        productos_utiles = self._insertar_productos(cur, pagina_id, folleto_id, tienda_id, productos)
-        contadores["extracciones"] += len(productos_utiles)
+        registros = construir_registros_pagina(pag_data, regiones_confiables, self._normalizador)
+        ids_producto = self._insertar_productos(cur, pagina_id, folleto_id, tienda_id, registros["productos"])
+        contadores["extracciones"] += len(ids_producto)
 
         # Precios
-        anteriores = emparejar_precios_anteriores(precios, precios_ant)
-        for precio, precio_ant_val in zip(precios, anteriores):
-            producto_match = None
-            if regiones_confiables:
-                producto_match = asociar_producto_por_region(precio, productos_utiles, regiones_confiables)
-            if producto_match is None:
-                producto_match = self._asociar_por_cercania(precio, productos_utiles)
+        for registro in registros["precios"]:
+            precio, producto_match = registro["precio"], registro["producto"]
+            precio_ant_val = registro["valor_anterior"]
+            prod_id, prod_canonico_id = ids_producto[producto_match["_idx"]] if producto_match else (None, None)
             bbox           = precio.get("bbox", {})
 
             cur.execute("""
@@ -426,8 +524,7 @@ class Loader:
                 producto_match.get("categoria") if producto_match else None,
                 precio.get("valor"), precio_ant_val, precio.get("confianza"),
                 bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
-                producto_match.get("_id") if producto_match else None,
-                producto_match.get("_producto_canonico_id") if producto_match else None,
+                prod_id, prod_canonico_id,
             ))
             contadores["extracciones"] += 1
             if not producto_match:
@@ -436,8 +533,8 @@ class Loader:
         # Atributos: mismo criterio de cercania que precios (sin ROI, no
         # validado para atributos todavia). Antes no se persistian en
         # absoluto pese a que el enum tipo_extraccion_enum ya los soportaba.
-        for atributo in atributos:
-            producto_match = self._asociar_por_cercania(atributo, productos_utiles)
+        for registro in registros["atributos"]:
+            atributo, producto_match = registro["atributo"], registro["producto"]
             bbox = atributo.get("bbox", {})
             cur.execute("""
                 INSERT INTO extracciones (
@@ -450,7 +547,7 @@ class Loader:
                 "ATRIBUTO", atributo.get("texto", ""), atributo.get("texto", ""),
                 atributo.get("categoria") or None, atributo.get("confianza"),
                 bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
-                producto_match.get("_id") if producto_match else None,
+                ids_producto[producto_match["_idx"]][0] if producto_match else None,
             ))
             contadores["extracciones"] += 1
 
@@ -528,30 +625,16 @@ class Loader:
     # ----------------- Productos y normalización ---------------------------------------------
 
     def _insertar_productos(self, cur, pagina_id: int, folleto_id: int, tienda_id: int,
-                            productos: list[dict]) -> list[dict]:
+                            aceptados: list[dict]) -> list[tuple[int, Optional[int]]]:
         """
-        Normaliza cada producto (nlp.normalizador.Normalizador) e inserta los
-        aceptados como fila propia tipo=PRODUCTO, upserteando su identidad
-        canonica en productos_canonicos.
-
-        Devuelve SOLO los productos aceptados (no descartados por el
-        normalizador), enriquecidos con:
-          _id                     -> id de la fila en extracciones
-          _producto_canonico_id   -> id en productos_canonicos (o None)
-          _nombre_norm            -> nombre canonico o heuristico
-          categoria               -> sobreescrita con la categoria del normalizador
-
-        Son los unicos candidatos validos para asociar precios/atributos por
-        cercania -- antes de este cambio, CUALQUIER bloque clasificado como
-        PRODUCTO (incluyendo ruido: "Exclusivo en", nombres de tienda,
-        fragmentos OCR) era candidato valido de asociacion.
+        Inserta los productos que ya acepto el normalizador (productos_aceptados()) como
+        fila propia tipo=PRODUCTO, upserteando su identidad canonica en productos_canonicos.
+        Devuelve (id en extracciones, id en productos_canonicos o None) en el orden de
+        `aceptados`, es decir, indexado por su `_idx`.
         """
-        utiles = []
-        for prod in productos:
-            resultado = self._normalizador.normalizar(prod.get("texto", ""))
-            if resultado.descartado:
-                continue
-
+        ids = []
+        for prod in aceptados:
+            resultado = prod["_resultado"]
             producto_canonico_id = None
             if resultado.nombre_canonico:
                 producto_canonico_id = self._upsert_producto_canonico(cur, resultado)
@@ -574,16 +657,8 @@ class Loader:
                 bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
                 producto_canonico_id, resultado.confianza_norm, resultado.metodo,
             ))
-            prod_id = cur.fetchone()["id"]
-
-            utiles.append({
-                **prod,
-                "_id": prod_id,
-                "_producto_canonico_id": producto_canonico_id,
-                "_nombre_norm": resultado.nombre_canonico or prod.get("texto", ""),
-                "categoria": resultado.categoria or prod.get("categoria", ""),
-            })
-        return utiles
+            ids.append((cur.fetchone()["id"], producto_canonico_id))
+        return ids
 
     def _upsert_producto_canonico(self, cur, resultado) -> int:
         # Alias nuevo: solo cuando el match fue por fuzzy (no exacto, no
@@ -613,39 +688,6 @@ class Loader:
             alias_nuevo, alias_nuevo, alias_nuevo,
         ))
         return cur.fetchone()["id"]
-
-    # ----------------- Asociacion bbox -----------------
-
-    """
-        Empareja un item (precio o atributo) con el producto reconocido mas
-        cercano verticalmente arriba, dentro de una tolerancia horizontal de
-        400px. Antes se llamaba "_asociar_producto" y solo se usaba para
-        precios -- generalizado (22-ago-2026) para reutilizarse tambien con
-        atributos.
-    """
-    def _asociar_por_cercania(self, item: dict, productos: list) -> dict | None:
-        
-        if not productos:
-            return None
-
-        item_x = item.get("bbox", {}).get("x", 0)
-        item_y = item.get("bbox", {}).get("y", 0)
-        mejor, menor_dist = None, float("inf")
-
-        for prod in productos:
-            prod_bbox = prod.get("bbox", {})
-            prod_x    = prod_bbox.get("x", 0)
-            prod_y    = prod_bbox.get("y", 0)
-
-            if abs(prod_x - item_x) > 400:
-                continue
-
-            diff_y = item_y - prod_y
-            if 0 < diff_y < menor_dist:
-                menor_dist = diff_y
-                mejor = prod
-
-        return mejor
 
     # ----------------- Upserts SQL -----------------
 
