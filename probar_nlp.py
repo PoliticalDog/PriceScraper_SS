@@ -194,7 +194,7 @@ def procesar_carpeta(
                 for e in r.precios
             ],
             "precios_anteriores": [
-                {"texto": e.texto_norm, "valor": e.valor,
+                {"texto": e.texto_norm, "valor": e.valor, "candidatos": e.candidatos,
                  "confianza": e.confianza, "bbox": e.bbox}
                 for e in r.precios_anteriores
             ],

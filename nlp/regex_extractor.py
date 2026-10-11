@@ -47,8 +47,10 @@ from .catalogo_productos import buscar_categoria
 1b. Condiciones de compra (antes de intentar precio): "en compras...", "compras mayores a $X" → DESCARTE
 
 2. PRECIO_ANTERIOR
-- Prefijos "antes:", "antos;" (typo de OCR), "precio anterior"
-- Patrón "DE $X A $Y" → el primer monto es el anterior
+- Prefijos "antes:", "antos;" (typo de OCR), "precio anterior", como palabra completa ("desinfectantes 35pz" no cuenta)
+- Patrón "DE $X A" (Soriana) → el primer monto es el anterior; no aplica a rangos con unidad ("de 180 gr a 220 gr")
+- Tolera el "$" leído como * # s S ' { + y los centavos en superíndice pegados o ilegibles
+- Devuelve todas las lecturas posibles del monto ("candidatos"); load elige la coherente con el precio actual
 
 3. AHORRO
 - Palabra "ahorra/ahorras" seguida de un monto (tolera "$" leído como "5" por el OCR)
@@ -102,6 +104,9 @@ class EntidadExtraida:
     confianza:  float = 0.0
     bbox:       dict = field(default_factory=dict)
     categoria:  str = ""                # Categoría del catálogo (PRODUCTO/ATRIBUTO)
+    # PRECIO_ANTERIOR: lecturas posibles del monto, la primera = valor. Load elige la
+    # que sea coherente con el precio actual emparejado (ver _candidatos_precio_anterior)
+    candidatos: list[float] = field(default_factory=list)
 
 # Agrupacion de informacion extraida de una pagina completa
 @dataclass
@@ -133,17 +138,13 @@ class RegexExtractor:
     
     # -------------------------- PRECIO ANTERIOR --------------------------
     # "Antes: $699" / "Antos; $3495" / "precio anterior $1,200" / "'Antes:$2495"
+    # El OCR lee el "$" como * # s S ' { + (los 5/8 sin simbolo se resuelven en
+    # _candidatos_precio_anterior). \b evita "desinfectANTES 35pz", "endulzANTES".
     PATRON_PRECIO_ANTERIOR = re.compile(
         r"""
-        (?:antes\s*[;:,.]?\s*|antos\s*[;:,.]?\s*|precio\s+anterior\s*:?\s*)
-        \$?\s*
-        (
-            \d{4,6}
-            |
-            \d{1,3}(?:[,\.]\d{3})*
-            (?:[,\.]\d{1,2})?
-        )
-        [a-zA-Z/_]*
+        \b(?:ant[eo]s|precio\s+anterior)\b\s*[;:,.]?\s*
+        (?P<simbolo>[\$*\#sS'{+]{0,2})\s*
+        (?P<numero>\d[\d,\.]*\d|\d)
         """,
         re.VERBOSE | re.IGNORECASE
     )
@@ -200,14 +201,18 @@ class RegexExtractor:
         re.VERBOSE
     )
 
-    # El primer precio es el anterior, el segundo es el actual.
+    # "DE $22,990⁰⁰ A" (Soriana): el primer precio es el anterior, el actual va en otro bloque.
     # Se detecta ANTES del PATRON_PRECIO normal para no extraer solo el primer número.
+    # Los centavos en superindice llegan pegados ("22,99000") o como basura (@ * " oo u).
+    # El "A" no puede ir seguido de unidad: "de 180 gr a 220 gr" no es precio.
     PATRON_DE_A = re.compile(
         r"""
-        ^DE\s+          # literal "DE " al inicio
-        \$?\s*
-        ([\d,\.]+)      # precio anterior
-        \s+A\b          # "A" como separador
+        ^DE\s*
+        (?P<simbolo>[\$*\#sS'{+t]{0,2})\s*
+        (?P<numero>\d[\d,\.]*\d)        # 2+ digitos: "de 2 a 3X" no es precio
+        [@*"'°oOuU]*                    # superindice ilegible
+        \s*[,.;:]?\s*
+        A\b(?!\s*\d)
         """,
         re.VERBOSE | re.IGNORECASE
     )
@@ -760,10 +765,11 @@ class RegexExtractor:
                                    confianza=confianza, bbox=bbox)
 
         # 2. Precio anterior ("Antes: $X" / "DE $X A")
-        valor_ant = self._extraer_precio_anterior(texto)
-        if valor_ant is not None:
+        candidatos_ant = self._extraer_precio_anterior(texto)
+        if candidatos_ant:
             return EntidadExtraida("PRECIO_ANTERIOR", texto_raw, texto,
-                                   valor=valor_ant, confianza=confianza, bbox=bbox)
+                                   valor=candidatos_ant[0], confianza=confianza, bbox=bbox,
+                                   candidatos=candidatos_ant)
 
         # 3. Ahorro ("Ahorras $X") — verificar ANTES que no sea paquete Nx$Y
         # Si el texto contiene patrón de paquete (1x$33 3x$67), va como PROMO
@@ -836,26 +842,64 @@ class RegexExtractor:
             return True
         return False
 
-    def _extraer_precio_anterior(self, texto: str) -> Optional[float]:
+    def _extraer_precio_anterior(self, texto: str) -> list[float]:
+        """Lecturas posibles del precio anterior, de la más a la menos probable ([] si no es)."""
         # Patrón estándar: "Antes: $X", "Antos; $X", "precio anterior $X"
         match = self.PATRON_PRECIO_ANTERIOR.search(texto)
         if match:
-            return self._parsear_numero(match.group(1))
-        # ERROR #18 — "DE $5,4900 A $3,990": el precio anterior es el primero
-        # OCR fusiona el punto decimal: "$5,490.00" --> "$5,4900"
-        # Corrección: si hay coma de miles + 4 dígitos, los últimos 2 son centavos
-        m_de_a = self.PATRON_DE_A.match(texto)
-        if m_de_a:
-            num_str = m_de_a.group(1)
-            # Corregir fusión OCR: "$5,490.00" --> OCR lee "$5,4900"
-            # coma + más de 3 dígitos --> los últimos 2 son centavos
-            num_str = re.sub(
-                r"(\d+),(\d{4,})$",
-                lambda m: m.group(1) + "," + m.group(2)[:-2] + "." + m.group(2)[-2:],
-                num_str
-            )
-            return self._parsear_numero(num_str)
-        return None
+            candidatos = self._candidatos_precio_anterior(match.group("simbolo"), match.group("numero"))
+            # El "Antes" va tachado (Chedraui) y la raya deforma el 1 inicial:
+            # $10,995 --> "19,995", $1,395 --> "3,395", $1,845 --> "4,845". Va al final:
+            # load solo la usa si la lectura literal no da un descuento creible
+            numero = match.group("numero")
+            if numero[0] in "3479":
+                candidatos += [c for c in self._candidatos_precio_anterior("$", "1" + numero[1:])
+                               if c not in candidatos]
+            return candidatos
+        match = self.PATRON_DE_A.match(texto)
+        if match:
+            # Soriana imprime los centavos siempre en superindice
+            return self._candidatos_precio_anterior(match.group("simbolo"), match.group("numero"),
+                                                    centavos_primero=True)
+        return []
+
+    # Montos que _parsear_numero lee sin ambigüedad: "2995", "1,955", "29.95", "12,990.00"
+    _NUMERO_BIEN_FORMADO = re.compile(r"\d+|\d{1,3}(?:[,\.]\d{3})*(?:[,\.]\d{1,2})?")
+
+    def _candidatos_precio_anterior(self, simbolo: str, numero: str,
+                                    centavos_primero: bool = False) -> list[float]:
+        """
+        El OCR rompe el monto de formas que no se distinguen solo con el texto:
+          "$10⁹⁰"     --> "81090"     ("$" leído como 8 + centavos pegados) = 10.90
+          "$22,990⁰⁰" --> "522,99000"                                     = 22990.00
+          "$5,490.00" --> "5,4900"    (coma de miles + centavos pegados)    = 5490.00
+          "$29.95"    --> "529.95"                                        = 29.95
+        Devuelve todas las lecturas razonables; load se queda con la que da un descuento
+        creíble contra el precio actual (load.emparejar_precios_anteriores).
+        """
+        variantes = [numero]
+        # Sin símbolo visible, un 5/8 inicial suele ser el "$" mal leído
+        if not simbolo and numero[0] in "58" and len(re.sub(r"\D", "", numero)) >= 3:
+            variantes.append(numero[1:].lstrip(",."))
+
+        candidatos = []
+        for v in variantes:
+            digitos = re.sub(r"\D", "", v)
+            tal_cual = self._parsear_numero(v) if self._NUMERO_BIEN_FORMADO.fullmatch(v) else None
+            m = re.fullmatch(r"(\d{1,3}),(\d{3})(\d{1,2})", v)
+            miles_y_centavos = float(f"{m[1]}{m[2]}.{m[3]}") if m else None
+            # Centavos en superindice pegados: solo sin separadores; "$4,999" ya es
+            # un monto bien escrito y partirlo en 49.99 solo sirve para cuadrar
+            # contra un precio actual mal leido
+            centavos = float(f"{digitos[:-2]}.{digitos[-2:]}") if len(digitos) >= 3 and v.isdigit() else None
+            candidatos += ([miles_y_centavos, centavos, tal_cual] if centavos_primero
+                           else [tal_cual, miles_y_centavos, centavos])
+
+        unicos = []
+        for c in candidatos:
+            if c and c not in unicos:
+                unicos.append(c)
+        return unicos
 
     def _extraer_ahorro(self, texto: str) -> Optional[float]:
         match = self.PATRON_AHORRO.search(texto)

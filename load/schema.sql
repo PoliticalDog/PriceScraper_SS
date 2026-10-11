@@ -206,7 +206,7 @@ COMMENT ON TABLE  extracciones                          IS 'Entidades NLP extra�
 COMMENT ON COLUMN extracciones.texto_raw                IS 'Texto OCR original sin modificar';
 COMMENT ON COLUMN extracciones.texto_norm               IS 'Nombre canónico (filas PRODUCTO/PRECIO) o texto limpio';
 COMMENT ON COLUMN extracciones.valor                    IS 'Precio actual en MXN o monto de ahorro';
-COMMENT ON COLUMN extracciones.valor_anterior           IS 'Precio anterior encontrado por proximidad bbox (≤300px euclidiano)';
+COMMENT ON COLUMN extracciones.valor_anterior           IS 'Precio anterior ("Antes $X" / "DE $X A") de la misma columna, pegado arriba o abajo del precio, con descuento creible (load.emparejar_precios_anteriores)';
 COMMENT ON COLUMN extracciones.confianza_ocr            IS 'Score de confianza EasyOCR: 0.0 – 1.0';
 COMMENT ON COLUMN extracciones.producto_extraccion_id   IS 'Fila PRODUCTO asociada por cercanía/ROI (self-FK). Solo aplica a PRECIO/ATRIBUTO';
 COMMENT ON COLUMN extracciones.producto_canonico_id     IS 'Identidad canónica deduplicada, ver productos_canonicos. NULL si se descartó por ruido';

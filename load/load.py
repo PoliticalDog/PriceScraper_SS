@@ -2,7 +2,6 @@
 
 import json
 import logging
-import math
 import re
 from datetime import datetime, date
 from pathlib import Path
@@ -43,6 +42,78 @@ CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {}
 TIENDAS_ROI_HIBRIDO = {"walmart", "chedraui", "soriana_hiper", "soriana_mercado"}
 
 _preprocesador_roi = None
+
+# -- Precio anterior --------------------------------------------------------------
+# Hasta oct-2026 cada precio tomaba el "antes" con la esquina mas cercana (<=300px) sin
+# validar nada: un mismo "antes" acababa en varios precios (incluidas mensualidades MSI)
+# y casi la mitad de los descuentos salian >70%. Ahora el par debe compartir columna,
+# ir pegado arriba o abajo, ser uno a uno y dar un descuento creible.
+DESCUENTO_MIN = 0.03   # ground truth (266 pares): minimo real 7%
+DESCUENTO_MAX = 0.50   # p95 real 47%; arriba casi siempre es un precio o un tachado mal leido
+_PATRON_FINANCIAMIENTO = re.compile(r"msi|meses|quincena|semana|\|", re.IGNORECASE)
+
+
+def _costo_par(bbox_ant: dict, bbox_precio: dict) -> Optional[float]:
+    """Que tan probable es que el "antes" pertenezca al precio (menor = mejor); None si no puede."""
+    ax, ay, aw, ah = (bbox_ant.get(k, 0) for k in ("x", "y", "ancho", "alto"))
+    px, py, pw, ph = (bbox_precio.get(k, 0) for k in ("x", "y", "ancho", "alto"))
+    if min(aw, ah, pw, ph) <= 0:
+        return None
+    # Misma columna: Chedraui/HEB/Soriana alinean el "antes" con el precio, Walmart igual pero abajo
+    if min(ax + aw, px + pw) - max(ax, px) < 0.3 * min(aw, pw):
+        return None
+    alto = max(ah, ph)
+    gap = py - (ay + ah) if ay + ah / 2 < py + ph / 2 else ay - (py + ph)   # arriba o abajo del precio
+    if gap < -0.6 * min(ah, ph) or gap > 1.2 * alto:
+        return None
+    desfase_x = abs((ax + aw / 2) - (px + pw / 2)) / max(aw, pw)
+    # El precio vigente es el numero grande; el chico de al lado suele ser centavos o unidad
+    return max(gap, 0) / alto + desfase_x + (0.5 if ph < ah else 0)
+
+
+def _es_creible(anterior: float, actual: float) -> bool:
+    return DESCUENTO_MIN <= (anterior - actual) / anterior <= DESCUENTO_MAX
+
+
+def _lectura_coherente(candidatos: list[float], precio: dict) -> Optional[float]:
+    actual = precio.get("valor")
+    if not actual or actual <= 0:
+        return None
+    for c in candidatos:
+        if c and _es_creible(c, actual):
+            # "5107" (Walmart, "$" leido como 5) se guardo como 51.07 pero suele ser $107:
+            # si esa otra lectura tambien cuadra, no se sabe cual es el precio real
+            m = re.match(r"([58])(\d[\d,]*)$", precio.get("texto", ""))
+            if m:
+                alterno = float(m[2].replace(",", ""))
+                if alterno != actual and _es_creible(c, alterno):
+                    return None
+            return c
+    return None
+
+
+def emparejar_precios_anteriores(precios: list[dict], precios_ant: list[dict]) -> list[Optional[float]]:
+    """Precio anterior de cada precio de la pagina (misma posicion que `precios`), o None."""
+    resultado: list[Optional[float]] = [None] * len(precios)
+    pares = []
+    for i, precio in enumerate(precios):
+        if _PATRON_FINANCIAMIENTO.search(precio.get("texto", "")):
+            continue
+        for j, ant in enumerate(precios_ant):
+            costo = _costo_par(ant.get("bbox", {}), precio.get("bbox", {}))
+            if costo is not None:
+                pares.append((costo, i, j))
+
+    ants_usados = set()
+    for _, i, j in sorted(pares):
+        if resultado[i] is not None or j in ants_usados:
+            continue
+        ant = precios_ant[j]
+        valor = _lectura_coherente(ant.get("candidatos") or [ant.get("valor")], precios[i])
+        if valor is not None:
+            resultado[i] = valor
+            ants_usados.add(j)
+    return resultado
 
 
 def _obtener_preprocesador_roi():
@@ -330,13 +401,13 @@ class Loader:
         contadores["extracciones"] += len(productos_utiles)
 
         # Precios
-        for precio in precios:
+        anteriores = emparejar_precios_anteriores(precios, precios_ant)
+        for precio, precio_ant_val in zip(precios, anteriores):
             producto_match = None
             if regiones_confiables:
                 producto_match = asociar_producto_por_region(precio, productos_utiles, regiones_confiables)
             if producto_match is None:
                 producto_match = self._asociar_por_cercania(precio, productos_utiles)
-            precio_ant_val = self._buscar_precio_anterior(precio, precios_ant)
             bbox           = precio.get("bbox", {})
 
             cur.execute("""
@@ -575,26 +646,6 @@ class Loader:
                 mejor = prod
 
         return mejor
-
-    def _buscar_precio_anterior(self, precio: dict, precios_ant: list) -> Optional[float]:
-        if not precios_ant:
-            return None
-
-        precio_x = precio.get("bbox", {}).get("x", 0)
-        precio_y = precio.get("bbox", {}).get("y", 0)
-        mejor_valor, menor_dist = None, float("inf")
-
-        for pa in precios_ant:
-            pa_bbox = pa.get("bbox", {})
-            dist = math.sqrt(
-                (precio_x - pa_bbox.get("x", 0)) ** 2 +
-                (precio_y - pa_bbox.get("y", 0)) ** 2
-            )
-            if dist <= 300 and dist < menor_dist:
-                menor_dist  = dist
-                mejor_valor = pa.get("valor")
-
-        return mejor_valor
 
     # ----------------- Upserts SQL -----------------
 
