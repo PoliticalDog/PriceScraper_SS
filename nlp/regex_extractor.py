@@ -693,6 +693,35 @@ class RegexExtractor:
             r")[\W_]*$",
             re.IGNORECASE
         ),
+
+        # -- Mensualidad "N MSI | $X" (bloque que es SOLO el rotulo y su monto) -----------
+        # Agregado 12-oct-2026 (evaluador dev, base 20261012_093114_1838425): en la etiqueta
+        # de la casilla de Chedraui, bajo el precio grande, van "9 MSI | $777.22" y
+        # "12 MSI | $582.92": el monto es la MENSUALIDAD (precio/N), no el precio. Fuera del
+        # holdout, ~480 bloques asi se leian como PRECIO, todos Chedraui y todos con la forma
+        # rotulo + monto: "9MSI|$1,44433)", "(12MsI/$70750", "I2MSI | 51,58292", "MSI | $34944",
+        # "9 MSI /81,221"" (el N se lee 9/12/15/I2/l2/J2/i2/(g, o se pierde). El rotulo solo
+        # ("9 MSI", "(12MSI") tambien entra: hoy "9 MSI" pasaba como PRODUCTO.
+        # Anclado al inicio: un precio real ANTES de "MSI" ("$5,999 o 12 MSI de $499.92")
+        # no entra y conserva el $5,999. Despues del rotulo no admite palabras (2+ letras
+        # seguidas, salvo el conector "de"): "MSI aplican pagando con Paypal", "+6 MSI con",
+        # "MSI GF63" (marca de laptops) no entran; tampoco una letra pegada al rotulo
+        # ("mslo", Soriana Mercado 430263). El monto en un bloque aparte, a la
+        # derecha del rotulo, lo cubre _detectar_montos_de_rotulo.
+        # Sin N delante (QA 12-oct-2026) la tolerancia OCR abriria la puerta a modelos y
+        # promos ("M51 $4,999" = Galaxy M51, "M5i $2,499", "MSl 2x$50"): ahi se exige "MS"
+        # en mayusculas literal + I/l/1 (no seguido de letra o digito) y, si hay monto, el
+        # separador "|", "/" o "[" de la etiqueta. Fuera del holdout los unicos casos sin N
+        # son "MSI | $34944" y "MSI| $53322" y ambos siguen entrando.
+        re.compile(
+            r"^\W*(?:"
+            r"(?:\d{1,2}|[iIlJ][2589]|[iIl1][5S]|(?-i:[gI]))\s*"
+            r"M\W?[sS5]\W?[iIl1|]{1,2}(?![a-zà-öø-ÿ])"
+            r"|(?-i:MS[Il1])(?![\wà-öø-ÿ])\s*(?:[|/\[]|$)"
+            r")(?:\s*de\b)?"
+            r"(?!.*[a-zà-öø-ÿ]{2}).*$",
+            re.IGNORECASE
+        ),
     ]
 
     # --------------- Keywords de producto ---------------
@@ -740,6 +769,9 @@ class RegexExtractor:
         # Pre-paso: anticipo de apartado en su propio bloque, a la derecha del rotulo
         # "Apartalo con" (ver _detectar_anticipos_apartado). Se descarta entero.
         anticipos = self._detectar_anticipos_apartado(bloques_pagina, factor_escala)
+        # Igual para la mensualidad: "9MSI" en un bloque y "$77722" a su derecha
+        anticipos |= self._detectar_montos_de_rotulo(bloques_pagina, factor_escala,
+                                                     self.PATRON_ROTULO_MSI)
 
         # Pre-paso: precios repartidos en 2 bloques adyacentes (entero + centavos,
         # ver _detectar_precios_fusionados). Va ANTES del loop normal porque un
@@ -1247,9 +1279,28 @@ class RegexExtractor:
     # el precio grande de la casilla mide >= 3x el rotulo y ademas queda lejos.
     ALTO_MAX_ANTICIPO_VS_ROTULO = 2.5
 
+    # Rotulo de mensualidad solo ("9MSI", "(12MsI|", "I2MSI", "9 MSI"), sin monto pegado.
+    # Mismas variantes OCR que el patron "N MSI | $X" de PATRONES_DESCARTE.
+    PATRON_ROTULO_MSI = re.compile(
+        r"^\W*(?:(?:\d{1,2}|[iIlJ][2589]|[iIl1][5S]|(?-i:[gI]))\s*M\W?[sS5]\W?[iIl1]{1,2}"
+        r"|(?-i:MS[Il1]))[\W_]*$",
+        re.IGNORECASE
+    )
+
     def _detectar_anticipos_apartado(self, bloques_pagina: list[dict],
                                      factor_escala: float = 1.0) -> set[int]:
+        return self._detectar_montos_de_rotulo(bloques_pagina, factor_escala,
+                                               self.PATRON_ROTULO_APARTADO)
+
+    def _detectar_montos_de_rotulo(self, bloques_pagina: list[dict], factor_escala: float,
+                                   patron_rotulo: re.Pattern) -> set[int]:
         """
+        Mensualidad (12-oct-2026): con patron_rotulo=PATRON_ROTULO_MSI la misma geometria
+        detecta "9MSI" + "$77722" / "(12MSI" + "858292" en bloques separados (Chedraui,
+        etiqueta de la casilla): ~190 rotulos fuera del holdout, con el monto a 4..15 px,
+        alto 20-32 contra 16-28 del rotulo. El monto es la mensualidad, no el precio.
+
+        Anticipo de apartado (descripcion original):
         ids de los bloques que son el ANTICIPO de apartado de Chedraui leido aparte del
         rotulo: "Apartalo con" en un bloque y "$59990" / "838650" / "$50" / "850" en el
         bloque inmediato a su derecha, en la misma linea. Ese monto es el 10% del precio
@@ -1269,7 +1320,7 @@ class RegexExtractor:
         anticipos = set()
         for rotulo in bloques_pagina:
             rb = rotulo.get("bbox")
-            if not rb or not self.PATRON_ROTULO_APARTADO.match(
+            if not rb or not patron_rotulo.match(
                     self._limpiar_texto(rotulo.get("texto", ""))):
                 continue
             cy_rotulo = rb["y"] + rb["alto"] / 2
