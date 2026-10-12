@@ -3,6 +3,7 @@ Evaluador de registros finales contra el ground truth.
 
     python -m evaluador correr [--split dev|holdout|todo] [--nlp disco|memoria] [--tienda T]
     python -m evaluador comparar runs/A.json runs/B.json [--casos [--tienda T] [--max N]]
+    python -m evaluador catalogo [--tienda T] [--nlp memoria|disco]   (diseno por tienda, solo dev)
     python -m evaluador verificar
     python -m evaluador sellar --motivo "..."        (decision humana)
     python -m evaluador splits --generar             (una sola vez; no regenera)
@@ -84,6 +85,23 @@ def cmd_comparar(args) -> int:
     else:
         print("\n(sin detalle por caso: alguna corrida es anterior a casos.py o de holdout)")
     return 1 if any(r["bloquea"] for r in comp["regresiones"]) else 0
+
+
+def cmd_catalogo(args) -> int:
+    from . import catalogo, reporte, splits
+    from .gt import cargar_gt
+    from .pipeline import FuentePipeline
+
+    paginas = splits.filtrar(cargar_gt(), "dev", splits.cargar())  # nunca holdout
+    if args.tienda:
+        paginas = [p for p in paginas if p.tienda == args.tienda]
+    cat = catalogo.construir(paginas, FuentePipeline(nlp=args.nlp))
+    tiendas = catalogo.resumen(cat)
+    catalogo.imprimir(tiendas)
+    meta = {"fecha": datetime.now().isoformat(timespec="seconds"), "split": "dev", "nlp": args.nlp,
+            "tienda": args.tienda, "codigo": reporte.version_codigo()}
+    print(f"\nCatalogo guardado: {catalogo.guardar(cat, tiendas, meta)}")
+    return 0
 
 
 def cmd_ocr(args) -> int:
@@ -177,6 +195,9 @@ def main() -> int:
     k.add_argument("--casos", action="store_true", help="lista cada articulo ganado o perdido y cada registro que empeora")
     k.add_argument("--tienda", help="con --casos, solo esa tienda")
     k.add_argument("--max", type=int, default=40, help="con --casos, maximo de casos por lista (default 40)")
+    d = sub.add_parser("catalogo", help="diseno por tienda en dev: donde queda el nombre respecto al precio")
+    d.add_argument("--nlp", choices=("disco", "memoria"), default="memoria")
+    d.add_argument("--tienda")
     sub.add_parser("verificar", help="GT, splits y reglas contra manifest.json")
     s = sub.add_parser("sellar", help="sella GT, splits y reglas (decision humana)")
     s.add_argument("--motivo", required=True)
@@ -188,6 +209,7 @@ def main() -> int:
 
     args = p.parse_args()
     return {"correr": cmd_correr, "comparar": cmd_comparar, "verificar": cmd_verificar, "ocr": cmd_ocr,
+            "catalogo": cmd_catalogo,
             "sellar": cmd_sellar, "splits": cmd_splits, "validacion": cmd_validacion}[args.cmd](args)
 
 

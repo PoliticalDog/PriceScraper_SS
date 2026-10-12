@@ -33,6 +33,9 @@ Python del proyecto: `venv/Scripts/python.exe` (el de sistema no tiene las depen
 3. **Diagnostico.** Elige casos concretos del error que atacas en `ejemplos_error[<codigo>][<tienda>]` del
    JSON de la corrida (hasta 10 por codigo y tienda, con `registro`, `esperado` y bbox). La imagen de la pagina esta en
    `data/raw/tiendeo/<tienda>/<folleto>/<pagina>`; mirala con Read si hace falta.
+   Si la hipotesis depende del diseno de la pagina (donde va el nombre respecto al precio), mira antes
+   `venv/Scripts/python.exe -m evaluador catalogo [--tienda T]`: diseno por tienda y por folleto, solo dev.
+   Varias tiendas cambian de diseno entre folletos (alsuper, s-mart, heb): no propongas reglas por nombre de tienda.
    Formula UNA hipotesis acotada ("el normalizador acepta coincidencias fuzzy de un solo token").
 4. **Cambio minimo** dentro de tu alcance. No cambies contratos JSON (nlp_resultado.json) ni el esquema de PostgreSQL.
    Agrega o ajusta pruebas en `tests/` (nunca `tests/test_evaluador.py`).
