@@ -5,6 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+from .casos import OK, detalle
 from .comparar import ResultadoPagina
 
 RAIZ_RUNS = Path("data/processed/_eval/runs")
@@ -61,6 +62,7 @@ def guardar_corrida(meta: dict, metricas: dict, integridad: dict, resultados: li
     contenido = {"meta": meta, "integridad": integridad, "metricas": metricas}
     if resultados is not None:  # holdout: solo agregados, nunca registros ni ejemplos
         contenido["ejemplos_error"] = ejemplos_error(resultados)
+        contenido["detalle"] = detalle(resultados)
     json.dump(contenido, open(ruta, "w", encoding="utf-8"), indent=2, ensure_ascii=False, default=str)
     return ruta
 
@@ -118,3 +120,55 @@ def imprimir_comparacion(comp: dict) -> None:
                   f"{' SIGNIFICATIVA' if r['significativa'] else ''}{'' if r['bloquea'] else ' [muestra chica, no bloquea]'}")
     else:
         print("\nSin regresiones mayores a 2 pts.")
+
+
+def _caso_articulo(c: dict) -> str:
+    def lado(d):
+        if not d or d.get("producto") is None:
+            return "(sin registro)"
+        return f"{d['producto']!r} ${d['precio']} sim={d['similitud']}"
+    gt = c["nueva"] or c["base"]
+    return (f"  {c['clave']}  GT: {gt['producto_gt']!r} ${gt['precio_gt']}\n"
+            f"      {c['antes']}: {lado(c['base'])}  ->  {c['despues']}: {lado(c['nueva'])}")
+
+
+def _caso_registro(c: dict) -> str:
+    def lado(d):
+        return "(no existe)" if not d else f"{d['producto']!r} (OCR {d['producto_texto']!r})"
+    return f"  {c['clave']}  {c['antes']}: {lado(c['base'])}  ->  {c['despues']}: {lado(c['nueva'])}"
+
+
+def imprimir_casos(comp: dict, listar: bool, tienda: str | None, maximo: int) -> None:
+    print(f"\nCASO POR CASO (articulos del GT; registros del dashboard)")
+    print(f"{'tienda':<16} {'arts +':>7} {'arts -':>7} {'neto':>5} {'otro err':>9} {'regs +':>7} {'regs -':>7} {'nuevos mal':>11}")
+    tot = defaultdict(int)
+    for t, v in comp["por_tienda"].items():
+        for k, n in v.items():
+            tot[k] += n
+        g, p = v.get("articulos_ganados", 0), v.get("articulos_perdidos", 0)
+        print(f"{t:<16} {g:>7} {p:>7} {g - p:>+5} {v.get('articulos_cambio_error', 0):>9} {v.get('registros_ganados', 0):>7}"
+              f" {v.get('registros_perdidos', 0):>7} {v.get('registros_nuevos_mal', 0):>11}")
+    g, p = tot["articulos_ganados"], tot["articulos_perdidos"]
+    print(f"{'TOTAL':<16} {g:>7} {p:>7} {g - p:>+5} {tot['articulos_cambio_error']:>9} {tot['registros_ganados']:>7}"
+          f" {tot['registros_perdidos']:>7} {tot['registros_nuevos_mal']:>11}")
+    print("  arts +/-: articulos que pasan a correctos / dejan de serlo | otro err: cambian de un error a otro\n"
+          "  regs +/-: registros del dashboard que pasan a correctos / dejan de serlo | nuevos mal: registros nuevos con error")
+
+    if comp["transiciones_articulo"]:
+        print("\nTransiciones de articulos (antes -> despues):")
+        for t, n in comp["transiciones_articulo"]:
+            print(f"  {n:>4}  {t}")
+
+    if not listar:
+        print("\n(usa --casos para listar cada caso; --tienda T para filtrar)")
+        return
+    for titulo, cond in (("ARTICULOS PERDIDOS (ok -> error)", lambda c: c["antes"] == OK),
+                         ("ARTICULOS GANADOS (error -> ok)", lambda c: c["despues"] == OK)):
+        casos = [c for c in comp["articulos"] if cond(c) and (tienda is None or c["tienda"] == tienda)]
+        print(f"\n{titulo}: {len(casos)}" + (f" (se muestran {maximo})" if len(casos) > maximo else ""))
+        for c in casos[:maximo]:
+            print(_caso_articulo(c))
+    casos = [c for c in comp["registros"] if c["antes"] == OK and (tienda is None or c["tienda"] == tienda)]
+    print(f"\nREGISTROS QUE DEJAN DE ESTAR BIEN: {len(casos)}" + (f" (se muestran {maximo})" if len(casos) > maximo else ""))
+    for c in casos[:maximo]:
+        print(_caso_registro(c))

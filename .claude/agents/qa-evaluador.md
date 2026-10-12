@@ -27,7 +27,8 @@ Python: `venv/Scripts/python.exe`.
 2. `venv/Scripts/python.exe -m evaluador verificar` -> debe decir "Integridad OK". Si no, RECHAZAR.
 3. `venv/Scripts/python.exe -m pytest tests -q` -> todo en verde.
 4. Dev completo con el codigo actual: `venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria`,
-   y `venv/Scripts/python.exe -m evaluador comparar <base> <nueva>` contra la base que te indiquen
+   y `venv/Scripts/python.exe -m evaluador comparar <base> <nueva> --casos` contra la base que te indiquen
+   (`--casos` da los articulos ganados y perdidos por tienda, no solo el neto; reporta ambos y revisa los perdidos)
    (si no te indican una, usa la corrida dev mas reciente cuyo `meta.codigo.cambios_sin_commit` sea false y `meta.nlp` sea memoria;
    si no hay, dilo).
 5. Criterio: precision sube, recall NO baja, F1 sube, sin regresiones que bloqueen (> 2 pts, n >= 20, |z| >= 1.96).

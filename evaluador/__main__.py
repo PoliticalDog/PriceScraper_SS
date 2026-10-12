@@ -2,7 +2,7 @@
 Evaluador de registros finales contra el ground truth.
 
     python -m evaluador correr [--split dev|holdout|todo] [--nlp disco|memoria] [--tienda T]
-    python -m evaluador comparar runs/A.json runs/B.json
+    python -m evaluador comparar runs/A.json runs/B.json [--casos [--tienda T] [--max N]]
     python -m evaluador verificar
     python -m evaluador sellar --motivo "..."        (decision humana)
     python -m evaluador splits --generar             (una sola vez; no regenera)
@@ -77,6 +77,12 @@ def cmd_comparar(args) -> int:
               "(con OCR experimental, base y cambio deben cubrir las mismas paginas)")
     comp = comparar_corridas(base["metricas"], nueva["metricas"])
     imprimir_comparacion(comp)
+    if "detalle" in base and "detalle" in nueva:
+        from .casos import comparar_casos
+        from .reporte import imprimir_casos
+        imprimir_casos(comparar_casos(base["detalle"], nueva["detalle"]), args.casos, args.tienda, args.max)
+    else:
+        print("\n(sin detalle por caso: alguna corrida es anterior a casos.py o de holdout)")
     return 1 if any(r["bloquea"] for r in comp["regresiones"]) else 0
 
 
@@ -168,6 +174,9 @@ def main() -> int:
     k = sub.add_parser("comparar", help="deltas y regresiones por tienda entre dos corridas")
     k.add_argument("base", type=Path)
     k.add_argument("nueva", type=Path)
+    k.add_argument("--casos", action="store_true", help="lista cada articulo ganado o perdido y cada registro que empeora")
+    k.add_argument("--tienda", help="con --casos, solo esa tienda")
+    k.add_argument("--max", type=int, default=40, help="con --casos, maximo de casos por lista (default 40)")
     sub.add_parser("verificar", help="GT, splits y reglas contra manifest.json")
     s = sub.add_parser("sellar", help="sella GT, splits y reglas (decision humana)")
     s.add_argument("--motivo", required=True)

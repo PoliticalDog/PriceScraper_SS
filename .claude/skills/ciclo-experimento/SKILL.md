@@ -37,7 +37,10 @@ Python del proyecto: `venv/Scripts/python.exe` (el de sistema no tiene las depen
 4. **Cambio minimo** dentro de tu alcance. No cambies contratos JSON (nlp_resultado.json) ni el esquema de PostgreSQL.
    Agrega o ajusta pruebas en `tests/` (nunca `tests/test_evaluador.py`).
 5. **Medir:** `venv/Scripts/python.exe -m pytest tests -q` y luego la misma corrida del paso 2.
-   Despues: `venv/Scripts/python.exe -m evaluador comparar <base.json> <nueva.json>`.
+   Despues: `venv/Scripts/python.exe -m evaluador comparar <base.json> <nueva.json> --casos [--tienda T] [--max N]`.
+   Ademas de los netos, `--casos` dice cuantos articulos se ganaron y cuantos se perdieron por tienda, y lista cada uno.
+   Reporta los dos numeros (p. ej. "+35 / -6"), no solo el neto, y explica los perdidos.
+   Las dos corridas deben ser con `correr` sin `--sin-guardar` (solo las guardadas traen el detalle por caso).
    Para iterar rapido puedes usar `--tienda <t> --sin-guardar`, pero la decision se toma con dev completo.
    **Cambios de OCR** (`vision/preprocessor.py`, `vision/ocr_engine.py`): el OCR de produccion no cambia hasta reprocesar,
    asi que se miden con OCR experimental en CPU: `evaluador ocr --nombre <n> [--tienda T]` y `evaluador correr --ocr-exp <n>`,
