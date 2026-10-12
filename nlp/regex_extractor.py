@@ -892,6 +892,14 @@ class RegexExtractor:
             return EntidadExtraida("EVENTO_PROMO", texto_raw, texto,
                                    confianza=confianza, bbox=bbox)
 
+        # 4b. Precio grande con el "$" leido 8/5/S que cuadra con la mensualidad o el anticipo
+        # de su casilla (ver PATRON_PRECIO_ESPURIO_CUOTAS). Va antes del paso 5 porque
+        # PATRON_PRECIO_OCR_CORRUPTO lee "S7995" como $79.95.
+        precio_cuotas = self._precio_por_cuotas(texto, bbox, bloques_pagina, factor_escala)
+        if precio_cuotas is not None:
+            return EntidadExtraida("PRECIO", texto_raw, texto,
+                                   valor=precio_cuotas, confianza=confianza, bbox=bbox)
+
         # 5. Precio actual
         precio_valor = self._extraer_precio(texto)
         if precio_valor is not None:
@@ -1234,6 +1242,131 @@ class RegexExtractor:
                 ahorros.append(ahorro)
         return {round(a - b, 2) for a in antes for b in ahorros if a > b}
 
+    # -- Precio grande confirmado por la mensualidad / el anticipo de la casilla --------------
+    # Agregado 12-oct-2026 (evaluador dev, base 20261012_102745_7fad080). En la casilla de
+    # Chedraui, bajo el precio grande, la etiqueta trae "9 MSI | $X" / "12 MSI | $Y" (precio/N)
+    # y "Apartalo con $Z" (10% del precio, o $50 fijo). Cuando el OCR lee el "$" del precio
+    # grande como 8/5/S, las reglas de arriba no saben si "82995c/u" es $2,995 o $29.95 c/u
+    # (por eso la Regla A-cu no acepta 4 digitos) y leen "S7995" como $79.95. Aqui se elige
+    # la lectura que cuadra con N x mensualidad o 10 x anticipo de la misma casilla.
+    # Confirmado en chedraui 428354 p4 ("82995c/u": anticipo $299.50 y 9 x $332.78 -> $2,995),
+    # p8 ("S7995": $799.50, 9 x $888.33, 12 x $666.25 -> $7,995) y 416057 p5/p8
+    # ("85,990c/u" -> $5,990; "511,890c/" -> $11,890). Es el analogo de la resta
+    # Antes - Ahorra de Walmart (_restas_antes_ahorro), con la misma distancia de casilla.
+    # NO cubre a proposito el anticipo de $50: es el minimo fijo (juguetes de $429 o $929
+    # en 428354 p15 lo traen igual), no el 10%, asi que no confirma nada.
+    PATRON_PRECIO_ESPURIO_CUOTAS = re.compile(
+        r"^(?P<espurio>[568sS])(?P<num>\d{1,3},\d{3}|\d{3,5})"
+        r"\s?(?:c/u|c\.u\.?|c[lI1]u|cu|c/|u)?[\W_]?$"
+    )
+    # Rotulo de cuota con o sin monto pegado. N de la mensualidad con las variantes OCR del
+    # patron de PATRONES_DESCARTE ("I2MSI" = 12, "l5" = 15, "(g" = 9); el anticipo es N = 10.
+    PATRON_CUOTA_MSI = re.compile(
+        r"^\W*(?P<n>\d{1,2}|[iIlJ][2589]|[iIl1][5S]|(?-i:g))\s*"
+        r"M\W?[sS5]\W?[iIl1|]{1,2}(?![a-zà-öø-ÿ])(?P<monto>.*)$",
+        re.IGNORECASE
+    )
+    PATRON_CUOTA_APARTADO = re.compile(
+        r"^\W*ap[a-zà-öø-ÿ]{0,2}rt[a-zà-öø-ÿ]{0,2}l{1,2}[aáoóöò]?[\s|]*[ri]?\s*"
+        r"c[oóöòceu][nudihr]?(?P<monto>.*)$",
+        re.IGNORECASE
+    )
+    # Monto de la cuota: "$1,48950", "|$355", "858292" ("$" leido 8), "s99083", "1,655"
+    PATRON_MONTO_CUOTA = re.compile(r"^[\W_lI]*?(?P<simbolo>[$sS]?)(?P<num>\d[\d,.]*)[\W_]*$")
+    MESES_MSI = {3, 6, 9, 12, 15, 18, 24}
+    ANTICIPO_MINIMO = 50.0
+
+    def _lecturas_monto_cuota(self, texto: str) -> set[float]:
+        """Lecturas posibles del monto: con centavos pegados, entero, y sin un "$" leido 8/5."""
+        m = self.PATRON_MONTO_CUOTA.match(texto.strip())
+        if not m:
+            return set()
+        num = m.group("num")
+        digitos = re.sub(r"\D", "", num)
+        variantes = [digitos]
+        if not m.group("simbolo") and digitos[:1] in ("5", "8") and len(digitos) >= 4:
+            variantes.append(digitos[1:])
+        lecturas = set()
+        for d in variantes:
+            lecturas.add(int(d) / 100)
+            if len(d) <= 3 or re.fullmatch(r"\d{1,2},\d{3}", num):
+                lecturas.add(float(int(d)))
+        return {v for v in lecturas if v > 0}
+
+    def _cuotas_de_pagina(self, bloques_pagina: list[dict],
+                          factor_escala: float) -> list[tuple[dict, int, str]]:
+        """(bloque del rotulo, N, texto del monto) de cada mensualidad/anticipo de la pagina."""
+        cuotas = []
+        for b in bloques_pagina:
+            if not b.get("bbox"):
+                continue
+            texto = self._limpiar_texto(b.get("texto", ""))
+            m = self.PATRON_CUOTA_MSI.match(texto) or self.PATRON_CUOTA_APARTADO.match(texto)
+            n = self._meses_de_rotulo(texto) if m else None
+            if n and re.search(r"\d", m.group("monto")):
+                cuotas.append((b, n, m.group("monto")))
+        for patron in (self.PATRON_ROTULO_MSI, self.PATRON_ROTULO_APARTADO):
+            for rotulo, monto in self._pares_rotulo_monto(bloques_pagina, factor_escala, patron):
+                n = self._meses_de_rotulo(self._limpiar_texto(rotulo["texto"]))
+                if n:
+                    cuotas.append((rotulo, n, monto.get("texto", "")))
+        return cuotas
+
+    def _meses_de_rotulo(self, texto: str) -> Optional[int]:
+        """N del rotulo de mensualidad (None si no se lee o no es un plazo usual); 10 si es anticipo."""
+        m = self.PATRON_CUOTA_MSI.match(texto)
+        if not m:
+            return 10 if self.PATRON_CUOTA_APARTADO.match(texto) else None
+        n_txt = m.group("n").translate(str.maketrans("iIlJSg", "111159"))
+        return int(n_txt) if n_txt.isdigit() and int(n_txt) in self.MESES_MSI else None
+
+    def _precio_por_cuotas(self, texto: str, bbox: dict, bloques_pagina: Optional[list[dict]],
+                           factor_escala: float = 1.0) -> Optional[float]:
+        """
+        Lectura del precio grande "<$ leido 8/5/S><digitos>" que cuadra con N x mensualidad
+        o 10 x anticipo de rotulos a menos de DISTANCIA_MAX_CONTEXTO_PRECIO, debajo del
+        borde superior del precio y con traslape horizontal con el (la etiqueta de la casilla
+        de al lado no cuenta). Tolerancia N x 1 centavo (la cuota se redondea al centavo).
+        Gana la lectura con mas rotulos a favor; empate o ninguna -> None (siguen las reglas
+        de siempre). Riesgo conocido, sin casos en el corpus (12-oct-2026): un precio sin
+        rotulos legibles propios cuya casilla de abajo, alineada, trae una cuota que cuadra
+        con el precio sin su primer digito. Exigir 2 rotulos a favor lo evitaria, pero
+        perderia 32 de las 58 correcciones de produccion.
+        """
+        if not bbox or not bloques_pagina:
+            return None
+        m = self.PATRON_PRECIO_ESPURIO_CUOTAS.match(texto)
+        if not m:
+            return None
+        num = m.group("num")
+        resto = re.sub(r"\D", "", num)
+        lecturas = {float(int(resto))}
+        if "," not in num:
+            lecturas.add(int(resto) / 100)
+        if m.group("espurio").isdigit():  # o el 8/5/6 si es parte del precio
+            completo = m.group("espurio") + resto
+            lecturas |= {float(int(completo)), int(completo) / 100}
+
+        distancia_max = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
+        votos = {}
+        for rotulo, n, texto_monto in self._cuotas_de_pagina(bloques_pagina, factor_escala):
+            rb = rotulo["bbox"]
+            if rb["y"] < bbox["y"] or self._distancia_bbox(bbox, rb) > distancia_max:
+                continue
+            if rb["x"] >= bbox["x"] + bbox["ancho"] or rb["x"] + rb["ancho"] <= bbox["x"]:
+                continue  # sin traslape horizontal: es la etiqueta de la casilla de al lado
+            implicitos = [n * v for v in self._lecturas_monto_cuota(texto_monto)
+                          if not (n == 10 and v == self.ANTICIPO_MINIMO)]
+            for lectura in {l for l in lecturas
+                            if any(abs(l - p) <= n * 0.01 for p in implicitos)}:
+                votos[lectura] = votos.get(lectura, 0) + 1
+        if not votos:
+            return None
+        orden = sorted(votos.items(), key=lambda kv: -kv[1])
+        if len(orden) > 1 and orden[0][1] == orden[1][1]:
+            return None
+        return orden[0][0]
+
     def _hay_producto_cerca(self, bbox: dict, bloques_pagina: list[dict],
                             factor_escala: float = 1.0) -> bool:
         """
@@ -1315,9 +1448,15 @@ class RegexExtractor:
         Exige el rotulo, asi que un "$50" sin "Apartalo con" al lado no cambia, y solo
         toma el bloque MAS cercano por rotulo.
         """
+        return {id(monto) for _, monto in
+                self._pares_rotulo_monto(bloques_pagina, factor_escala, patron_rotulo)}
+
+    def _pares_rotulo_monto(self, bloques_pagina: list[dict], factor_escala: float,
+                            patron_rotulo: re.Pattern) -> list[tuple[dict, dict]]:
+        """(rotulo, bloque del monto) con la geometria de _detectar_montos_de_rotulo."""
         gap_min = self.GAP_ANTICIPO_MIN * factor_escala
         gap_max = self.GAP_ANTICIPO_MAX * factor_escala
-        anticipos = set()
+        pares = []
         for rotulo in bloques_pagina:
             rb = rotulo.get("bbox")
             if not rb or not patron_rotulo.match(
@@ -1341,8 +1480,8 @@ class RegexExtractor:
                 if mejor is None or gap < mejor[0]:
                     mejor = (gap, otro)
             if mejor:
-                anticipos.add(id(mejor[1]))
-        return anticipos
+                pares.append((rotulo, mejor[1]))
+        return pares
 
     def _detectar_precios_fusionados(
         self, bloques_pagina: list[dict], factor_escala: float = 1.0
