@@ -375,7 +375,7 @@ class Normalizador:
             categoria_amplia = _NOMBRE_A_SLUG.get(categoria_amplia, categoria_amplia)
         return ResultadoNorm(
             texto_raw=texto_raw,
-            nombre_canonico=nombre_heuristico,
+            nombre_canonico=self._capitalizar(self._recortar_puntuacion(texto_limpio)) or nombre_heuristico,
             confianza_norm=0.0,
             metodo="heuristico",
             categoria=categoria_amplia,
@@ -515,6 +515,25 @@ class Normalizador:
         texto = re.sub(r"[^a-z0-9\s]", " ", texto)
         texto = " ".join(texto.split())
         return texto
+
+    # Puntuacion que el OCR pega al inicio o al final del bloque ("[Chocolate Oscuro", "Fabuloso)",
+    # "Bebida sabor Manzana;", "Figura Naruto="): solo cosmetica del nombre heuristico, no cambia
+    # que bloques se aceptan. Se conservan el cierre de un parentesis/corchete abierto en el texto,
+    # las pulgadas/pies tras un digito (Derpy 18", 6.5''), el % y el "+" que es parte del nombre
+    # ("Regio Rinde+", "Complete +", "38+").
+    @staticmethod
+    def _recortar_puntuacion(texto: str) -> str:
+        s = re.sub(r"^[^\w¿¡$]+", "", texto.strip())
+        while s and not s[-1].isalnum():
+            c = s[-1]
+            if c == "%" or (c == ")" and "(" in s) or (c == "]" and "[" in s):
+                break
+            if c == "+" and s[:-1].rstrip()[-1:].isalnum():
+                break
+            if c in "\"'" and len(s.rstrip("\"'")) and s.rstrip("\"'")[-1].isdigit():
+                break
+            s = s[:-1].rstrip()
+        return s
 
     # Capitalización de título en español.
     @staticmethod

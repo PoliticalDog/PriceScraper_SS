@@ -191,30 +191,62 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
     return mejor
 
 
-def productos_aceptados(productos: list[dict], normalizador: Normalizador) -> list[dict]:
+# -- Filtro de legibilidad del nombre -----------------------------------------------
+# Desde ecbaa5d, si el canonico no cubre el texto, el dashboard muestra el texto del folleto
+# (metodo "heuristico"). Con OCR ilegible eso llega como "Cansbca", "Chuiea", "BRcRE", "Sskrvih".
+# Senal medida en dev (11-oct-2026, bloques heuristicos que llegaban al dashboard): la confianza
+# OCR del bloque. Con < 0.30 caian 142 bloques de nombre sucio, 19 limpios que ya daban registro
+# erroneo y 2 que daban registro correcto ("fACAPUNTAS" 0.20 se pierde); las senales de texto
+# (consonantes seguidas, mayusculas a media palabra, simbolos, sin vocales) atrapaban casi tantos
+# legitimos como basura ("Hass", "Kit", "candstilla", "Salchkchas"), asi que no se usan.
+# No se filtra si el normalizador dio canonico (exacto/fuzzy) ni si el texto cae en una categoria
+# del catalogo ("8- Shampoo Savile 7C0 ml" 0.23, "Fabuloso)" 0.35, "DuraZno" 0.44 son correctos).
+# Las marcas fuera del catalogo (Chamoy, Morena, Hass, Sabritas, Minecraft...) llegan con
+# confianza alta y no se tocan.
+CONFIANZA_MINIMA_HEURISTICO = 0.30
+
+
+def _ilegible(prod: dict, resultado) -> bool:
+    """True si el nombre a mostrar seria texto OCR crudo de baja confianza."""
+    if resultado.metodo != "heuristico" or resultado.categoria:
+        return False
+    confianza = prod.get("confianza")
+    return confianza is not None and confianza < CONFIANZA_MINIMA_HEURISTICO
+
+
+def productos_aceptados(productos: list[dict], normalizador: Normalizador,
+                        incluir_ilegibles: bool = False) -> list[dict]:
     """
     Productos que el normalizador no descarta, en su orden original, enriquecidos con:
-      _idx          -> posicion en esta lista (load la usa para ligar el id de la fila insertada)
+      _idx          -> posicion entre los legibles (load la usa para ligar el id de la fila insertada);
+                       None en los ilegibles, que no se insertan
+      _ilegible     -> ver _ilegible(); solo aparecen con incluir_ilegibles=True
       _resultado    -> ResultadoNorm completo
       _nombre_norm  -> nombre canonico o heuristico
       categoria     -> sobreescrita con la categoria del normalizador
 
-    Son los unicos candidatos validos para asociar precios/atributos: antes CUALQUIER
+    Los legibles son los unicos que pueden dar nombre a un precio/atributo: antes CUALQUIER
     bloque PRODUCTO (incluyendo ruido: "Exclusivo en", nombres de tienda, fragmentos OCR)
     era candidato.
     """
     aceptados = []
+    n_legibles = 0
     for prod in productos:
         resultado = normalizador.normalizar(prod.get("texto", ""))
         if resultado.descartado:
             continue
+        ilegible = _ilegible(prod, resultado)
+        if ilegible and not incluir_ilegibles:
+            continue
         aceptados.append({
             **prod,
-            "_idx": len(aceptados),
+            "_idx": None if ilegible else n_legibles,
+            "_ilegible": ilegible,
             "_resultado": resultado,
             "_nombre_norm": resultado.nombre_canonico or prod.get("texto", ""),
             "categoria": resultado.categoria or prod.get("categoria", ""),
         })
+        n_legibles += not ilegible
     return aceptados
 
 
@@ -227,8 +259,12 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
       atributos -> [{"atributo", "producto"}]
     Precio: primero ROI (solo tiendas de TIENDAS_ROI_HIBRIDO, si hay regiones), si no cercania.
     Atributos: solo cercania (ROI no validado para atributos todavia).
+    Bloques ilegibles (_ilegible): ROI los sigue viendo, porque el texto fisicamente esta en la casilla
+    y cuenta para la dispersion de candidatos (quitarlos cambiaba ROI/cercania en Walmart y perdia
+    "Figura Captain Tsubasa"); si ROI elige uno, el precio pasa a cercania entre los legibles.
     """
-    productos = productos_aceptados(pag_data.get("productos", []), normalizador)
+    candidatos = productos_aceptados(pag_data.get("productos", []), normalizador, incluir_ilegibles=True)
+    productos = [p for p in candidatos if not p["_ilegible"]]
     precios = pag_data.get("precios", [])
     anteriores = emparejar_precios_anteriores(precios, pag_data.get("precios_anteriores", []))
 
@@ -236,7 +272,9 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
     for precio, valor_anterior in zip(precios, anteriores):
         producto = None
         if regiones_confiables:
-            producto = asociar_producto_por_region(precio, productos, regiones_confiables)
+            producto = asociar_producto_por_region(precio, candidatos, regiones_confiables)
+            if producto is not None and producto["_ilegible"]:
+                producto = None
         if producto is None:
             producto = asociar_por_cercania(precio, productos, admitir_debajo=True)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
