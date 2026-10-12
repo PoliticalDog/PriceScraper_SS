@@ -656,6 +656,31 @@ class RegexExtractor:
             r"al\s+precio\s+m[aá]s\s+bajo\s+siempre)\.?$",
             re.IGNORECASE
         ),
+
+        # -- Rotulos de casilla de precio (bloque que es SOLO el rotulo) --------
+        # Agregado 11-oct-2026 (evaluador dev, base 20261011_205930): el OCR separa el
+        # rotulo de su precio y _es_probable_producto lo aceptaba como PRODUCTO; luego la
+        # asociacion por cercania lo prefiere al nombre real (que suele ir debajo) y el
+        # normalizador lo vuelve un producto inventado. En dev: Walmart "todos los dias"
+        # (de "Precio bajo todos los dias", 30 bloques), Chedraui "Apartalo con" (23),
+        # S-Mart/Soriana Mercado "a solo:"/"asolo:"/"solo:" (16), HEB "AHORRA (MAS)"/
+        # "COMPRA" (32), S-Mart "De oferta:" (9), Bodega Aurrera "Aurrera"/"Aurrerao"
+        # (marca de tienda sola, 19), "cada una", "Llevate", "Demo", "Ahara" (OCR de Ahora).
+        # Anclado a todo el bloque y SIN digitos: un bloque con precio ("a solo $49",
+        # "Ahorra $20") nunca entra aqui, asi que no cambia ninguna regla de precio
+        # (_hay_contexto_precio y _hay_producto_cerca leen los bloques crudos, no esto).
+        re.compile(
+            r"^\W*(?:"
+            r"ap[aá]rtalo\s*co[nu]|"
+            r"(?:precios?\s*bajos?\s*)?todos\s*los\s*d[ií]as|precio\s*bajo|"
+            r"[0a]?\s*s[oó]lo|as[ií]\s*lo|"
+            r"d[ea]\s+of[ec]r?t[ae]r?|"
+            r"ahorr[ao]s?(?:\s+m[aá]s)?|ahara|"
+            r"compra|cada\s+un[oa]|ll[eé]vate|demo|"
+            r"aurrer[aá][a-z_@]?"
+            r")\W*$",
+            re.IGNORECASE
+        ),
     ]
 
     # --------------- Keywords de producto ---------------
