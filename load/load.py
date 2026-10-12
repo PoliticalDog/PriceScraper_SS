@@ -146,8 +146,92 @@ def regiones_con_precio(candidatas: list[dict], precios: list[dict]) -> list[dic
 # inferior del precio; el criterio "solo arriba" tomaba una linea lejana o ruido.
 MARGEN_DEBAJO_PRECIO = 100
 
+# Nombre alineado bajo el precio: con admitir_debajo, si un producto empieza debajo del centro
+# del precio (dentro del margen de arriba) y su borde izquierdo coincide con el del precio a
+# lo mas ALINEACION_DEBAJO_PX, gana el mas cercano de esos aunque otro bloque este unos pixeles
+# mas cerca en vertical. Dev 12-oct-2026 (Chedraui electronica/linea blanca/motos, Chedraui
+# pantallas): en 32 de 51 precios mal asociados ganaba un bloque de la columna vecina
+# (dx 180-400: "Lavadora" contra "Lavasecadora" empatados a 146 px, "Pantalla Sharp 75" contra
+# "Pantalla Daewoo") o basura OCR junto al precio ("Veloc", "Mororo", "Ocla- Coro"), mientras
+# el nombre correcto estaba debajo con |dx| <= 13. Sin bloque alineado se usa la regla general.
+ALINEACION_DEBAJO_PX = 20
 
-def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = False) -> dict | None:
+
+def _continua_otro_bloque(prod: dict, productos: list) -> bool:
+    """True si `prod` es la 2a linea de un nombre que empieza en otro bloque producto: hay uno
+    justo encima (separacion vertical de a lo mas una linea de `prod`) que se le traslapa en x.
+    Dev 12-oct-2026: en 3B/Soriana/Alsuper el nombre empieza a la altura del precio y su 2a linea
+    queda alineada debajo ("Tostadas de Maiz" / "Horneadas", "MANZANA" / "COLDEN EN BOLSA");
+    ahi la linea alineada no es el inicio del nombre y decide la regla general.
+    No se aplica al precio mismo (nombre pegado encima del precio): recuperaba 5 articulos de
+    S-Mart/Waldos/HEB pero la basura OCR pegada sobre el precio en Chedraui ("KRUPS", "Ocla- Coro")
+    desactivaba la regla y chedraui caia de 21.0% a 16.1% de precision."""
+    b = prod.get("bbox", {})
+    x0, x1, y, alto = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0), b.get("y", 0), b.get("alto", 0)
+    for otro in productos:
+        if otro is prod:
+            continue
+        o = otro.get("bbox", {})
+        separacion = y - (o.get("y", 0) + o.get("alto", 0))
+        traslape_x = min(x1, o.get("x", 0) + o.get("ancho", 0)) - max(x0, o.get("x", 0))
+        if o.get("y", 0) < y and -alto / 2 <= separacion <= alto and traslape_x > 0:
+            return True
+    return False
+
+
+def _tiene_precio_propio(prod: dict, precio: dict, precios: list) -> bool:
+    """True si `prod` (alineado bajo `precio`) tiene OTRO precio alineado debajo de el, a lo mas
+    alto_de_ese_precio + MARGEN_DEBAJO_PRECIO (el mismo alcance con que un precio llega a un nombre):
+    entonces `prod` es el nombre de la casilla siguiente. Dev 12-oct-2026 (QA): en Casa Ley
+    (reticula con el nombre arriba y el precio al pie) el nombre de la casilla de abajo queda
+    pegado bajo el precio ("Aceite $299" -> "Pimiento") y 136 de 208 precios cambiaban hacia la
+    casilla de abajo; ese nombre tiene su propio precio alineado a 103-160 px. En Chedraui el
+    precio propio del nombre, cuando lo hay, esta a 239-481 px."""
+    b = prod.get("bbox", {})
+    x, y = b.get("x", 0), b.get("y", 0)
+    for otro in precios:
+        o = otro.get("bbox", {})
+        if otro is precio or o == precio.get("bbox"):
+            continue
+        if (abs(o.get("x", 0) - x) <= ALINEACION_DEBAJO_PX
+                and y < o.get("y", 0) <= y + o.get("alto", 0) + MARGEN_DEBAJO_PRECIO):
+            return True
+    return False
+
+
+def diseno_nombre_debajo(precios: list, productos: list) -> bool:
+    """
+    Diseno de la pagina sin GT ni tienda: True si es "nombre debajo del precio". Para cada precio
+    se mira si hay un producto alineado (|dx| <= ALINEACION_DEBAJO_PX) arriba (borde superior hasta
+    alto + MARGEN_DEBAJO_PRECIO por encima) y/o debajo (misma ventana que la regla de alineacion).
+    La pagina es "nombre debajo" si los precios con vecino alineado SOLO debajo son mayoria estricta
+    sobre los que lo tienen solo arriba o en ambos lados.
+    Dev 12-oct-2026: en la reticula de Casa Ley (nombre arriba, precio al pie y el nombre de la
+    casilla siguiente pegado debajo) domina "ambos" en las 9 paginas; en Walmart 413251/413647 y
+    Chedraui domina "solo debajo"; en S-Mart, La Comer, Soriana Hiper 422326 domina "solo arriba".
+    """
+    solo_debajo = otros = 0
+    for precio in precios:
+        b = precio.get("bbox", {})
+        x, y, alto = b.get("x", 0), b.get("y", 0), b.get("alto", 0)
+        limite = alto + MARGEN_DEBAJO_PRECIO
+        arriba = debajo = False
+        for prod in productos:
+            q = prod.get("bbox", {})
+            if abs(q.get("x", 0) - x) > ALINEACION_DEBAJO_PX:
+                continue
+            qy = q.get("y", 0)
+            arriba = arriba or y - limite <= qy < y
+            debajo = debajo or y + alto / 2 <= qy <= y + limite
+        if debajo and not arriba:
+            solo_debajo += 1
+        elif arriba:
+            otros += 1
+    return solo_debajo > otros
+
+
+def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = False,
+                         precios: list | None = None, alinear_debajo: bool = True) -> dict | None:
     """
     Empareja un item (precio o atributo) con el producto reconocido mas
     cercano verticalmente arriba, dentro de una tolerancia horizontal de
@@ -158,13 +242,33 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
     admitir_debajo (solo precios): tambien compiten los productos cuyo borde superior
     esta a la misma altura o debajo del precio, hasta alto_precio + MARGEN_DEBAJO_PRECIO.
     Gana la menor distancia vertical entre bordes superiores; en empate, el de arriba.
+    Excepcion (ver ALINEACION_DEBAJO_PX): si hay productos alineados a la izquierda con el
+    precio que empiezan debajo de su centro, gana el mas alto de ellos, salvo que sea la 2a
+    linea de otro nombre (_continua_otro_bloque) o el nombre de la casilla siguiente, con su
+    propio precio debajo (_tiene_precio_propio; `precios` = todos los precios de la pagina).
+    alinear_debajo=False desactiva esa excepcion (paginas que no son de diseno "nombre debajo",
+    ver diseno_nombre_debajo).
     """
     if not productos:
         return None
 
     item_x = item.get("bbox", {}).get("x", 0)
     item_y = item.get("bbox", {}).get("y", 0)
-    limite_debajo = item.get("bbox", {}).get("alto", 0) + MARGEN_DEBAJO_PRECIO
+    alto = item.get("bbox", {}).get("alto", 0)
+    limite_debajo = alto + MARGEN_DEBAJO_PRECIO
+
+    if admitir_debajo and alinear_debajo:
+        alineados = [
+            p for p in productos
+            if abs(p.get("bbox", {}).get("x", 0) - item_x) <= ALINEACION_DEBAJO_PX
+            and item_y + alto / 2 <= p.get("bbox", {}).get("y", 0) <= item_y + limite_debajo
+        ]
+        if alineados:
+            primero = min(alineados, key=lambda p: p.get("bbox", {}).get("y", 0))
+            if not (_continua_otro_bloque(primero, productos)
+                    or _tiene_precio_propio(primero, item, precios or [])):
+                return primero
+
     mejor, menor_dist, mejor_es_debajo = None, float("inf"), False
 
     for prod in productos:
@@ -268,6 +372,8 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
     precios = pag_data.get("precios", [])
     anteriores = emparejar_precios_anteriores(precios, pag_data.get("precios_anteriores", []))
 
+    nombre_debajo = diseno_nombre_debajo(precios, productos)
+
     registros_precio = []
     for precio, valor_anterior in zip(precios, anteriores):
         producto = None
@@ -276,7 +382,8 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
             if producto is not None and producto["_ilegible"]:
                 producto = None
         if producto is None:
-            producto = asociar_por_cercania(precio, productos, admitir_debajo=True)
+            producto = asociar_por_cercania(precio, productos, admitir_debajo=True, precios=precios,
+                                            alinear_debajo=nombre_debajo)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
 
     registros_atributo = [

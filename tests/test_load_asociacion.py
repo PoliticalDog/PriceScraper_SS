@@ -35,15 +35,163 @@ def test_debajo_fuera_del_margen_no_cuenta():
 
 
 def test_arriba_mas_cercano_que_debajo_sigue_ganando():
+    # El bloque de abajo no esta alineado con el precio (dx 40 > ALINEACION_DEBAJO_PX): regla general
     arriba = _bloque("Crema acida", 500, 950)
-    debajo = _bloque("200 g", 500, 1080)
+    debajo = _bloque("200 g", 540, 1080)
     assert asociar_por_cercania(PRECIO, [debajo, arriba], admitir_debajo=True) is arriba
 
 
 def test_empate_prefiere_arriba():
     arriba = _bloque("arriba", 500, 950)
-    debajo = _bloque("debajo", 500, 1050)
+    debajo = _bloque("debajo", 540, 1050)
     assert asociar_por_cercania(PRECIO, [debajo, arriba], admitir_debajo=True) is arriba
+
+
+# -- Nombre alineado bajo el precio (ALINEACION_DEBAJO_PX) ---------------------------------
+
+def test_alineado_debajo_gana_a_columna_vecina_mas_cercana():
+    # Chedraui 416057 p15: "Lavadora" de la columna vecina (dx -228) empataba con "Lavasecadora"
+    vecina = _bloque("Lavadora", 272, 1080)
+    alineado = _bloque("Lavasecadora", 507, 1080)
+    assert asociar_por_cercania(PRECIO, [vecina, alineado], admitir_debajo=True) is alineado
+
+
+def test_alineado_debajo_gana_a_basura_junto_al_precio():
+    # Chedraui 416057 p13: "Veloc" (OCR de la foto, al lado del precio) contra "Motocicleta" debajo
+    junto = _bloque("Veloc", 719, 1040, alto=16)
+    alineado = _bloque("Motoneta VENTO", 508, 1100, alto=24)
+    assert asociar_por_cercania(PRECIO, [junto, alineado], admitir_debajo=True) is alineado
+
+
+def test_alineado_debajo_gana_al_primero_de_la_pila():
+    primera = _bloque("Colchon matrimonial en caja", 506, 1072, alto=28)
+    segunda = _bloque("Mod. Notte Azul", 506, 1096, alto=26)
+    assert asociar_por_cercania(PRECIO, [segunda, primera], admitir_debajo=True) is primera
+
+
+def test_alineado_debajo_gana_aunque_haya_nombre_arriba():
+    # Costo conocido (S-Mart 423050: "Melon" pegado encima, "Tuna blanca" alineada debajo):
+    # el bloque alineado debajo gana. Medido en dev: +23 / -7 articulos.
+    arriba = _bloque("Melon", 500, 950)
+    alineado = _bloque("Tuna blanca", 500, 1080)
+    assert asociar_por_cercania(PRECIO, [arriba, alineado], admitir_debajo=True) is alineado
+
+
+def test_segunda_linea_de_nombre_que_empieza_arriba_no_cuenta():
+    # 3B 428040: "Tostadas de Maiz" a la altura del precio y "Horneadas" (su 2a linea) alineada debajo
+    nombre = _bloque("Tostadas de Maiz", 380, 1010, ancho=200, alto=30)
+    segunda = _bloque("Horneadas", 500, 1045, alto=30)
+    assert asociar_por_cercania(PRECIO, [segunda, nombre], admitir_debajo=True) is nombre
+
+
+def test_alineado_debajo_respeta_margen_y_centro_del_precio():
+    # Empieza por encima del centro del precio: no es "debajo"; mas alla del margen: no cuenta
+    a_la_altura = _bloque("a la altura", 505, 1020)
+    lejos = _bloque("lejos", 505, 1000 + 60 + MARGEN_DEBAJO_PRECIO + 1)
+    assert asociar_por_cercania(PRECIO, [lejos, a_la_altura], admitir_debajo=True) is a_la_altura
+
+
+def test_nombre_arriba_y_casilla_siguiente_con_su_precio_gana_arriba():
+    # Casa Ley 422328 p1 (reticula, nombre arriba y precio al pie): "Pimiento" (casilla de abajo)
+    # queda pegado bajo "$299" y alineado, pero tiene su propio precio debajo -> gana "Aceite"
+    arriba = _bloque("Aceite", 500, 950)
+    siguiente = _bloque("Pimiento", 500, 1065)
+    precio_siguiente = _bloque("$557", 505, 1170, alto=60)
+    assert asociar_por_cercania(PRECIO, [siguiente, arriba], admitir_debajo=True,
+                                precios=[PRECIO, precio_siguiente]) is arriba
+
+
+def test_empate_con_casilla_siguiente_con_su_precio_prefiere_arriba():
+    # Equivalente a test_empate_prefiere_arriba con el bloque de abajo alineado
+    arriba = _bloque("arriba", 500, 950)
+    debajo = _bloque("debajo", 500, 1050)
+    precio_siguiente = _bloque("$10", 500, 1120, alto=60)
+    assert asociar_por_cercania(PRECIO, [debajo, arriba], admitir_debajo=True,
+                                precios=[precio_siguiente, PRECIO]) is arriba
+
+
+def test_precio_propio_lejano_no_bloquea_el_alineado():
+    # Chedraui 416057 p13: el precio de la fila siguiente esta a ~350 px de "Motocicleta"
+    alineado = _bloque("Motocicleta", 508, 1100, alto=24)
+    junto = _bloque("Veloc", 719, 1040, alto=16)
+    otra_fila = _bloque("$18,999", 505, 1100 + 350, alto=74)
+    assert asociar_por_cercania(PRECIO, [junto, alineado], admitir_debajo=True,
+                                precios=[PRECIO, otra_fila]) is alineado
+
+
+def test_precio_propio_debe_estar_alineado():
+    # Un precio debajo pero en otra columna (dx 60) no convierte al alineado en casilla siguiente
+    alineado = _bloque("Lavasecadora", 507, 1080)
+    vecina = _bloque("Lavadora", 272, 1080)
+    precio_otra_columna = _bloque("$9", 567, 1150, alto=60)
+    assert asociar_por_cercania(PRECIO, [vecina, alineado], admitir_debajo=True,
+                                precios=[PRECIO, precio_otra_columna]) is alineado
+
+
+# -- Diseno de la pagina (diseno_nombre_debajo) --------------------------------------------
+
+def _pagina_nombre_debajo():
+    # Chedraui/Walmart: precio y debajo, alineado, su nombre; filas separadas por ~470 px
+    precios, productos = [], []
+    for x in (100, 500, 900):
+        for y in (400, 870):
+            precios.append(_bloque("$999", x, y, alto=70))
+            productos.append(_bloque("Motocicleta", x + 8, y + 100, alto=24))
+    return precios, productos
+
+
+def _pagina_reticula_nombre_arriba():
+    # Casa Ley: nombre arriba, precio al pie y el nombre de la casilla siguiente pegado debajo
+    precios, productos = [], []
+    for x in (100, 300, 500):
+        for fila in range(4):
+            y = 300 + 145 * fila
+            productos.append(_bloque("Aceite", x, y, alto=30))
+            precios.append(_bloque("$299", x + 5, y + 100, alto=40))
+    return precios, productos
+
+
+def test_detecta_pagina_nombre_debajo():
+    from load.load import diseno_nombre_debajo
+    assert diseno_nombre_debajo(*_pagina_nombre_debajo()) is True
+
+
+def test_reticula_nombre_arriba_no_es_nombre_debajo():
+    from load.load import diseno_nombre_debajo
+    assert diseno_nombre_debajo(*_pagina_reticula_nombre_arriba()) is False
+
+
+def test_pagina_sin_vecinos_alineados_no_es_nombre_debajo():
+    from load.load import diseno_nombre_debajo
+    precios = [_bloque("$10", 100, 400, alto=60)]
+    productos = [_bloque("lejos al lado", 400, 420)]
+    assert diseno_nombre_debajo(precios, productos) is False
+    assert diseno_nombre_debajo([], []) is False
+
+
+def test_reticula_nombre_arriba_conserva_la_regla_general_en_toda_la_pagina():
+    # Con alinear_debajo=False (pagina no "nombre debajo") gana el nombre pegado arriba aunque
+    # el de la casilla siguiente este alineado debajo y SIN precio propio leido
+    from load.load import construir_registros_pagina
+
+    class _Norm:
+        def normalizar(self, texto):
+            from types import SimpleNamespace
+            return SimpleNamespace(descartado=False, metodo="exacto", categoria="x", nombre_canonico=texto)
+
+    precios, productos = _pagina_reticula_nombre_arriba()
+    precios = precios[:1]  # solo se leyo un precio: la guarda de precio propio no puede actuar
+    # Descripcion de la casilla propia (recuadro sangrado) pegada encima del precio, como en Casa Ley
+    descripcion = _bloque("Carton 12/400 ml", 135, 370, alto=24)
+    pag = {"productos": productos + [descripcion], "precios": precios, "precios_anteriores": []}
+    registro = construir_registros_pagina(pag, None, _Norm())["precios"][0]
+    assert registro["producto"]["texto"] == "Carton 12/400 ml"  # no "Aceite" de la casilla de abajo (y=445)
+
+
+def test_alineacion_no_aplica_a_atributos():
+    arriba = _bloque("arriba", 500, 950)
+    alineado = _bloque("alineado", 500, 1080)
+    assert asociar_por_cercania(PRECIO, [arriba, alineado]) is arriba
 
 
 def test_atributos_conservan_distancia_solo_vertical():
