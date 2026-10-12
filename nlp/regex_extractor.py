@@ -222,6 +222,23 @@ class RegexExtractor:
     # Rescatar "$"" confundido 5, 6, 8, s o S.
     PATRON_DIGITO_ESPURIO = re.compile(r"^[568sS](\d{3})(?:c/u|c\.u\.|[a-zA-Z]{1,4})?$")
 
+    # Regla A-cu: digito espurio + entero + sufijo "c/u" que el OCR lee "clu"/"cIu"/"c1u",
+    # pegado o con un espacio ("5949clu" -> $949, "555 clu" -> $55, "519clu" -> $19).
+    # Confirmado 11-oct-2026 en Walmart dev (413647/413251): 17/17 bloques con el monto del GT,
+    # ninguno con otro monto. El sufijo es contexto fuerte por si solo (igual que "c/u" bien
+    # leido en la Regla A), por eso no exige contexto externo. NO acepta 4 digitos tras el
+    # espurio: "5995c/u" podria ser $59.95 c/u sin "$" y no hay evidencia de precios enteros
+    # >= $1,000 con c/u.
+    PATRON_DIGITO_ESPURIO_CU = re.compile(r"^[568sS](\d{2,3})\s?(?:c/u|c\.u\.?|c[lI1]u)$")
+
+    # Desempate por la resta "Antes $A" - "Ahorra $B" (Walmart pone Ahora / Antes / Ahorra en
+    # la misma casilla). Un bloque "5454" se lee como $54.54 (Regla B-4) o como "$" mal leido
+    # + $454 (Regla A); si la casilla dice "Antes $699" y "Ahorra $245", el precio es 454.
+    # Confirmado 11-oct-2026 en Walmart dev 413647: 28/28 bloques con antes y ahorro cerca
+    # cuadran con la resta y con el GT. Solo se acepta la lectura que cuadra EXACTA con la resta,
+    # asi que no cambia nada donde no hay par antes/ahorro.
+    PATRON_DIGITO_ESPURIO_ENTERO = re.compile(r"^[568sS](\d{2,4})$")
+
 
     # Rescatar precio / kg --> "824.95k6" -> $24.95/kg "kg" con "k6")
     PATRON_DIGITO_ESPURIO_DECIMAL = re.compile(r"^[568sS](\d{1,3}[.,]\d{2})[a-zA-Z0-9]{0,4}$")
@@ -966,6 +983,26 @@ class RegexExtractor:
         if m:
             return self._parsear_numero(m.group(1))
 
+        # Regla A-cu: "c/u" ilegible pegado al entero (ver constante)
+        # Excepto 3 digitos terminados en "00": "6900 clu" es $69⁰⁰ c/u con los centavos en
+        # superindice (Soriana Mercado 425730), no "$" mal leido + $900. Ningun caso de Walmart
+        # que sustenta la regla termina en "00". Ese bloque sigue por las demas reglas.
+        m = self.PATRON_DIGITO_ESPURIO_CU.match(texto)
+        if m and not (len(m.group(1)) == 3 and m.group(1).endswith("00")):
+            return self._parsear_numero(m.group(1))
+
+        # Desempate B-4 / Regla A con la resta antes - ahorro de la casilla (ver constante).
+        # Va antes de B-4 porque B-4 se queda con "5454" en cuanto hay un producto cerca.
+        # Aqui SI se aceptan enteros terminados en "00": la lectura tiene que cuadrar exacta con
+        # A - B de la misma casilla, y que un $69⁰⁰ coincida por azar con una resta de 900 es
+        # mucho menos probable que el c/u suelto de la Regla A-cu.
+        m = self.PATRON_DIGITO_ESPURIO_ENTERO.match(texto)
+        if m:
+            entero = float(m.group(1))
+            if any(abs(entero - r) < 0.01
+                   for r in self._restas_antes_ahorro(bbox, bloques_pagina, factor_escala)):
+                return entero
+
         # Regla A2: digito espurio + numero que ya trae su propio punto decimal
         # (ej. "824.95k6" -> $24.95). El decimal explicito ya es una senal tan fuerte
         # como el digito espurio mismo -- no se exige contexto cercano.
@@ -1091,6 +1128,31 @@ class RegexExtractor:
             elif not requerir_fuerte and self.PATRON_CONTEXTO_UNIDAD.search(texto_otro):
                 hay_contexto = True
         return hay_contexto
+
+    def _restas_antes_ahorro(self, bbox: dict, bloques_pagina: list[dict],
+                             factor_escala: float = 1.0) -> set[float]:
+        """
+        Precios actuales que implica la casilla: A - B por cada "Antes $A" (con sus lecturas
+        posibles) y cada "Ahorra $B" a menos de DISTANCIA_MAX_CONTEXTO_PRECIO del bbox.
+        Vacio si falta alguno de los dos.
+        """
+        distancia_max = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
+        antes, ahorros = [], []
+        for otro in bloques_pagina:
+            otro_bbox = otro.get("bbox")
+            if not otro_bbox or otro_bbox is bbox:
+                continue
+            if self._distancia_bbox(bbox, otro_bbox) > distancia_max:
+                continue
+            texto_otro = self._limpiar_texto(otro.get("texto", ""))
+            candidatos = self._extraer_precio_anterior(texto_otro)
+            if candidatos:
+                antes += candidatos
+                continue
+            ahorro = self._extraer_ahorro(texto_otro)
+            if ahorro:
+                ahorros.append(ahorro)
+        return {round(a - b, 2) for a in antes for b in ahorros if a > b}
 
     def _hay_producto_cerca(self, bbox: dict, bloques_pagina: list[dict],
                             factor_escala: float = 1.0) -> bool:
