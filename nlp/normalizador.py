@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 from rapidfuzz import process, fuzz
+from rapidfuzz.distance import Levenshtein
 
 from .catalogo_productos import buscar_categoria, CATALOGO
 
@@ -336,9 +337,17 @@ class Normalizador:
             largo_largo = max(len(match_texto), len(texto_norm_base))
             ratio_longitud = largo_corto / largo_largo if largo_largo else 0.0
 
-            if ratio_longitud >= self.RATIO_LONGITUD_MINIMO:
+            nombre_canonico = self._indice[opc][1]
+            # Guarda de cobertura: token_set_ratio da 100 si UN token del texto esta en el catalogo
+            # ("Salsa Chamoy" -> Salsa, "Audifonos Vibe Beam 2" -> Audifonos) y premia parecidos de
+            # caracteres sin tokens comunes ("MORENA" -> Mayonesa, "res para asar" -> Pasta para sopa).
+            # Si el canonico no explica todas las palabras del texto, el texto del folleto es mas fiel:
+            # se conserva como heuristico. Solo si el heuristico no se descartaria por largo, para que
+            # esta guarda nunca cambie que bloques se aceptan como producto.
+            cubierto = self._canonico_cubre_texto(texto_norm_base, match_texto, nombre_canonico)
+            heuristico_valido = len(self._capitalizar(texto_limpio)) <= self.LARGO_MAXIMO_HEURISTICO
+            if ratio_longitud >= self.RATIO_LONGITUD_MINIMO and (cubierto or not heuristico_valido):
                 confianza = score / 100.0
-                nombre_canonico = self._indice[opc][1]
                 datos = CATALOGO_CANONICO[nombre_canonico]
                 metodo = "fuzzy" if confianza >= self.umbral_alto else "fuzzy_bajo"
 
@@ -437,6 +446,48 @@ class Normalizador:
             if patron.search(texto):
                 return True
         return False
+
+    # Palabras que no identifican un producto: no cuentan para la guarda de cobertura
+    _PALABRAS_VACIAS = {"de", "del", "la", "las", "el", "los", "y", "o", "en", "con", "sin", "para", "por",
+                        "kg", "pza", "pzas", "pack", "ml", "lt", "gr", "grs"}
+    # Palabra de 4+ letras cubierta con error OCR leve si cumple cualquiera de las dos:
+    # - rapidfuzz.ratio (Indel) >= 85: "pechuca" ~ "pechuga" 86, "higlenico" ~ "higienico" 89
+    # - palabra de 6+ letras con Levenshtein normalizado >= 0.78 (sustituciones de letra):
+    #   "acondklonador" ~ "acondicionador" 0.79, "oexaca" ~ "oaxaca" 0.83.
+    # Bajar el Indel a 80 no sirve: "milanesa" ~ alias "maonesa" da 80 (Indel) y Milanesa no debe volver a
+    # ser Mayonesa. En palabras de 4-5 letras una sola letra distinta ya es otro producto ("jabon" ~ "jamon",
+    # "popa" ~ "papa"), asi que ahi no se tolera ("papcl" ~ "papel" se pierde a proposito); y 0.75 en 6+
+    # letras reabre "refritos" ~ alias "refrcos" (Refresco).
+    FUZZY_TOKEN_COBERTURA = 85
+    LEVENSHTEIN_COBERTURA = 0.78
+    LARGO_MINIMO_LEVENSHTEIN = 6
+
+    @classmethod
+    def _tokens_cobertura(cls, texto_norm: str) -> list[str]:
+        # Palabras alfabeticas de 3+ letras (sin numeros, unidades ni conectores) de un texto ya normalizado
+        return [t for t in texto_norm.split() if t.isalpha() and len(t) >= 3 and t not in cls._PALABRAS_VACIAS]
+
+    @classmethod
+    def _palabra_parecida(cls, a: str, b: str) -> bool:
+        if fuzz.ratio(a, b) >= cls.FUZZY_TOKEN_COBERTURA:
+            return True
+        return (min(len(a), len(b)) >= cls.LARGO_MINIMO_LEVENSHTEIN
+                and Levenshtein.normalized_similarity(a, b) >= cls.LEVENSHTEIN_COBERTURA)
+
+    def _canonico_cubre_texto(self, texto_norm_base: str, match_texto: str, nombre_canonico: str) -> bool:
+        """
+        True si cada palabra significativa del texto aparece (igual o con error OCR leve) en el
+        alias que hizo match o en el nombre canonico. Texto sin palabras significativas: True.
+        """
+        tokens_texto = self._tokens_cobertura(texto_norm_base)
+        referencia = set(match_texto.split()) | set(self._normalizar_base(nombre_canonico).split())
+        for t in tokens_texto:
+            if t in referencia:
+                continue
+            if len(t) >= 4 and any(len(r) >= 4 and self._palabra_parecida(t, r) for r in referencia):
+                continue
+            return False
+        return True
 
     def _extraer_marca(self, texto: str) -> Optional[str]:
         texto_lower = texto.lower()
