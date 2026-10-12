@@ -737,11 +737,17 @@ class RegexExtractor:
 
         hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina, factor_escala)
 
+        # Pre-paso: anticipo de apartado en su propio bloque, a la derecha del rotulo
+        # "Apartalo con" (ver _detectar_anticipos_apartado). Se descarta entero.
+        anticipos = self._detectar_anticipos_apartado(bloques_pagina, factor_escala)
+
         # Pre-paso: precios repartidos en 2 bloques adyacentes (entero + centavos,
         # ver _detectar_precios_fusionados). Va ANTES del loop normal porque un
         # entero de 1-2 digitos nunca llegaria a clasificarse por si solo.
         bloques_consumidos = set()
         for bloque_entero, bloque_centavos, valor in self._detectar_precios_fusionados(bloques_pagina, factor_escala):
+            if id(bloque_entero) in anticipos or id(bloque_centavos) in anticipos:
+                continue
             resultado.precios.append(EntidadExtraida(
                 "PRECIO",
                 f"{bloque_entero['texto']}+{bloque_centavos['texto']}",
@@ -765,6 +771,11 @@ class RegexExtractor:
 
             texto_limpio = self._limpiar_texto(texto_raw)
             if not texto_limpio:
+                continue
+
+            if id(bloque) in anticipos:
+                resultado.descartes.append(EntidadExtraida("DESCARTE", texto_raw, texto_limpio,
+                                                           confianza=confianza, bbox=bbox))
                 continue
 
             entidad = self._clasificar(texto_limpio, texto_raw, confianza, bbox, bloques_pagina,
@@ -1219,6 +1230,68 @@ class RegexExtractor:
             if en_catalogo or self._es_probable_producto(texto_limpio):
                 return True
         return False
+
+    # Rotulo "Apartalo con" solo (sin monto pegado), con las mismas variantes OCR que el
+    # patron de rotulos de casilla de PATRONES_DESCARTE.
+    PATRON_ROTULO_APARTADO = re.compile(
+        r"^\W*ap[a-zà-öø-ÿ]{0,2}rt[a-zà-öø-ÿ]{0,2}l{1,2}[aáoóöò]?[\s|]*[ri]?\s*"
+        r"c[oóöòceu][nudihr]?[\W_]*$",
+        re.IGNORECASE
+    )
+    # Separacion horizontal (px a ANCHO_REFERENCIA_UMBRALES) entre el borde derecho del
+    # rotulo y el bloque del monto. Los valores estan a 1500 px de referencia: en Chedraui
+    # (1200 px, factor 0.8) equivalen a -12..24 px, y lo medido fue -5..15 px.
+    GAP_ANTICIPO_MIN = -15
+    GAP_ANTICIPO_MAX = 30
+    # El monto del anticipo es una linea de la etiqueta negra (alto <= ~2.2x el rotulo);
+    # el precio grande de la casilla mide >= 3x el rotulo y ademas queda lejos.
+    ALTO_MAX_ANTICIPO_VS_ROTULO = 2.5
+
+    def _detectar_anticipos_apartado(self, bloques_pagina: list[dict],
+                                     factor_escala: float = 1.0) -> set[int]:
+        """
+        ids de los bloques que son el ANTICIPO de apartado de Chedraui leido aparte del
+        rotulo: "Apartalo con" en un bloque y "$59990" / "838650" / "$50" / "850" en el
+        bloque inmediato a su derecha, en la misma linea. Ese monto es el 10% del precio
+        (o $50 fijo) impreso en la etiqueta negra bajo el precio grande -- verificado en
+        imagenes de 428354 p13-p15 y 428353 p7 --, no el precio del producto.
+
+        Complementa el caso con el monto pegado al rotulo (PATRONES_DESCARTE, 05ca950).
+        Medido 12-oct-2026 en todos los folletos fuera del holdout: los 97 rotulos solos
+        con un vecino a la derecha son de Chedraui, el vecino esta a -5..15 px, con el
+        centro vertical alineado y alto 26-31 px (44 uno) contra 16-24 del rotulo.
+        El precio real de la casilla (alto >= 64, >= 78 px a la derecha o arriba) no entra.
+        Exige el rotulo, asi que un "$50" sin "Apartalo con" al lado no cambia, y solo
+        toma el bloque MAS cercano por rotulo.
+        """
+        gap_min = self.GAP_ANTICIPO_MIN * factor_escala
+        gap_max = self.GAP_ANTICIPO_MAX * factor_escala
+        anticipos = set()
+        for rotulo in bloques_pagina:
+            rb = rotulo.get("bbox")
+            if not rb or not self.PATRON_ROTULO_APARTADO.match(
+                    self._limpiar_texto(rotulo.get("texto", ""))):
+                continue
+            cy_rotulo = rb["y"] + rb["alto"] / 2
+            mejor = None
+            for otro in bloques_pagina:
+                ob = otro.get("bbox")
+                if otro is rotulo or not ob:
+                    continue
+                if not re.search(r"\d", otro.get("texto", "")):
+                    continue
+                gap = ob["x"] - (rb["x"] + rb["ancho"])
+                if not (gap_min <= gap <= gap_max):
+                    continue
+                if abs(ob["y"] + ob["alto"] / 2 - cy_rotulo) > max(rb["alto"], ob["alto"]) / 2:
+                    continue
+                if ob["alto"] > rb["alto"] * self.ALTO_MAX_ANTICIPO_VS_ROTULO:
+                    continue
+                if mejor is None or gap < mejor[0]:
+                    mejor = (gap, otro)
+            if mejor:
+                anticipos.add(id(mejor[1]))
+        return anticipos
 
     def _detectar_precios_fusionados(
         self, bloques_pagina: list[dict], factor_escala: float = 1.0
