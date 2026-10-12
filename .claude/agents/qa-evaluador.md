@@ -5,6 +5,7 @@ tools: Read, Grep, Glob, Bash, mcp__plugin_engram_engram__mem_search, mcp__plugi
 model: inherit
 skills:
   - ciclo-experimento
+  - consulta-analitica
 hooks:
   PreToolUse:
     - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell"
@@ -57,3 +58,10 @@ Observaciones: ...
 ```
 
 Aprobar no implica commit: la persona decide si se hace commit o se recarga la BD.
+
+## Verificar un KPI o panel de bi-specialist
+
+Si te piden revisar una metrica o un panel del dashboard: reproduce la cifra con tu propia consulta (skill
+`consulta-analitica`, `consulta.py`, solo lectura), escrita por otro camino que la del especialista; revisa joins
+(`--contar` antes y despues), exclusiones declaradas y que la confiabilidad este indicada. Veredicto con la cifra del
+especialista, la tuya y la diferencia. Mismo formato de arriba, con "Dev global" y "Holdout" como "no aplica".

@@ -27,7 +27,7 @@ def corre(rol, comando):
                                   ".claude/agents/especialista-producto.md", "tests/test_evaluador.py",
                                   "load/schema.sql", str(RAIZ / "evaluador" / "metricas.py")])
 def test_rutas_protegidas_para_todos(ruta):
-    for rol in ("producto", "vision", "qa"):
+    for rol in ("producto", "vision", "qa", "bi"):
         assert edita(rol, ruta)
 
 
@@ -58,7 +58,7 @@ def test_fuera_del_repo():
     "python -c \"open('evaluador/splits.json','w')\"", "cp otro.json .claude/settings.json",
 ])
 def test_comandos_prohibidos_para_todos(comando):
-    for rol in ("producto", "vision", "qa"):
+    for rol in ("producto", "vision", "qa", "bi"):
         assert corre(rol, comando), comando
 
 
@@ -90,6 +90,52 @@ def test_proceso_bloquea_con_codigo_2():
 def test_evento_ilegible_bloquea():
     r = subprocess.run([sys.executable, str(RUTA), "producto"], input="no json", capture_output=True, text=True)
     assert r.returncode == 2
+
+
+CONSULTA = "venv/Scripts/python.exe .claude/skills/consulta-analitica/consulta.py"
+
+
+def test_alcance_bi():
+    assert edita("bi", "dashboard/queries.py") is None
+    assert edita("bi", "dashboard/templates/dashboard/resumen.html") is None
+    assert edita("bi", "docs/bi/metricas.md") is None
+    assert edita("bi", "tests/test_dashboard_kpis.py") is None
+    for ruta in ("load/vistas.sql", "load/schema.sql", "load/load.py", "nlp/normalizador.py", "vision/ocr_engine.py",
+                 ".claude/skills/consulta-analitica/consulta.py"):
+        assert edita("bi", ruta), ruta
+    assert edita("producto", "dashboard/queries.py")
+
+
+@pytest.mark.parametrize("comando", [
+    CONSULTA + ' --sql "SELECT tienda, count(*) FROM v_precios_actuales WHERE precio_actual > 100 GROUP BY 1"',
+    CONSULTA + " --archivo docs/bi/consultas/cobertura.sql --max 50",
+    CONSULTA + " --columnas extracciones",
+    "venv/Scripts/python.exe -m pytest tests -q",
+    "python -c \"import json; print(json.load(open('data/processed/_eval/runs/a.json'))['metricas'])\"",
+])
+def test_bi_permitidos(comando):
+    assert corre("bi", comando) is None, comando
+
+
+@pytest.mark.parametrize("comando", [
+    "python -c \"import psycopg; psycopg.connect('postgresql://x')\"",
+    "python -c \"from load.db_builder import get_connection\"",
+    "python manage.py shell -c \"from dashboard.models import Tienda\"",
+    "python manage.py dbshell",
+    "python -m evaluador correr --split dev",
+    CONSULTA + ' --sql "SELECT 1" ; rm -rf docs',
+    CONSULTA + ' --sql "SELECT 1" > data/processed/x.txt',
+    CONSULTA + ' --sql "DELETE FROM tiendas"',
+])
+def test_bi_prohibidos(comando):
+    assert corre("bi", comando), comando
+
+
+def test_consulta_ro_tambien_para_qa_no_para_especialistas():
+    cmd = CONSULTA + ' --sql "SELECT count(*) FROM extracciones WHERE valor > 100"'
+    assert corre("qa", cmd) is None
+    assert corre("producto", cmd)
+    assert corre("vision", CONSULTA + ' --sql "SELECT 1"')
 
 
 def test_ocr_experimental_solo_vision_y_qa():

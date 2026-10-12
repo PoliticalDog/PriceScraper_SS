@@ -2,7 +2,7 @@
 Guardia de los subagentes (PreToolUse). Solo corre mientras un agente de .claude/agents/ esta activo:
 la sesion principal no la usa.
 
-    python .claude/hooks/guardia_agente.py <rol>      rol = producto | vision | qa
+    python .claude/hooks/guardia_agente.py <rol>      rol = producto | vision | qa | bi
 
 Lee el evento del hook por stdin. Sale con 2 (bloquea y le explica el motivo al agente) o con 0.
 Si este archivo no existe, python tambien sale con 2: la guardia falla cerrada.
@@ -13,6 +13,8 @@ Lo que ningun agente puede hacer:
 - recargar la BD o reescribir los JSON de produccion (OCR, NLP);
 - sellar el evaluador o regenerar splits.
 Los especialistas (producto, vision) ademas no ven el holdout: solo QA lo corre.
+BI (bi-specialist) lee la BD unicamente con .claude/skills/consulta-analitica/consulta.py (rol pricescraper_ro,
+sesion READ ONLY); no usa la conexion de escritura (DATABASE_URL, psycopg, db_builder, manage.py shell).
 
 Es una heuristica sobre comandos de shell, no un sandbox. El respaldo es evaluador/manifest.json
 (cualquier cambio a GT/splits/reglas deja la corrida NO VALIDA) y la revision humana del diff.
@@ -31,7 +33,11 @@ EDITABLE = {
     # `python -m evaluador ocr`; los JSON de produccion solo se rehacen en la GPU cuando la persona lo lanza
     "vision": ("vision/region_detector.py", "vision/preprocessor.py", "vision/ocr_engine.py", "load/load.py", "tests/"),
     "qa": (),
+    # Dashboard Django y el catalogo de metricas. vistas.sql/schema.sql quedan protegidos: se proponen, no se editan
+    "bi": ("dashboard/", "docs/bi/", "tests/"),
 }
+# Unica puerta a la BD para leer (BI y QA): valida que sea SELECT y usa el rol de solo lectura
+CONSULTA_RO = re.compile(r"\.claude[/\\]skills[/\\]consulta-analitica[/\\]consulta\.py\b")
 # Dentro de lo editable, igual protegido
 PROTEGIDO = ("evaluador/", "data/", ".claude/", "tests/test_evaluador.py", "tests/conftest.py",
              "load/schema.sql", "load/vistas.sql")
@@ -64,6 +70,12 @@ SOLO_VISION_QA = [
     (r"\bevaluador\s+ocr\b",
      "El OCR experimental es del especialista de vision (o de QA para verificarlo)."),
 ]
+SOLO_BI = [
+    (r"psycopg|get_connection|get_cursor|DATABASE_URL(?!_RO)|manage\.py\s+(shell|dbshell)|from\s+dashboard\.models|django\.setup",
+     "BI lee la BD solo con .claude/skills/consulta-analitica/consulta.py (rol de solo lectura)."),
+    (r"--split[\s=]+(holdout|todo)\b|\bevaluador\s+(correr|ocr)\b",
+     "BI lee las corridas guardadas del evaluador (data/processed/_eval/runs); no corre el evaluador."),
+]
 
 
 def _relativa(ruta: str) -> str | None:
@@ -90,9 +102,19 @@ def revisar_edicion(rol: str, ruta: str) -> str | None:
 
 def revisar_comando(rol: str, comando: str) -> str | None:
     reglas = PROHIBIDOS + ([] if rol == "qa" else SOLO_QA) + ([] if rol in ("vision", "qa") else SOLO_VISION_QA)
+    if rol == "bi":
+        reglas = reglas + SOLO_BI
     for patron, motivo in reglas:
         if re.search(patron, comando, re.I):
             return motivo
+    if CONSULTA_RO.search(comando) and rol not in ("bi", "qa"):
+        return "Los especialistas no consultan la BD: miden con el evaluador. La consulta directa es de BI y QA."
+    if CONSULTA_RO.search(comando):
+        # El SQL puede traer ">" o mencionar tablas: consulta.py valida que sea solo lectura. Se exige que el
+        # comando sea solo esa llamada (sin encadenar otra cosa ni redirigir la salida)
+        if re.search(r"[;&|`]|\$\(|>\s*[\w./\\]", re.sub(r"\"[^\"]*\"|'[^']*'", "", comando)):
+            return "Llama a consulta.py sola: sin encadenar comandos ni redirigir la salida."
+        return None
     if any(f.lower() in comando.lower() for f in FRAGMENTOS_PROTEGIDOS) and MARCAS_ESCRITURA.search(comando):
         return "El comando parece escribir sobre una ruta protegida (evaluador, GT, splits, datos o .claude). Para leer usa Read/Grep."
     return None
