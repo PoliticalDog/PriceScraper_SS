@@ -26,6 +26,41 @@ def test_rotulo_solo_no_es_producto(texto):
     assert [p.texto_raw for p in res.productos] == []
 
 
+# Variantes OCR vistas en el dashboard de produccion (Chedraui, Walmart) tras c1a84b2
+@pytest.mark.parametrize("texto", [
+    "Apärtalo con", "Apärtalocon", "Apartalorcon", "Apartalo Cön", "Apartalo Ccn", "Apjrtalo con",
+    "Apartalo cod", "Apartallo coi", "Aprtallo coh", "Aprrtaloicon", "Aparrtalocon", "Apartall con|",
+    "Apártalö con", "Apártalo cor", "Apartallocen", "Apartala con",
+    "Todos los Dlas", "todos los diss", "todoslos dlas", "todoslosdlas", "todoslos diàs",
+    "stodos los días", "todos los días_", "AHORRA _", "sólo: _",
+])
+def test_variante_ocr_de_rotulo_no_es_producto(texto):
+    res = _pagina([_bloque(texto, 100, 100), _bloque("$949", 100, 160)])
+    assert [p.texto_raw for p in res.productos] == []
+
+
+@pytest.mark.parametrize("texto", [
+    "TODOS LOS DESODORANTES", "Todos los dips", "Todos los desechables", "Apartado",
+    "Aparta tus juguetes", "Gabapertina 300 mg cáps 15", "Apertura de puerta con boton",
+    "Boton para apertura", "Cool Days",
+])
+def test_nombre_parecido_al_rotulo_sigue_siendo_producto(texto):
+    res = _pagina([_bloque(texto, 100, 100), _bloque("$949", 100, 160)])
+    assert [p.texto_raw for p in res.productos] == [texto]
+
+
+# Chedraui: el monto pegado a "Apartalo con" es el anticipo de apartado, no el precio
+@pytest.mark.parametrize("texto", [
+    "Apartalo Con$1,49950", "Apartalo con |l$79950", "Apártalo Conls83950", "Apartalo Con$829",
+    "Apärtalo Con| 839990", "Apártalo Conl$89950", "Apartalo Con829950", "Apártalo con| $62990",
+    "Apártalo con| $50", "Apártalo cor]$1,44950", "apártaló con$l6950", "Apsrtslocon]$ 35950",
+])
+def test_rotulo_apartado_con_monto_no_es_producto_ni_precio(texto):
+    res = _pagina([_bloque("$6,299", 100, 40), _bloque(texto, 100, 100), _bloque("Bicicleta", 100, 160)])
+    assert [e.valor for e in res.precios] == [6299.0]
+    assert [p.texto_raw for p in res.productos] == ["Bicicleta"]
+
+
 def test_rotulo_no_toca_precio_del_mismo_bloque():
     # Con monto en el bloque, la regla de precio sigue mandando (anclado, sin digitos)
     res = _pagina([_bloque("A sólo $149.00", 100, 100), _bloque("Detergente líquido", 100, 40)])

@@ -669,16 +669,28 @@ class RegexExtractor:
         # Anclado a todo el bloque y SIN digitos: un bloque con precio ("a solo $49",
         # "Ahorra $20") nunca entra aqui, asi que no cambia ninguna regla de precio
         # (_hay_contexto_precio y _hay_producto_cerca leen los bloques crudos, no esto).
+        # Variantes OCR (11-oct-2026, dashboard de produccion tras c1a84b2): Chedraui
+        # "Apärtalo con", "Apartalorcon", "Apartalo Cön/Ccn/cod/coi", "Apjrtalo con",
+        # "Aprrtaloicon", "Apartallo con"; Walmart "todos los dlas/diss", "todoslosdlas",
+        # "stodos los días" (cola de "bajos") y "todos los días_" (el "_" no es \W).
+        # Sigue sin admitir digitos ni texto despues del rotulo: "TODOS LOS DESODORANTES",
+        # "Todos los dips", "Apartado", "Aparta tus juguetes" o "Gabapertina" no entran.
+        # Unica excepcion a "sin digitos": Chedraui "Apártalo con | $629.90" debajo de
+        # "$6,299" (folleto 428354 pag 14) es el ANTICIPO de apartado (10%), no el precio
+        # del producto; con el monto pegado al rotulo ("Apartalo Con$1,49950",
+        # "Apártalo Conls83950", "Apartalo con829950") el bloque entero se descarta en vez
+        # de leerse como precio. Solo para este rotulo: "a solo $149" sigue siendo PRECIO.
         re.compile(
             r"^\W*(?:"
-            r"ap[aá]rtalo\s*co[nu]|"
-            r"(?:precios?\s*bajos?\s*)?todos\s*los\s*d[ií]as|precio\s*bajo|"
+            r"ap[a-zà-öø-ÿ]{0,2}rt[a-zà-öø-ÿ]{0,2}l{1,2}[aáoóöò]?[\s|]*[ri]?\s*c[oóöòceu][nudihr]?"
+            r"(?:[\s|\]\[!l]*[s$]?[\s|\]l]*\d[\d,.\s]*)?|"
+            r"(?:precios?\s*bajos?\s*)?s?todos\s*los\s*d(?:[iíìl1][aáàs]|l?[aá])s|precio\s*bajo|"
             r"[0a]?\s*s[oó]lo|as[ií]\s*lo|"
             r"d[ea]\s+of[ec]r?t[ae]r?|"
             r"ahorr[ao]s?(?:\s+m[aá]s)?|ahara|"
             r"compra|cada\s+un[oa]|ll[eé]vate|demo|"
             r"aurrer[aá][a-z_@]?"
-            r")\W*$",
+            r")[\W_]*$",
             re.IGNORECASE
         ),
     ]
