@@ -138,20 +138,34 @@ def regiones_con_precio(candidatas: list[dict], precios: list[dict]) -> list[dic
     return [r for r in calificar_regiones(candidatas, bloques_precio) if r["tiene_precio"]]
 
 
-def asociar_por_cercania(item: dict, productos: list) -> dict | None:
+# Precio -> producto por cercania: tambien se admite un nombre a la misma altura o justo debajo
+# del precio (su borde superior a lo mas alto_precio + este margen bajo el borde superior del precio).
+# Dev 11-oct-2026: en 153 de 266 precios bien leidos con el producto equivocado, el bloque con
+# el nombre correcto estaba al lado o debajo del precio (Chedraui/Walmart electronica, 3B, Bodega
+# Aurrera, Alsuper con el nombre a la izquierda del precio), y 130 de ellos a <100px del borde
+# inferior del precio; el criterio "solo arriba" tomaba una linea lejana o ruido.
+MARGEN_DEBAJO_PRECIO = 100
+
+
+def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = False) -> dict | None:
     """
     Empareja un item (precio o atributo) con el producto reconocido mas
     cercano verticalmente arriba, dentro de una tolerancia horizontal de
     400px. Antes se llamaba "_asociar_producto" y solo se usaba para
     precios -- generalizado (22-ago-2026) para reutilizarse tambien con
     atributos.
+
+    admitir_debajo (solo precios): tambien compiten los productos cuyo borde superior
+    esta a la misma altura o debajo del precio, hasta alto_precio + MARGEN_DEBAJO_PRECIO.
+    Gana la menor distancia vertical entre bordes superiores; en empate, el de arriba.
     """
     if not productos:
         return None
 
     item_x = item.get("bbox", {}).get("x", 0)
     item_y = item.get("bbox", {}).get("y", 0)
-    mejor, menor_dist = None, float("inf")
+    limite_debajo = item.get("bbox", {}).get("alto", 0) + MARGEN_DEBAJO_PRECIO
+    mejor, menor_dist, mejor_es_debajo = None, float("inf"), False
 
     for prod in productos:
         prod_bbox = prod.get("bbox", {})
@@ -162,9 +176,17 @@ def asociar_por_cercania(item: dict, productos: list) -> dict | None:
             continue
 
         diff_y = item_y - prod_y
-        if 0 < diff_y < menor_dist:
-            menor_dist = diff_y
-            mejor = prod
+        if not admitir_debajo:
+            if 0 < diff_y < menor_dist:
+                menor_dist, mejor = diff_y, prod
+            continue
+
+        if diff_y <= 0 and -diff_y > limite_debajo:
+            continue
+        es_debajo = diff_y <= 0
+        dist = abs(diff_y)
+        if dist < menor_dist or (dist == menor_dist and mejor_es_debajo and not es_debajo):
+            menor_dist, mejor, mejor_es_debajo = dist, prod, es_debajo
 
     return mejor
 
@@ -216,7 +238,7 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
         if regiones_confiables:
             producto = asociar_producto_por_region(precio, productos, regiones_confiables)
         if producto is None:
-            producto = asociar_por_cercania(precio, productos)
+            producto = asociar_por_cercania(precio, productos, admitir_debajo=True)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
 
     registros_atributo = [
