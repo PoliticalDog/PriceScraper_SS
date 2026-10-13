@@ -362,6 +362,14 @@ class RegexExtractor:
         # ERROR #17 — "1x$33.90 3x$67.80 Ahorras $X" (soriana paquetes)
         # Detecta el patrón Nx$Y repetido — es mecánica de paquete, no precio simple
         re.compile(r"\d+\s*[xX×]\s*[\$5s]\s*\d+[\.,]\d+\s+\d+\s*[xX×]", re.IGNORECASE),
+        # Bonificacion "$10 por cada $50" con el "$" leido s/5/8/{ (12-oct-2026): el patron de
+        # arriba exige "$" literal y el bloque caia en PATRON_PRECIO, que se quedaba con el
+        # monto de compra (la_comer "s25 por cada $100" -> $100, "510 porcada $50" -> $50,
+        # "8250 Por CADA"; HEB "Por cada $1OO de compra" -> $100). El monto es la condicion o
+        # el monedero de la promocion, nunca el precio de un producto. "cada uno/a" (contexto
+        # fuerte de precio, "$15 cada uno") no entra: exige "por cada" + monto o fin de bloque.
+        re.compile(r"(?:^|(?<=\s))[\$sS58{]?\s*\d{1,4}\s*por\s*cada\b(?!\s+un[oa]\b)", re.IGNORECASE),
+        re.compile(r"\bpor\s*cada\s*[\$sS]\s*[\dOoIil]{2,}", re.IGNORECASE),
     ]
 
     PATRONES_PROMO_DEBIL = [
@@ -848,6 +856,8 @@ class RegexExtractor:
         # Igual para la mensualidad: "9MSI" en un bloque y "$77722" a su derecha
         anticipos |= self._detectar_montos_de_rotulo(bloques_pagina, factor_escala,
                                                      self.PATRON_ROTULO_MSI)
+        # Y los puntos, el plazo o la mensualidad junto a "puntos"/"meses sin intereses"
+        anticipos |= self._detectar_cantidades_de_rotulo(bloques_pagina, factor_escala)
 
         # Pre-paso: precios repartidos en 2 bloques adyacentes (entero + centavos,
         # ver _detectar_precios_fusionados). Va ANTES del loop normal porque un
@@ -1495,6 +1505,134 @@ class RegexExtractor:
         r"|(?-i:MS[Il1]))[\W_]*$",
         re.IGNORECASE
     )
+
+    # -- Cantidad de un rotulo de lealtad o de meses sin intereses en un bloque aparte -------
+    # Agregado 12-oct-2026 (evaluador dev, base 20261012_222448_2f616c3; BI: en produccion 109
+    # de 325 registros "msi" tenian de valor un plazo 12/18/24 y 156 de 485 "puntos" eran
+    # plazos o puntos). El OCR lee el rotulo y su cantidad en bloques separados, el rotulo ya
+    # es DESCARTE (2f616c3) y la cantidad pasaba como PRECIO por B-2/B-4/C y se asociaba a
+    # otro nombre vecino. Casos confirmados en imagen:
+    #   - Soriana Hiper 416269 p2-p3: "CON | 50 | PUNTOS" en una linea bajo el precio por kilo
+    #     -> "$50" con "Zanahoria"/"Ataulfo". El 50 son puntos.
+    #   - Soriana Hiper 422326 p8/p14/p15 (insignia morada vertical): "Te regala | 436 |
+    #     puntos | 18 | Meses sin | intereses | $193.89" -> "18" (plazo) y "819389"/"833317"
+    #     (mensualidad leida sin "$") como precios.
+    #   - Chedraui 416057 p7 / 428354 p7: "12" grande a la izquierda de "meses sin"/"intereses";
+    #     Costco 424471 p2 "12 | Meses"; Waldos 421714 p1 "12" sobre "MESES DE".
+    # Geometria: misma tolerancia que el anticipo (GAP_ANTICIPO_MIN/MAX), en la misma linea
+    # (centros alineados) o apilado (traslape horizontal >= mitad del mas angosto).
+    # Que se acepta (lo demas no cambia):
+    #   - "puntos": cantidad SIN "$" a la izquierda o arriba, alto <= 2.5x el rotulo. El precio
+    #     por kilo de Soriana que queda justo encima de "CON 50 PUNTOS" mide 4.5x y no entra.
+    #   - "meses"/"intereses", a la izquierda o arriba: solo un entero que es un plazo usual
+    #     (MESES_MSI), sin limite de alto (el plazo se imprime grande: 86-92 px contra 33-55).
+    #     Un precio real arriba de la leyenda "Meses sin intereses" (Walmart, Chedraui) no es
+    #     un plazo y no cambia; "$12" con simbolo tampoco.
+    #   - "meses"/"intereses", a la derecha o abajo: la mensualidad (cualquier monto), con alto
+    #     <= 2.5x el rotulo, como el anticipo, y solo si hay un plazo suelto a menos de
+    #     DISTANCIA_MAX_CONTEXTO_PRECIO del rotulo (el "18" de la insignia): sin plazo, un precio
+    #     que va justo debajo de una leyenda "Meses sin intereses" no se toca.
+    # NO cubre a proposito: los puntos de la insignia cuando el OCR no lee "puntos" (Soriana
+    # "1,873" sobre el "18"), ni el "$25" gigante de HEB "Ahorra $25 / Por cada $100 de compra"
+    # (rotulo 4x mas chico que el monto: es la geometria del precio grande).
+    PATRON_ROTULO_PUNTOS = re.compile(r"^[\W_]*p[uú][nh]?[tl1][o0][s5][\W_]*$", re.IGNORECASE)
+    PATRON_ROTULO_PLAZO = re.compile(
+        r"^[\W_]*(?:"
+        r"(?:[mh][eéc]s(?:[eéc]s)?\s*(?:s[iíl1][nhm]|de)?\s*)?(?:s[iíl1]n\s*)?i{1,2}nt[eéc]r[eéc]s[eéco]s?"
+        r"|[mh][eéc]s[eéc]s\s*(?:s[iíl1][nhm]|de)?"
+        r")[\W_]*$",
+        re.IGNORECASE
+    )
+    PATRON_ENTERO_PLAZO = re.compile(r"^[\W_]*(\d{1,2})[\W_]*$")
+    ALTO_MAX_CANTIDAD_VS_ROTULO = 2.5
+
+    def _detectar_cantidades_de_rotulo(self, bloques_pagina: list[dict],
+                                       factor_escala: float = 1.0) -> set[int]:
+        """ids de los bloques que son puntos, plazo o mensualidad de un rotulo vecino (ver arriba)."""
+        gap_min = self.GAP_ANTICIPO_MIN * factor_escala
+        gap_max = self.GAP_ANTICIPO_MAX * factor_escala
+        rotulos = []
+        for b in bloques_pagina:
+            if not b.get("bbox"):
+                continue
+            texto = self._limpiar_texto(b.get("texto", ""))
+            if self.PATRON_ROTULO_PUNTOS.match(texto):
+                rotulos.append((b, "puntos"))
+            elif self.PATRON_ROTULO_PLAZO.match(texto):
+                rotulos.append((b, "plazo"))
+        if not rotulos:
+            return set()
+
+        # Solo cuenta el bloque MAS pegado al rotulo por cada lado, sea cual sea su texto: en la
+        # etiqueta "A SOLO $549 / con 50 / puntos" de Soriana (412336 p38) el precio tambien
+        # queda arriba de "puntos" a 22 px, pero el "50" esta en medio a -3 px.
+        cantidades = set()
+        for rotulo, tipo in rotulos:
+            rb = rotulo["bbox"]
+            vecino = {}
+            for otro in bloques_pagina:
+                ob = otro.get("bbox")
+                if otro is rotulo or not ob:
+                    continue
+                lado_gap = self._lado_respecto_a(ob, rb, gap_min, gap_max)
+                if lado_gap and (lado_gap[0] not in vecino or lado_gap[1] < vecino[lado_gap[0]][0]):
+                    vecino[lado_gap[0]] = (lado_gap[1], otro)
+            for lado, (_, otro) in vecino.items():
+                ob = otro["bbox"]
+                texto = self._limpiar_texto(otro.get("texto", ""))
+                if not self.PATRON_MONTO_CUOTA.match(texto):
+                    continue
+                chico = ob["alto"] <= rb["alto"] * self.ALTO_MAX_CANTIDAD_VS_ROTULO
+                antes = lado in ("izquierda", "arriba")
+                if tipo == "puntos":
+                    ok = antes and chico and "$" not in texto
+                elif antes:
+                    ok = self._es_plazo(texto)
+                else:
+                    ok = chico and self._hay_plazo_cerca(rotulo, bloques_pagina, factor_escala)
+                if ok:
+                    cantidades.add(id(otro))
+        return cantidades
+
+    def _es_plazo(self, texto: str) -> bool:
+        m = self.PATRON_ENTERO_PLAZO.match(texto)
+        return bool(m) and int(m.group(1)) in self.MESES_MSI
+
+    def _hay_plazo_cerca(self, rotulo: dict, bloques_pagina: list[dict],
+                         factor_escala: float) -> bool:
+        """True si un plazo suelto ("18", "12") esta a menos de DISTANCIA_MAX_CONTEXTO_PRECIO
+        del rotulo: confirma que el monto de al lado/abajo es la mensualidad de ESE plazo. Sin
+        plazo, un "$949" bajo una leyenda "Meses sin intereses" no se toca."""
+        distancia_max = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
+        return any(
+            b is not rotulo and b.get("bbox")
+            and self._distancia_bbox(rotulo["bbox"], b["bbox"]) <= distancia_max
+            and self._es_plazo(self._limpiar_texto(b.get("texto", "")))
+            for b in bloques_pagina
+        )
+
+    @staticmethod
+    def _lado_respecto_a(ob: dict, rb: dict, gap_min: float,
+                         gap_max: float) -> Optional[tuple[str, float]]:
+        """(lado, separacion) del bloque ob respecto al rotulo rb si estan pegados
+        (misma linea o apilados); None si no."""
+        cy_o, cy_r = ob["y"] + ob["alto"] / 2, rb["y"] + rb["alto"] / 2
+        if abs(cy_o - cy_r) <= max(ob["alto"], rb["alto"]) / 2:
+            gap = rb["x"] - (ob["x"] + ob["ancho"])
+            if gap_min <= gap <= gap_max:
+                return "izquierda", gap
+            gap = ob["x"] - (rb["x"] + rb["ancho"])
+            if gap_min <= gap <= gap_max:
+                return "derecha", gap
+        traslape = min(ob["x"] + ob["ancho"], rb["x"] + rb["ancho"]) - max(ob["x"], rb["x"])
+        if traslape >= min(ob["ancho"], rb["ancho"]) / 2:
+            gap = rb["y"] - (ob["y"] + ob["alto"])
+            if gap_min <= gap <= gap_max:
+                return "arriba", gap
+            gap = ob["y"] - (rb["y"] + rb["alto"])
+            if gap_min <= gap <= gap_max:
+                return "abajo", gap
+        return None
 
     def _detectar_anticipos_apartado(self, bloques_pagina: list[dict],
                                      factor_escala: float = 1.0) -> set[int]:
