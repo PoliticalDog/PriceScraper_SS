@@ -295,6 +295,118 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
     return mejor
 
 
+# -- Unidad de presentacion como ultima linea del nombre ------------------------------
+# Dev 12-oct-2026 (base 20261012_231957_6d0670b; BI: 1,267 registros del dashboard con una
+# unidad como nombre, casa_ley 826): el OCR parte la descripcion de la casilla en un bloque por
+# linea y la ultima suele ser la presentacion ("Elote" / "Dorado" / "Del Monte" / "Carton";
+# "Grano DE" / "DORADO" / "JACQUES 410" / "GRAMOS"). Por cercania gana esa ultima linea, la mas
+# proxima al precio, y el dashboard muestra "Carton". Quitarla (descarte/atributo) solo pasa el
+# precio a la linea anterior ("Envoltura", "JACQUES 410"), otro fragmento. En su lugar, el nombre
+# del registro es la pila de lineas producto contiguas encima de la unidad (misma regla de
+# contiguidad que _continua_otro_bloque) mas la unidad: "en Barra Urio Envoltura carton".
+# Solo bloques que son SOLO la unidad (con cantidad opcional: "25 Piezas", "00 GRAMOS");
+# "Paquete escolar", "Producto Bimbo", "Canon" no entran. Variantes OCR de Carton vistas en
+# produccion: Cartón, Carron, Crton, Garton, Canton, Caron, Canón. Sin linea contigua encima
+# (p. ej. el "1 Pieza" del cintillo GRATIS) el registro no cambia.
+# La pila se corta en una linea que tambien queda justo encima de un bloque de OTRA columna: la
+# banda de seccion de casa_ley ("GUIDADODELAROPALIMPIEZADELHOGAR", y encima "mayoreo" y el titulo
+# "VeRANOde AHoRROS") va pegada sobre los encabezados de dos casillas ("Detergente" y "Jabon").
+# Un corte por ancho (linea > 3x la pila) cortaba nombres legitimos centrados sobre la unidad
+# ("Pan dulce Tia Rosa Cuernitos rebanados," / "piezas", "Recogedor con baston" / "pieza").
+PATRON_UNIDAD_SUELTA = re.compile(
+    r"^[\W_]*(?:\d{1,3}\s*)?(?:"
+    r"(?:[cg]a?r{1,2}t?|[cg]ant)[oóò]n|[cg]a[nñ][óò]n|"
+    r"p[iíl1]ez[ao]s?|pzas?|"
+    r"paq(?:uete)?s?|"
+    r"gr[aá]mos?|productos?|rol{1,2}[oa]s?|"
+    r"variedad(?:es)?(?:\s+d[eaf])?"
+    r")[\W_]*$",
+    re.IGNORECASE,
+)
+MAX_LINEAS_DESCRIPCION = 6
+# Guarda de columna (QA 13-oct-2026): la union solo se aplica si la unidad esta en la columna del
+# precio, es decir, su bbox traslapa en x con el del precio ampliado MARGEN_COLUMNA_UNIDAD_PX por
+# cada lado. Sin guarda, en 4 paginas revisadas fuera de dev/holdout solo 9/36 nombres unidos eran
+# de su propia casilla: el precio ya tomaba la unidad de la columna vecina (|dx| 200-300 px) y la
+# union convertia "Paquete" en "Suavelastic Paquete" para 9 precios ajenos (Huggies incluido), un
+# error creible en vez de basura visible. Margen fijo, no proporcional al ancho del precio: el OCR
+# parte el precio ("$39" + "79", 26 px de ancho) y un margen proporcional se encoge justo ahi.
+# 50 px: casa_ley 422328 p1 "Jabon ... Lirio ... Carton" deja 22 px entre el precio y la burbuja
+# (con 0 px se pierde); la casilla vecina queda a 200+ px. QA: 30 y 50 px dan lo mismo en dev
+# (+7/-0); en produccion, con 50 px se aplica a 313 de 729 uniones y ~9/10 son de su casilla.
+MARGEN_COLUMNA_UNIDAD_PX = 50
+
+
+def es_unidad_suelta(texto: str) -> bool:
+    return bool(PATRON_UNIDAD_SUELTA.match(texto or ""))
+
+
+def _linea_encima(otro: dict, prod: dict) -> bool:
+    """True si `otro` es la linea inmediatamente superior de `prod` (criterio de _continua_otro_bloque)."""
+    b, o = prod.get("bbox", {}), otro.get("bbox", {})
+    x0, x1, y, alto = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0), b.get("y", 0), b.get("alto", 0)
+    separacion = y - (o.get("y", 0) + o.get("alto", 0))
+    traslape_x = min(x1, o.get("x", 0) + o.get("ancho", 0)) - max(x0, o.get("x", 0))
+    return o.get("y", 0) < y and -alto / 2 <= separacion <= alto and traslape_x > 0
+
+
+def unidad_en_columna_del_precio(prod: dict, precio: dict, margen: float = MARGEN_COLUMNA_UNIDAD_PX) -> bool:
+    """True si el bbox de `prod` traslapa en x con el de `precio` ampliado `margen` px por lado."""
+    b, p = prod.get("bbox", {}), precio.get("bbox", {})
+    x0, x1 = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0)
+    px0, px1 = p.get("x", 0) - margen, p.get("x", 0) + p.get("ancho", 0) + margen
+    return min(x1, px1) - max(x0, px0) > 0
+
+
+def _es_banda(otro: dict, lineas: list, productos: list) -> bool:
+    """True si `otro` tambien es la linea de encima de un bloque fuera de la columna de la pila
+    (sin traslape en x con ella): cubre mas de una casilla, asi que no es parte de esta descripcion."""
+    x0 = min(l.get("bbox", {}).get("x", 0) for l in lineas)
+    x1 = max(l.get("bbox", {}).get("x", 0) + l.get("bbox", {}).get("ancho", 0) for l in lineas)
+    for q in productos:
+        if q is otro or any(q is l for l in lineas):
+            continue
+        b = q.get("bbox", {})
+        fuera = b.get("x", 0) >= x1 or b.get("x", 0) + b.get("ancho", 0) <= x0
+        if fuera and _linea_encima(otro, q):
+            return True
+    return False
+
+
+def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -> dict:
+    """Si `prod` es una unidad suelta con lineas contiguas encima, devuelve una copia cuyo nombre es
+    esa pila + la unidad (bbox = union); si no, `prod` tal cual. _idx/_resultado no cambian: la fila
+    PRODUCTO enlazada sigue siendo la de la unidad, solo cambia el nombre que muestra el precio."""
+    if not es_unidad_suelta(prod.get("texto", "")):
+        return prod
+    lineas, actual = [prod], prod
+    while len(lineas) <= MAX_LINEAS_DESCRIPCION:
+        encima = [o for o in productos if all(o is not l for l in lineas) and _linea_encima(o, actual)]
+        if not encima:
+            break
+        siguiente = max(encima, key=lambda o: o.get("bbox", {}).get("y", 0) + o.get("bbox", {}).get("alto", 0))
+        if _es_banda(siguiente, lineas, productos):
+            break
+        actual = siguiente
+        lineas.append(actual)
+    if len(lineas) == 1:
+        return prod
+    lineas.reverse()
+    texto = " ".join(l.get("texto", "").strip() for l in lineas)
+    resultado = normalizador.normalizar(texto)
+    bbs = [l.get("bbox", {}) for l in lineas]
+    x0, y0 = min(b.get("x", 0) for b in bbs), min(b.get("y", 0) for b in bbs)
+    x1 = max(b.get("x", 0) + b.get("ancho", 0) for b in bbs)
+    y1 = max(b.get("y", 0) + b.get("alto", 0) for b in bbs)
+    return {
+        **prod,
+        "texto": texto,
+        "bbox": {"x": x0, "y": y0, "ancho": x1 - x0, "alto": y1 - y0},
+        "_nombre_norm": (resultado.nombre_canonico or texto) if not resultado.descartado else texto,
+        "categoria": resultado.categoria or prod.get("categoria", ""),
+    }
+
+
 # -- Filtro de legibilidad del nombre -----------------------------------------------
 # Desde ecbaa5d, si el canonico no cubre el texto, el dashboard muestra el texto del folleto
 # (metodo "heuristico"). Con OCR ilegible eso llega como "Cansbca", "Chuiea", "BRcRE", "Sskrvih".
@@ -384,6 +496,8 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
         if producto is None:
             producto = asociar_por_cercania(precio, productos, admitir_debajo=True, precios=precios,
                                             alinear_debajo=nombre_debajo)
+        if producto is not None and unidad_en_columna_del_precio(producto, precio):
+            producto = nombre_con_unidad(producto, productos, normalizador)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
 
     registros_atributo = [
