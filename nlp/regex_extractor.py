@@ -550,11 +550,18 @@ class RegexExtractor:
         ),
 
         # -- Palabras sueltas de folleto que pasan isupper() --------------------
+        # Bordes [\W_]* (12-oct-2026, mismo cierre que los rotulos de casilla): el OCR pega
+        # puntuacion o corchetes a la palabra y el bloque se escapaba como PRODUCTO:
+        # waldos "Desde:" (62 bloques fuera del holdout), la_comer "DESDE." / "DESDE ," /
+        # "[DESDE ,", merco "'DESCUENTO" (153). "gratis" y "bonificacion" conservan el anclaje
+        # exacto: con puntuacion ("GRATIS)", "(GRATIS") hoy son PROMO (PATRONES_PROMO_DEBIL) y
+        # deben seguir siendolo.
         re.compile(
-            r"^(?:desde|ahora|antes|sale|rebajado|h[ií]per|kilo|kilos|"
+            r"^[\W_]*(?:desde|ahora|antes|sale|rebajado|h[ií]per|kilo|kilos|"
             r"oferta|ofertas|promocion|promoci[oó]n|exclusivo|exclusiva|"
             r"descuento|descuentos|ahorro|ahorros|vigente|vigentes|"
-            r"temporada|liquidaci[oó]n|especial|gratis|bonificaci[oó]n)$",
+            r"temporada|liquidaci[oó]n|especial)[\W_]*$|"
+            r"^(?:gratis|bonificaci[oó]n)$",
             re.IGNORECASE
         ),
 
@@ -650,7 +657,8 @@ class RegexExtractor:
         # frases de varias palabras que son estructuralmente slogans de
         # marketing (nunca aparecen como fragmento de un nombre de producto).
         re.compile(
-            r"^(?:del\s+ahorro|te\s+regala|"
+            # "te regala" (con variantes OCR) vive ahora en el patron de lealtad, mas abajo
+            r"^(?:del\s+ahorro|"
             r"combina\s+como\s+quieras|los\s+m[aá]s\s+baratos\s+del\s+mercado|"
             r"hasta\s+ac?otar\s+existencias|im[aá]genes\s+ilustrativas|"
             r"al\s+precio\s+m[aá]s\s+bajo\s+siempre)\.?$",
@@ -688,8 +696,76 @@ class RegexExtractor:
             r"[0a]?\s*s[oó]lo|as[ií]\s*lo|"
             r"d[ea]\s+of[ec]r?t[ae]r?|"
             r"ahorr[ao]s?(?:\s+m[aá]s)?|ahara|"
-            r"compra|cada\s+un[oa]|ll[eé]vate|demo|"
+            # "cada" solo (Soriana "CADA", HEB "cada": 120 bloques) y "Llévate" con "y" pegada
+            # o cola OCR ("YLLÉVATE", "'Llevatel", "Llevate más", "LLÉVATELA"), 12-oct-2026
+            r"compra|cada(?:\s+un[oa])?|y?\s*ll[eé]vate(?:l|la|lo)?(?:\s+m[aá]s)?|demo|"
             r"aurrer[aá][a-z_@]?"
+            r")[\W_]*$",
+            re.IGNORECASE
+        ),
+
+        # -- Rotulos de promocion/condicion/financiamiento/lealtad/servicio/vigencia ------
+        # Agregado 12-oct-2026 (BI: 1,662 registros del dashboard de produccion, 5.8%, con una
+        # promo como nombre de producto, todos heuristicos; ver docs/bi/consultas/
+        # promos_como_producto*.sql). El OCR parte la frase ("Meses sin intereses",
+        # "Te regala 300 puntos", "SÚPER PRECIAZO", "Llévate GRATIS 1 Pieza Adicional") en
+        # bloques sueltos; los descartes de arriba exigen la frase completa y exacta, asi que
+        # cada pedazo pasaba _es_probable_producto y la asociacion por cercania lo tomaba como
+        # nombre. Fuera del holdout (bloques PRODUCTO): merco "SÚPER" 1,815 y "PRECIAZO" ~1,400
+        # (con corchetes y mayusculas mezcladas), Soriana "Puntos"/"Puhtos"/"300 puntos" ~800,
+        # "Intereses"/"Intcrcscs"/"Interescs" ~450, "Meses sln"/"Heses sin" ~150, "Teregala"
+        # ~130, casa_ley "Adicional(es)" ~250, chedraui "Envío" 119 y "(no incluye producto de
+        # ambientación)" ~80, merco "ELIGES"/"[COMPRANDO", alsuper "A ESCOGER", waldos
+        # "Exclusivo en waldos com mx", heb "12 al 18 de Junio de 2026"...
+        # Mismo criterio que los rotulos de casilla: anclado al bloque COMPLETO y sin texto
+        # adicional, asi que un nombre real que contiene la palabra no entra: "Súper Value"
+        # (marca de S-Mart), "Hasta 35 horas de batería", "Incluye 2 juegos Astro Bot",
+        # "Crema Facial Protección", "Ellmina puntos de presión", "Talla: 0 - 6 meses".
+        # Digitos solo donde el numero es parte del rotulo: plazo ("12 MESES"), puntos de
+        # lealtad ("'300 puntos") y fechas de vigencia ("Del 03 al 21 de junio 2026").
+        # No toca reglas de precio: _hay_contexto_precio y _hay_producto_cerca leen los
+        # bloques crudos con _es_probable_producto, no con este descarte.
+        re.compile(
+            r"^[\W_]*(?:"
+            # financiamiento: fragmentos de "meses sin intereses" y plazos
+            r"(?:(?:\d{1,2}\s*)?(?:m[eéc]s(?:[eéc]s)?|hes[eé]s)\s*(?:s[iíl1][nhm]|de)?\s*)?"
+            r"(?:s[iíl1]n\s*)?i{1,2}nt[eéc]r[eéc]s[eéco]s|"
+            r"(?:\d{1,2}\s*)?(?:m[eéc]s(?:[eéc]s)?|hes[eé]s)(?:\s*(?:s[iíl1][nhm]|de))?|"
+            r"(?:en\s+\d{1,2}\s+)?quincenas?|quincenal|(?:en\s+)?un\s+s[oó]lo\s+pago|"
+            # lealtad: puntos, "te regala", bonificacion, monedero, ticket
+            r"(?:\d{1,4}\s*)?p[uú][nh]tos?|"
+            r"todas\s+tus\s+compras\s+te\s+dan\s+puntos\w?|"
+            r"[t7g][eoc]\s*regal[aà][lr]?|"
+            # ("de bonificación" no entra: es PROMO por PATRONES_PROMO_DEBIL y debe seguir siendolo)
+            r"(?:te\s*)?bonificamos\s*(?:en\s*tu|t)?|"
+            r"(?:o\s*|(?:en\s*)?tu\s*)?monedero(?:\s+electr[oóá]nico)?|"
+            r"t[il1]cke?ts?(?:\s+d[eø]\s+compra)?|"
+            # precio generico de casilla
+            r"(?:s[uú]per\s*)?p{1,2}r?[a-z]?[eé]?c[iíl1]?a[z2]os?|s[uú]per|"
+            r"hasta|multi\s*ahorro|promos?(?:\s+ahorro)?|"
+            r"\d?prec[iíì]?[oóò]s?(?:\s+re[gq]ular)?|"
+            # condicion de compra
+            r"adicional(?:es|e|s|os|ea)?|eliges|comprando|(?:a\s*)?escoge[rb]|"
+            r"exclusiv[oa]s?\s*(?:(?:en|con)\s*(?:l[ií]nea|t?[if]ienda|"
+            r"\w*\W?\s*co[mr]n?\W?\s*[mr]x(?:\s*y\s*app)?)?)?|"
+            r"(?:no\s*)?incluyen?s?(?:\s*productos?(?:\s*de\s*ambientaci[oó]n)?|\s*rin(?:es)?)?|"
+            # colas sin digitos ni "$": "Aplica ... Mínimo de compra $5,000.00" (chedraui) es un
+            # monto minimo de compra y hoy es PRECIO; queda fuera a proposito (regla de precio)
+            r"de\s*compra(?:\s+(?:en|a)\b[^\d$]*)?|"
+            r"(?:\d?precio\s+|s[oó]lo\s+|no\s+)?apl[ií]ca(?:n|r[aá])?(?:\s+[^\d\s$][^\d$]*)?|"
+            r"(?:aplica\s+en\s+el\s+de\s+)?(?:menor\s+)?pr[eéc]cio\s+qu[eéc]\s+[eéc]l\s*"
+            r"(?:producto\s+)?de\s+compra|"
+            # servicio
+            # ("Envío gratis" no entra: es PROMO por "gratis")
+            r"(?:incluye\s+|\d\s*a[ñn]o\s+de\s+|a[ñn]o\s+de\s+)?env[ií]os?|"
+            r"(?:haz\s+tu\s+)?recargas?(?:\s+tiempo\s+aire)?|"
+            r"(?:al\s+extender\s+)?(?:tu\s+)?garant[ií]a(?:\s+extendida)?|"
+            r"(?:\d{1,2}\s+)?(?:meses\s+de\s+|seguro\s+de\s+)?protecci[oó]n(?:\s+para\s+ni[ñh]o)?|"
+            r"(?:\d{1,2}\s+meses\s+de\s+)?suscripci[oó]n(?:\s+online)?|"
+            # vigencia "Del 03 al 21 de junio 2026" (el patron de arriba exige "del N de")
+            r"(?:del?\s*)?\d{1,2}\s+al\s+\d{1,2}\s+de\s+"
+            r"(?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*"
+            r"(?:\s+(?:de|del)?\s*\d{4})?"
             r")[\W_]*$",
             re.IGNORECASE
         ),
