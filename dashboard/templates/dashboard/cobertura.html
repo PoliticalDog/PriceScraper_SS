@@ -1,0 +1,203 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Cobertura y frescura — PriceScraper{% endblock %}
+
+{% block contenido %}
+<!-- Panel 2: Cobertura y frescura (docs/bi/metricas.md, seccion 2; aprobado 12-oct-2026).
+     Vigencia: unica definicion = v_folletos_vigencia. -->
+<h4 class="mb-2">Cobertura y frescura por tienda</h4>
+<p class="text-muted">¿De qué tiendas hay folletos vigentes hoy, qué tan reciente es lo último capturado y cuánto dato de precio hay detrás?</p>
+
+<div class="row g-3 mb-3" id="kpis"></div>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Tienda</label>
+      <select id="fTienda" multiple hidden></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Serie semanal desde</label>
+      <input type="date" id="fDesde" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Serie semanal hasta</label>
+      <input type="date" id="fHasta" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
+    </div>
+  </div>
+  <div class="form-text">"Hoy" es la fecha del servidor de BD. Sin fechas, la serie muestra las últimas 26 semanas y 30 días adelante.</div>
+</div>
+
+<table id="tablaCobertura" class="table table-striped table-hover w-100"></table>
+
+<div class="accordion my-3" id="accDudosos">
+  <div class="accordion-item">
+    <h2 class="accordion-header">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#panelDudosos">
+        <i class="ti ti-calendar-exclamation me-2"></i> Folletos con fecha dudosa (<span id="nDudosos">0</span>)
+      </button>
+    </h2>
+    <div id="panelDudosos" class="accordion-collapse collapse">
+      <div class="accordion-body">
+        <p class="small text-muted" id="reglasFechas"></p>
+        <table id="tablaDudosos" class="table table-sm table-striped w-100"></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="chart-card">
+  <h6>Folletos por semana de inicio y tienda</h6>
+  <canvas id="chartSemanal" height="110"></canvas>
+  <p class="small text-muted mt-2 mb-0">Excluye folletos con fecha de inicio no confiable. Las caídas también reflejan
+    semanas sin scrapeo, no solo semanas sin publicación.</p>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+const DIAS_AMBAR = 14;
+const DIAS_ROJO = 30;
+const PALETA = ["#4a3aa7", "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"];
+const COLOR_OTRAS = "#b4b4bd";
+const ETIQUETAS_FECHA = {
+  sin_fecha: "Sin fecha",
+  fin_antes_inicio: "Fin antes del inicio",
+  inicio_antiguo: "Inicio antiguo",
+  inicio_futuro_vs_scrapeo: "Inicio futuro vs. scrapeo",
+  vigencia_larga: "Vigencia larga",
+};
+
+function tarjetaKpi(icono, valor, etiqueta, nota = "") {
+  return `
+    <div class="col-6 col-lg-3">
+      <div class="card kpi-card p-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="kpi-icono"><i class="ti ${icono}"></i></div>
+          <div>
+            <div class="kpi-valor">${valor}</div>
+            <div class="kpi-etiqueta">${etiqueta}</div>
+            ${nota ? `<div class="small text-muted">${nota}</div>` : ""}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function diasRender(dias, tipo) {
+  if (tipo !== "display") return dias ?? 99999;
+  if (dias === null || dias === undefined) return "—";
+  if (dias > DIAS_ROJO) return `<i class="ti ti-alert-triangle text-danger"></i> ${dias}`;
+  if (dias > DIAS_AMBAR) return `<i class="ti ti-alert-circle text-warning"></i> ${dias}`;
+  return dias;
+}
+
+async function cargarTabla() {
+  const tienda = valoresSeleccionados(document.getElementById("fTienda"));
+  const datos = await fetchJSON(`/api/cobertura${qs({ tienda })}`);
+  const k = datos.kpis || {};
+  const u = datos.umbrales || {};
+
+  document.getElementById("kpis").innerHTML = [
+    tarjetaKpi("ti-building-store", `${k.tiendas_con_vigente ?? 0}/${k.tiendas ?? 0}`, "Tiendas con folleto vigente"),
+    tarjetaKpi("ti-calendar-check", (k.folletos_vigentes ?? 0).toLocaleString("es-MX"), "Folletos vigentes hoy",
+      `+${k.vigentes_fecha_dudosa ?? 0} con fecha dudosa · ${k.proximos ?? 0} próximos`),
+    tarjetaKpi("ti-currency-dollar", (k.precios_vigentes ?? 0).toLocaleString("es-MX"), "Precios en folletos vigentes",
+      `${(k.paginas_vigentes ?? 0).toLocaleString("es-MX")} páginas`),
+    tarjetaKpi("ti-cloud-download", k.ultimo_scrapeo ?? "—", "Último scrapeo"),
+  ].join("");
+
+  document.getElementById("reglasFechas").textContent =
+    `Reglas (en orden): sin fecha; fin antes del inicio; inicio antiguo (más de ${u.dias_inicio_antiguo} días antes del scrapeo); ` +
+    `inicio futuro (más de ${u.dias_inicio_futuro} días después del scrapeo); vigencia larga (más de ${u.dias_vigencia_larga} días). ` +
+    "Solo se etiquetan, no se corrigen. Los vigentes con fecha dudosa se muestran aparte y no se suman.";
+
+  const num = (v, t) => (t === "display" ? (v ?? 0).toLocaleString("es-MX") : v);
+  renderTabla("#tablaCobertura", datos.filas || [], [
+    { data: "tienda", title: "Tienda", render: (v) => escaparHtml(v) },
+    { data: "folletos_vigentes", title: "Vigentes", render: num },
+    { data: "vigentes_fecha_dudosa", title: "Fecha dudosa", render: num },
+    { data: "proximos", title: "Próximos", render: num },
+    { data: "fecha_ultimo_folleto", title: "Último folleto", render: (v) => v ?? "—" },
+    { data: "dias_desde_ultimo", title: "Días", render: diasRender },
+    { data: "ultimo_scrapeo", title: "Último scrapeo", render: (v) => v ?? "—" },
+    { data: "paginas_vigentes", title: "Págs. vigentes", render: num },
+    { data: "paginas_vig_con_precio", title: "Págs. con precio", render: num },
+    { data: "precios_vigentes", title: "Precios vigentes", render: num },
+    { data: "folletos_total", title: "Folletos (total)", render: num },
+    {
+      data: "errores_abiertos", title: "Errores abiertos",
+      render: (v, t) => (t === "display" && v > 0 ? `<i class="ti ti-file-alert text-danger"></i> ${v}` : v),
+    },
+  ], { order: [[1, "desc"], [5, "asc"]] });
+
+  const dudosos = datos.dudosos || [];
+  document.getElementById("nDudosos").textContent = dudosos.length;
+  renderTabla("#tablaDudosos", dudosos, [
+    { data: "tienda", title: "Tienda", render: (v) => escaparHtml(v) },
+    { data: "folleto_id_fuente", title: "Folleto", render: (v) => escaparHtml(v) },
+    { data: "titulo", title: "Título", render: (v) => escaparHtml(v) },
+    { data: "fecha_inicio", title: "Inicio" },
+    { data: "fecha_fin", title: "Fin" },
+    { data: "scrapeado", title: "Scrapeado" },
+    { data: "anomalia_fecha", title: "Etiqueta", render: (v) => escaparHtml(ETIQUETAS_FECHA[v] || v) },
+    { data: "vigente_dudoso", title: "En rango hoy", render: (v) => (v ? "Sí" : "No") },
+  ], { pageLength: 10 });
+}
+
+async function cargarSerie() {
+  const params = {
+    tienda: valoresSeleccionados(document.getElementById("fTienda")),
+    desde: document.getElementById("fDesde").value,
+    hasta: document.getElementById("fHasta").value,
+  };
+  const filas = await fetchJSON(`/api/cobertura/semanal${qs(params)}`);
+  const semanas = [...new Set(filas.map((f) => f.semana))].sort();
+
+  // 7 tiendas con mas folletos en el rango con color propio; el resto en "Otras" (la paleta no se cicla).
+  const totales = {};
+  filas.forEach((f) => { totales[f.tienda] = (totales[f.tienda] || 0) + f.folletos; });
+  const top = Object.entries(totales).sort((a, b) => b[1] - a[1]).slice(0, PALETA.length).map((e) => e[0]);
+  const series = {};
+  filas.forEach((f) => {
+    const nombre = top.includes(f.tienda) ? f.tienda : "Otras";
+    series[nombre] = series[nombre] || {};
+    series[nombre][f.semana] = (series[nombre][f.semana] || 0) + f.folletos;
+  });
+  const orden = [...top, ...(series["Otras"] ? ["Otras"] : [])];
+
+  renderChart("chartSemanal", {
+    type: "bar",
+    data: {
+      labels: semanas,
+      datasets: orden.map((nombre, i) => ({
+        label: nombre,
+        data: semanas.map((s) => series[nombre][s] || 0),
+        backgroundColor: nombre === "Otras" ? COLOR_OTRAS : PALETA[i],
+      })),
+    },
+    options: {
+      scales: {
+        x: { stacked: true, title: { display: true, text: "Semana (lunes)" } },
+        y: { stacked: true, title: { display: true, text: "Folletos" }, ticks: { precision: 0 } },
+      },
+    },
+  });
+}
+
+async function cargarFiltros() {
+  const tiendas = await fetchJSON("/api/filtros/tiendas");
+  crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
+}
+
+function cargarTodo() {
+  cargarTabla();
+  cargarSerie();
+}
+
+document.getElementById("btnAplicar").addEventListener("click", cargarTodo);
+cargarFiltros().then(cargarTodo);
+</script>
+{% endblock %}

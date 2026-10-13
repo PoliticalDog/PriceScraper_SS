@@ -269,6 +269,31 @@ class VHistoricoPrecios(models.Model):
         db_table = "v_historico_precios"
 
 
+class VFolletosVigencia(models.Model):
+    # Una fila por folleto (id = folletos.id). Unica definicion de "vigente" del dashboard
+    # (cobertura, resumen). anomalia_fecha: sin_fecha | fin_antes_inicio | inicio_antiguo |
+    # inicio_futuro_vs_scrapeo | vigencia_larga | NULL (umbrales 365/30/120 dias en la vista).
+    id = models.IntegerField(primary_key=True)
+    tienda_id = models.IntegerField()
+    tienda_slug = models.CharField(max_length=60)
+    tienda = models.CharField(max_length=100)
+    fuente = models.CharField(max_length=20)
+    folleto_id_fuente = models.CharField(max_length=30)
+    titulo = models.CharField(max_length=200, null=True)
+    fecha_inicio = models.DateField(null=True)
+    fecha_fin = models.DateField(null=True)
+    scrapeado_at = models.DateTimeField(null=True)
+    total_paginas = models.IntegerField(null=True)
+    anomalia_fecha = models.CharField(max_length=30, null=True)
+    vigente = models.BooleanField(null=True)
+    vigente_dudoso = models.BooleanField(null=True)
+    proximo = models.BooleanField(null=True)
+
+    class Meta:
+        managed = False
+        db_table = "v_folletos_vigencia"
+
+
 class VEventosActivos(models.Model):
     id = models.IntegerField(primary_key=True)
     nombre_evento = models.CharField(max_length=100)

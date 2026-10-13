@@ -2,8 +2,10 @@
 
 from typing import Optional
 
+from django.db import connection
 from django.db.models import Count, F, Max, Q
 
+from dashboard import confiabilidad
 from dashboard.models import (
     ErrorCarga,
     Extraccion,
@@ -13,6 +15,7 @@ from dashboard.models import (
     VCalidadPipeline,
     VComparativaPrecios,
     VEventosActivos,
+    VFolletosVigencia,
     VHistoricoPrecios,
     VPreciosActuales,
 )
@@ -21,6 +24,14 @@ from dashboard.models import (
 def _num(valor):
     """Castea Decimal/None a float, para que el JSON de salida sea numero."""
     return float(valor) if valor is not None else None
+
+
+def _filas_sql(sql: str, params: dict) -> list[dict]:
+    """Ejecuta un SELECT de solo lectura y devuelve una lista de dicts."""
+    with connection.cursor() as cur:
+        cur.execute(sql, params)
+        columnas = [c[0] for c in cur.description]
+        return [dict(zip(columnas, fila)) for fila in cur.fetchall()]
 
 
 # -- Filtros compartidos ------------------------------------------------------
@@ -45,11 +56,21 @@ def listar_categorias() -> list[str]:
 # -- Resumen (home) -----------------------------------------------------------
 
 def resumen_kpis() -> dict:
+    # Corregido 12-oct-2026 (aprobado por la persona, docs/bi/metricas.md "3. KPIs del Resumen"):
+    # - "productos_con_precio" contaba PRECIO con valor (28,867) e incluia filas sin texto_norm que ningun
+    #   panel muestra; ahora son los registros del dashboard = v_precios_actuales (28,634).
+    # - "folleto_mas_reciente" (MAX(fecha_inicio)) mostraba 2026-12-25 por fechas anomalas; se reemplaza por
+    #   folletos vigentes hoy segun v_folletos_vigencia (unica definicion de vigencia).
+    vigencia = VFolletosVigencia.objects.aggregate(
+        vigentes=Count("id", filter=Q(vigente=True)),
+        dudosos=Count("id", filter=Q(vigente_dudoso=True)),
+    )
     return {
         "tiendas_activas": Tienda.objects.filter(activa=True).count(),
         "total_folletos": Folleto.objects.count(),
-        "productos_con_precio": Extraccion.objects.filter(tipo="PRECIO", valor__isnull=False).count(),
-        "folleto_mas_reciente": Folleto.objects.aggregate(m=Max("fecha_inicio"))["m"],
+        "registros_dashboard": VPreciosActuales.objects.count(),
+        "folletos_vigentes": vigencia["vigentes"],
+        "folletos_vigentes_dudosos": vigencia["dudosos"],
     }
 
 
@@ -219,6 +240,228 @@ def calidad_pipeline(
         f["confianza_ocr_prom"] = _num(f["confianza_ocr_prom"])
         f["tasa_util_prom"] = _num(f["tasa_util_prom"])
     return filas
+
+
+# -- Confiabilidad del dato por tienda (Panel 1, docs/bi/metricas.md seccion 1) ----------
+# Parte BD = docs/bi/consultas/confiabilidad_por_tienda.sql con filtros. Grano: tienda (todas, aunque no tengan
+# registros). PRECIO -> PRODUCTO (producto_extraccion_id) es N:1: no duplica filas de PRECIO. metodo_norm vive en
+# la fila PRODUCTO. Sin exclusiones: describe el dato tal como lo ve el dashboard.
+_SQL_CONFIABILIDAD = """
+WITH base AS (
+    SELECT e.id, e.tienda_id, e.folleto_id, e.pagina_id, e.texto_norm, e.valor, e.confianza_ocr,
+           e.categoria_nlp, p.metodo_norm
+    FROM extracciones e
+    JOIN extracciones p ON p.id = e.producto_extraccion_id
+    JOIN folletos f ON f.id = e.folleto_id
+    WHERE e.tipo = 'PRECIO' AND e.valor IS NOT NULL AND e.texto_norm IS NOT NULL
+      AND (%(desde)s::date IS NULL OR f.fecha_inicio >= %(desde)s::date)
+      AND (%(hasta)s::date IS NULL OR f.fecha_inicio <= %(hasta)s::date)
+),
+dup AS (
+    SELECT tienda_id, SUM(n - 1)::bigint AS sobrantes
+    FROM (SELECT tienda_id, folleto_id, pagina_id, texto_norm, valor, COUNT(*) AS n
+          FROM base GROUP BY 1, 2, 3, 4, 5 HAVING COUNT(*) > 1) d
+    GROUP BY tienda_id
+),
+agg AS (
+    SELECT tienda_id,
+           COUNT(*)                                                                 AS registros,
+           COUNT(*) FILTER (WHERE metodo_norm IN ('exacto', 'fuzzy', 'fuzzy_bajo')) AS reg_catalogo,
+           COUNT(*) FILTER (WHERE metodo_norm = 'heuristico')                       AS reg_heuristico,
+           COUNT(*) FILTER (WHERE COALESCE(categoria_nlp, '') = '')                 AS reg_sin_categoria,
+           COUNT(*) FILTER (WHERE valor < 1 OR valor > 100000)                      AS reg_atipicos,
+           AVG(confianza_ocr)                                                       AS conf_ocr_media,
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY confianza_ocr)               AS conf_ocr_mediana,
+           COUNT(DISTINCT folleto_id)                                               AS folletos
+    FROM base GROUP BY tienda_id
+)
+SELECT t.slug                                                                     AS tienda_slug,
+       t.nombre                                                                   AS tienda,
+       COALESCE(a.registros, 0)                                                   AS registros,
+       COALESCE(a.reg_catalogo, 0)                                                AS reg_catalogo,
+       COALESCE(a.reg_sin_categoria, 0)                                           AS reg_sin_categoria,
+       COALESCE(a.folletos, 0)                                                    AS folletos_con_precio,
+       ROUND(100.0 * a.reg_catalogo      / NULLIF(a.registros, 0), 1)::float8     AS pct_catalogo,
+       ROUND(100.0 * a.reg_heuristico    / NULLIF(a.registros, 0), 1)::float8     AS pct_heuristico,
+       ROUND(100.0 * a.reg_sin_categoria / NULLIF(a.registros, 0), 1)::float8     AS pct_sin_categoria,
+       ROUND(a.conf_ocr_media::numeric, 3)::float8                                AS conf_ocr_media,
+       ROUND(a.conf_ocr_mediana::numeric, 3)::float8                              AS conf_ocr_mediana,
+       ROUND(100.0 * COALESCE(d.sobrantes, 0) / NULLIF(a.registros, 0), 1)::float8 AS pct_duplicados,
+       COALESCE(a.reg_atipicos, 0)                                                AS atipicos
+FROM tiendas t
+LEFT JOIN agg a ON a.tienda_id = t.id
+LEFT JOIN dup d ON d.tienda_id = t.id
+WHERE (%(tiendas)s::text[] IS NULL OR t.nombre = ANY(%(tiendas)s::text[]))
+ORDER BY registros DESC, t.nombre
+"""
+
+
+def confiabilidad_por_tienda(
+    tiendas: Optional[list[str]] = None,
+    desde: Optional[str] = None,
+    hasta: Optional[str] = None,
+) -> dict:
+    filas = _filas_sql(_SQL_CONFIABILIDAD, {"tiendas": tiendas or None, "desde": desde, "hasta": hasta})
+    corrida = confiabilidad.corrida_vigente()
+    total = sum(f["registros"] for f in filas)
+    catalogo = sum(f["reg_catalogo"] for f in filas)
+    sin_categoria = sum(f["reg_sin_categoria"] for f in filas)
+    return {
+        "corrida": confiabilidad.info_corrida(corrida),
+        "totales": {
+            "registros": total,
+            "pct_catalogo": round(100.0 * catalogo / total, 1) if total else None,
+            "pct_heuristico": round(100.0 * (total - catalogo) / total, 1) if total else None,
+            "pct_sin_categoria": round(100.0 * sin_categoria / total, 1) if total else None,
+        },
+        "umbrales": {
+            "registros_minimos": confiabilidad.UMBRAL_REGISTROS_MINIMOS,
+            "precision_media": confiabilidad.UMBRAL_PRECISION_MEDIA,
+            "precision_aceptable": confiabilidad.UMBRAL_PRECISION_ACEPTABLE,
+            "ic95_inferior_aceptable": confiabilidad.UMBRAL_IC95_INFERIOR_ACEPTABLE,
+            "pct_catalogo_base_heuristica": confiabilidad.UMBRAL_PCT_CATALOGO_BASE_HEURISTICA,
+        },
+        "filas": confiabilidad.unir_confiabilidad(filas, corrida),
+    }
+
+
+# -- Cobertura y frescura (Panel 2, docs/bi/metricas.md seccion 2) --------------------------
+# Vigencia: UNICA definicion = v_folletos_vigencia (load/vistas.sql). Los umbrales viven en la vista; estas
+# constantes los replican solo para mostrarlos en el panel y documentarlos (si cambia la vista, cambiarlas aqui).
+DIAS_INICIO_ANTIGUO = 365        # fecha_inicio < scrapeado_at - 365 dias -> inicio_antiguo
+DIAS_INICIO_FUTURO = 30          # fecha_inicio > scrapeado_at + 30 dias  -> inicio_futuro_vs_scrapeo
+DIAS_VIGENCIA_LARGA = 120        # fecha_fin - fecha_inicio > 120 dias    -> vigencia_larga
+# Etiquetas cuya fecha de INICIO no es confiable: se excluyen de "ultimo folleto" y de la serie semanal.
+# vigencia_larga si cuenta (su inicio es plausible; lo dudoso es el fin).
+ANOMALIAS_INICIO_NO_CONFIABLE = ("sin_fecha", "fin_antes_inicio", "inicio_antiguo", "inicio_futuro_vs_scrapeo")
+# Serie semanal por defecto: ultimas 26 semanas hasta 30 dias adelante (incluye proximos).
+DIAS_SERIE_ATRAS = 182
+DIAS_SERIE_ADELANTE = 30
+
+# paginas y extracciones se agregan a grano folleto POR SEPARADO antes de unir (unirlas directo multiplicaria
+# paginas x precios). errores_carga no tiene FK: se une por tienda_slug.
+_SQL_COBERTURA = """
+WITH pag AS (
+    SELECT folleto_id, COUNT(*) AS paginas, COUNT(*) FILTER (WHERE total_precios > 0) AS paginas_con_precio
+    FROM paginas GROUP BY folleto_id
+),
+pre AS (
+    SELECT folleto_id, COUNT(*) AS precios
+    FROM extracciones
+    WHERE tipo = 'PRECIO' AND valor IS NOT NULL AND texto_norm IS NOT NULL
+    GROUP BY folleto_id
+),
+err AS (
+    SELECT tienda_slug, COUNT(*) FILTER (WHERE NOT resuelto) AS abiertos, COUNT(*) AS total
+    FROM errores_carga GROUP BY tienda_slug
+),
+x AS (
+    SELECT v.tienda_id,
+           COUNT(*)                                                     AS folletos_total,
+           COUNT(*) FILTER (WHERE v.vigente)                            AS folletos_vigentes,
+           COUNT(*) FILTER (WHERE v.vigente_dudoso)                     AS vigentes_fecha_dudosa,
+           COUNT(*) FILTER (WHERE v.proximo)                            AS proximos,
+           COUNT(*) FILTER (WHERE v.anomalia_fecha IS NOT NULL)         AS folletos_fecha_anomala,
+           MAX(v.fecha_inicio) FILTER (WHERE v.fecha_inicio <= CURRENT_DATE
+                 AND (v.anomalia_fecha IS NULL OR v.anomalia_fecha <> ALL(%(anom)s::text[])))
+                                                                        AS fecha_ultimo_folleto,
+           MAX(v.scrapeado_at)                                          AS ultimo_scrapeo,
+           -- ::bigint: SUM de un COUNT es numeric y Django lo serializaria como texto en el JSON
+           SUM(COALESCE(p.paginas, 0))::bigint                                  AS paginas_total,
+           SUM(COALESCE(p.paginas, 0)) FILTER (WHERE v.vigente)::bigint         AS paginas_vigentes,
+           SUM(COALESCE(p.paginas_con_precio, 0)) FILTER (WHERE v.vigente)::bigint AS paginas_vig_con_precio,
+           SUM(COALESCE(r.precios, 0)) FILTER (WHERE v.vigente)::bigint         AS precios_vigentes,
+           SUM(COALESCE(r.precios, 0))::bigint                                  AS precios_total
+    FROM v_folletos_vigencia v
+    LEFT JOIN pag p ON p.folleto_id = v.id
+    LEFT JOIN pre r ON r.folleto_id = v.id
+    GROUP BY v.tienda_id
+)
+SELECT t.slug                                         AS tienda_slug,
+       t.nombre                                       AS tienda,
+       COALESCE(x.folletos_total, 0)                  AS folletos_total,
+       COALESCE(x.folletos_vigentes, 0)               AS folletos_vigentes,
+       COALESCE(x.vigentes_fecha_dudosa, 0)           AS vigentes_fecha_dudosa,
+       COALESCE(x.proximos, 0)                        AS proximos,
+       x.fecha_ultimo_folleto,
+       CURRENT_DATE - x.fecha_ultimo_folleto          AS dias_desde_ultimo,
+       x.ultimo_scrapeo::date                         AS ultimo_scrapeo,
+       COALESCE(x.paginas_vigentes, 0)                AS paginas_vigentes,
+       COALESCE(x.paginas_vig_con_precio, 0)          AS paginas_vig_con_precio,
+       COALESCE(x.precios_vigentes, 0)                AS precios_vigentes,
+       COALESCE(x.paginas_total, 0)                   AS paginas_total,
+       COALESCE(x.precios_total, 0)                   AS precios_total,
+       COALESCE(x.folletos_fecha_anomala, 0)          AS folletos_fecha_anomala,
+       COALESCE(e.abiertos, 0)                        AS errores_abiertos,
+       COALESCE(e.total, 0)                           AS errores_total
+FROM tiendas t
+LEFT JOIN x   ON x.tienda_id = t.id
+LEFT JOIN err e ON e.tienda_slug = t.slug
+WHERE (%(tiendas)s::text[] IS NULL OR t.nombre = ANY(%(tiendas)s::text[]))
+ORDER BY folletos_vigentes DESC, dias_desde_ultimo NULLS LAST, t.nombre
+"""
+
+_SQL_FOLLETOS_SEMANA = """
+SELECT DATE_TRUNC('week', v.fecha_inicio)::date AS semana,
+       v.tienda                                  AS tienda,
+       COUNT(*)                                  AS folletos
+FROM v_folletos_vigencia v
+WHERE (v.anomalia_fecha IS NULL OR v.anomalia_fecha <> ALL(%(anom)s::text[]))
+  AND v.fecha_inicio >= COALESCE(%(desde)s::date, CURRENT_DATE - %(atras)s::int)
+  AND v.fecha_inicio <= COALESCE(%(hasta)s::date, CURRENT_DATE + %(adelante)s::int)
+  AND (%(tiendas)s::text[] IS NULL OR v.tienda = ANY(%(tiendas)s::text[]))
+GROUP BY 1, 2
+ORDER BY 1, 2
+"""
+
+_SQL_FOLLETOS_DUDOSOS = """
+SELECT v.tienda, v.folleto_id_fuente, v.fuente, v.titulo, v.fecha_inicio, v.fecha_fin,
+       v.scrapeado_at::date AS scrapeado, v.anomalia_fecha, v.vigente_dudoso
+FROM v_folletos_vigencia v
+WHERE v.anomalia_fecha IS NOT NULL
+  AND (%(tiendas)s::text[] IS NULL OR v.tienda = ANY(%(tiendas)s::text[]))
+ORDER BY v.anomalia_fecha, v.tienda, v.fecha_inicio
+"""
+
+
+def cobertura_por_tienda(tiendas: Optional[list[str]] = None) -> dict:
+    params = {"tiendas": tiendas or None, "anom": list(ANOMALIAS_INICIO_NO_CONFIABLE)}
+    filas = _filas_sql(_SQL_COBERTURA, params)
+    ultimo_scrapeo = max((f["ultimo_scrapeo"] for f in filas if f["ultimo_scrapeo"]), default=None)
+    return {
+        "kpis": {
+            "tiendas": len(filas),
+            "tiendas_con_vigente": sum(1 for f in filas if f["folletos_vigentes"]),
+            "folletos_vigentes": sum(f["folletos_vigentes"] for f in filas),
+            "vigentes_fecha_dudosa": sum(f["vigentes_fecha_dudosa"] for f in filas),
+            "proximos": sum(f["proximos"] for f in filas),
+            "precios_vigentes": sum(f["precios_vigentes"] for f in filas),
+            "paginas_vigentes": sum(f["paginas_vigentes"] for f in filas),
+            "ultimo_scrapeo": ultimo_scrapeo,
+        },
+        "umbrales": {
+            "dias_inicio_antiguo": DIAS_INICIO_ANTIGUO,
+            "dias_inicio_futuro": DIAS_INICIO_FUTURO,
+            "dias_vigencia_larga": DIAS_VIGENCIA_LARGA,
+        },
+        "filas": filas,
+        "dudosos": _filas_sql(_SQL_FOLLETOS_DUDOSOS, {"tiendas": tiendas or None}),
+    }
+
+
+def folletos_por_semana(
+    tiendas: Optional[list[str]] = None,
+    desde: Optional[str] = None,
+    hasta: Optional[str] = None,
+) -> list[dict]:
+    return _filas_sql(_SQL_FOLLETOS_SEMANA, {
+        "tiendas": tiendas or None,
+        "anom": list(ANOMALIAS_INICIO_NO_CONFIABLE),
+        "desde": desde,
+        "hasta": hasta,
+        "atras": DIAS_SERIE_ATRAS,
+        "adelante": DIAS_SERIE_ADELANTE,
+    })
 
 
 # -- Explorador crudo de la BD (sin agregaciones de negocio) --------------------

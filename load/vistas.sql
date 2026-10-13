@@ -135,6 +135,54 @@ COMMENT ON VIEW v_historico_precios IS
     'Base para gráficas de tendencia en el dashboard.';
 
 
+-- v_folletos_vigencia
+-- Una fila por folleto con su vigencia y una etiqueta de fecha dudosa (12-oct-2026, panel de cobertura).
+-- Unica definicion de "vigente" para el dashboard (cobertura, precios actuales, resumen). No corrige fechas:
+-- solo etiqueta, en este orden de precedencia:
+--   sin_fecha                fecha_inicio o fecha_fin NULL
+--   fin_antes_inicio         fecha_fin < fecha_inicio
+--   inicio_antiguo           fecha_inicio < scrapeado_at - 365 dias   (ej. soriana_hiper 430896, 2022-09-01)
+--   inicio_futuro_vs_scrapeo fecha_inicio > scrapeado_at + 30 dias    (ej. waldos con inicio 25-dic scrapeado en oct)
+--   vigencia_larga           fecha_fin - fecha_inicio > 120 dias      (ej. bodega_aurrera "todo el anio")
+-- vigente        = sin etiqueta y fecha_inicio <= hoy <= fecha_fin
+-- vigente_dudoso = con etiqueta y en rango (se muestra aparte, no se suma a vigente)
+-- proximo        = sin etiqueta y fecha_inicio > hoy
+-- Validacion al crearla: 52 vigentes, 16 vigentes con fecha dudosa, 2 proximos (12-oct-2026).
+CREATE OR REPLACE VIEW v_folletos_vigencia AS
+WITH fol AS (
+    SELECT
+        f.id,
+        f.tienda_id,
+        t.slug          AS tienda_slug,
+        t.nombre        AS tienda,
+        f.fuente,
+        f.folleto_id_fuente,
+        f.titulo,
+        f.fecha_inicio,
+        f.fecha_fin,
+        f.scrapeado_at,
+        f.total_paginas,
+        CASE
+            WHEN f.fecha_inicio IS NULL OR f.fecha_fin IS NULL        THEN 'sin_fecha'
+            WHEN f.fecha_fin < f.fecha_inicio                         THEN 'fin_antes_inicio'
+            WHEN f.fecha_inicio < f.scrapeado_at::date - 365          THEN 'inicio_antiguo'
+            WHEN f.fecha_inicio > f.scrapeado_at::date + 30           THEN 'inicio_futuro_vs_scrapeo'
+            WHEN f.fecha_fin - f.fecha_inicio > 120                   THEN 'vigencia_larga'
+        END             AS anomalia_fecha
+    FROM folletos f
+    JOIN tiendas t ON t.id = f.tienda_id
+)
+SELECT
+    fol.*,
+    (anomalia_fecha IS NULL     AND fecha_inicio <= CURRENT_DATE AND fecha_fin >= CURRENT_DATE) AS vigente,
+    (anomalia_fecha IS NOT NULL AND fecha_inicio <= CURRENT_DATE AND fecha_fin >= CURRENT_DATE) AS vigente_dudoso,
+    (anomalia_fecha IS NULL     AND fecha_inicio > CURRENT_DATE)                                AS proximo
+FROM fol;
+
+COMMENT ON VIEW v_folletos_vigencia IS
+    'Vigencia por folleto con etiqueta de fecha dudosa (anomalia_fecha). Unica definicion de vigente para el dashboard.';
+
+
 -- v_eventos_activos
 -- Campañas promocionales vigentes hoy.
 -- "id" agregado 23-ago-2026 -- MIN(ep.id), NO ep.id en el GROUP BY: un primer

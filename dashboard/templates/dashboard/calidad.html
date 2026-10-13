@@ -2,6 +2,62 @@
 {% block titulo %}Calidad del pipeline — PriceScraper{% endblock %}
 
 {% block contenido %}
+<!-- Panel 1: Confiabilidad del dato por tienda (docs/bi/metricas.md, seccion 1; aprobado 12-oct-2026) -->
+<h4 class="mb-2">Confiabilidad del dato por tienda</h4>
+<p class="text-muted mb-2">¿Qué tan confiable es lo que el dashboard muestra como "precio de un producto" en cada tienda?</p>
+<div id="confCorrida" class="small text-muted mb-2"></div>
+<div id="confAviso" class="alert alert-warning py-2 small" role="alert"></div>
+
+<div class="filtros-card">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Tienda</label>
+      <select id="fConfTienda" multiple hidden></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Folletos desde (inicio)</label>
+      <input type="date" id="fConfDesde" class="form-control">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Folletos hasta (inicio)</label>
+      <input type="date" id="fConfHasta" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" id="btnConfAplicar">Aplicar</button>
+    </div>
+  </div>
+  <div class="form-text">El filtro de fechas aplica a los datos de la BD; las métricas del evaluador son las de la corrida.</div>
+</div>
+
+<table id="tablaConfiabilidad" class="table table-striped table-hover w-100"></table>
+
+<div class="row g-3 my-3">
+  <div class="col-lg-6">
+    <div class="chart-card">
+      <h6>Precisión medida por tienda (barra = IC95, punto = precisión)</h6>
+      <canvas id="chartPrecision" height="280"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="chart-card">
+      <h6>Origen del nombre de producto en los registros (% catálogo vs heurístico)</h6>
+      <canvas id="chartOrigen" height="280"></canvas>
+    </div>
+  </div>
+</div>
+<p class="small text-muted">
+  Etiqueta (solo con la precisión del evaluador, relativa): <b>Sin medir</b> sin artículos con precio en el GT ·
+  <b>Muestra insuficiente</b> &lt; <span class="umbral" data-u="registros_minimos"></span> registros evaluados ·
+  <b>Baja</b> precisión &lt; <span class="umbral" data-u="precision_media" data-pct="1"></span> ·
+  <b>Media</b> entre ambos umbrales ·
+  <b>Aceptable</b> precisión ≥ <span class="umbral" data-u="precision_aceptable" data-pct="1"></span> y IC95 inferior ≥
+  <span class="umbral" data-u="ic95_inferior_aceptable" data-pct="1"></span>.
+  <b>Base heurística</b>: menos de <span class="umbral" data-u="pct_catalogo_base_heuristica" data-sufijo="%"></span>
+  de los registros tienen producto de catálogo; sus nombres no sirven para comparar entre tiendas.
+</p>
+
+<hr class="my-4">
+
 <h4 class="mb-3">Calidad del pipeline OCR+NLP</h4>
 <p class="text-muted">Uso operativo: detectar folletos con baja tasa útil o confianza OCR baja.</p>
 
@@ -95,6 +151,155 @@ async function cargarTabla() {
     },
   });
 }
+
+// ---- Panel 1: confiabilidad por tienda ----
+const ERRORES_LEGIBLES = {
+  precio_mal_leido: "Precio mal leído",
+  asociacion_producto: "Asociación de producto",
+  precio_huerfano: "Precio sin producto",
+  asociacion_antes: "Precio anterior",
+  promo_como_producto: "Promo como producto",
+  duplicado: "Duplicado",
+};
+
+// Color de estado siempre con icono + texto (regla dataviz).
+const ETIQUETAS = {
+  "Aceptable": '<i class="ti ti-circle-check text-success"></i> Aceptable',
+  "Media": '<i class="ti ti-alert-circle text-warning"></i> Media',
+  "Baja": '<i class="ti ti-alert-triangle text-danger"></i> Baja',
+  "Muestra insuficiente": '<i class="ti ti-help-circle text-secondary"></i> Muestra insuficiente',
+  "Sin medir": '<i class="ti ti-minus text-muted"></i> Sin medir',
+};
+
+const pct01 = (v) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(1)}%`);
+
+function pintarUmbrales(u) {
+  document.querySelectorAll(".umbral").forEach((el) => {
+    const v = u[el.dataset.u];
+    if (v === undefined) return;
+    el.textContent = el.dataset.pct ? `${Math.round(v * 100)}%` : `${v}${el.dataset.sufijo || ""}`;
+  });
+}
+
+function pintarCorrida(corrida, totales) {
+  const info = document.getElementById("confCorrida");
+  const aviso = document.getElementById("confAviso");
+  const heur = totales.pct_heuristico ?? "—";
+  if (!corrida) {
+    info.textContent = "Corrida del evaluador: no disponible.";
+    aviso.innerHTML = '<i class="ti ti-alert-triangle"></i> No hay una corrida limpia de dev del evaluador ' +
+      "disponible: las columnas del evaluador aparecen como <b>Sin medir</b>. " +
+      `${heur}% de los registros tienen nombre de producto heurístico.`;
+    return;
+  }
+  info.textContent = `Corrida del evaluador: ${corrida.commit} · ${String(corrida.fecha).replace("T", " ")} · ` +
+    `split ${corrida.split} · ${corrida.paginas_evaluadas} páginas, ${corrida.tiendas_medidas} de ` +
+    `${corrida.tiendas_en_split} tiendas del split con artículos con precio · precisión global ${pct01(corrida.precision_global)}`;
+  aviso.innerHTML = '<i class="ti ti-alert-triangle"></i> Las métricas del evaluador son una <b>muestra de folletos dev ' +
+    "con ground truth</b>, no una medición de todo producción. " +
+    `${heur}% de los registros del dashboard tienen nombre de producto heurístico (texto del folleto).`;
+}
+
+async function cargarConfiabilidad() {
+  const params = {
+    tienda: valoresSeleccionados(document.getElementById("fConfTienda")),
+    desde: document.getElementById("fConfDesde").value,
+    hasta: document.getElementById("fConfHasta").value,
+  };
+  const datos = await fetchJSON(`/api/confiabilidad${qs(params)}`);
+  const filas = datos.filas || [];
+  pintarUmbrales(datos.umbrales || {});
+  pintarCorrida(datos.corrida, datos.totales || {});
+
+  renderTabla("#tablaConfiabilidad", filas, [
+    { data: "tienda", title: "Tienda", render: (v) => escaparHtml(v) },
+    { data: "registros", title: "Registros", render: (v, t) => (t === "display" ? v.toLocaleString("es-MX") : v) },
+    {
+      data: "pct_catalogo", title: "% catálogo",
+      render: (v, t, f) => {
+        if (t !== "display") return v ?? -1;
+        const badge = f.base_heuristica
+          ? ' <span class="badge text-bg-light border" title="Menos del umbral de registros con producto de catálogo">Base heurística</span>' : "";
+        return `${formatoPct(v)}${badge}`;
+      },
+    },
+    { data: "pct_sin_categoria", title: "% sin categoría", render: (v, t) => (t === "display" ? formatoPct(v) : v ?? -1) },
+    {
+      data: "conf_ocr_mediana", title: "OCR (mediana)",
+      render: (v, t, f) => (t === "display"
+        ? `<span title="Media: ${f.conf_ocr_media ?? "—"}">${v ?? "—"}</span>` : v ?? -1),
+    },
+    { data: "precision", title: "Precisión", render: (v, t) => (t === "display" ? pct01(v) : v ?? -1) },
+    {
+      data: "precision_ic95_inf", title: "IC95", orderable: false,
+      render: (v, t, f) => (v === null || v === undefined ? "—" : `${pct01(v)} – ${pct01(f.precision_ic95_sup)}`),
+    },
+    { data: "recall", title: "Recall", render: (v, t) => (t === "display" ? pct01(v) : v ?? -1) },
+    {
+      data: "error_dominante", title: "Error dominante",
+      render: (v) => (v ? escaparHtml(ERRORES_LEGIBLES[v] || v) : "—"),
+    },
+    {
+      data: "etiqueta", title: "Confiabilidad",
+      render: (v, t, f) => {
+        if (t !== "display") return v;
+        const n = f.registros_evaluados ? ` <span class="small text-muted">(${f.registros_evaluados} eval.)</span>` : "";
+        return (ETIQUETAS[v] || escaparHtml(v)) + n;
+      },
+    },
+  ], { order: [[1, "desc"]], pageLength: 25 });
+
+  // Precision con IC95 (solo tiendas medidas)
+  const medidas = filas.filter((f) => f.precision !== null && f.precision !== undefined)
+    .sort((a, b) => b.precision - a.precision);
+  renderChart("chartPrecision", {
+    type: "bar",
+    data: {
+      labels: medidas.map((f) => f.tienda),
+      datasets: [
+        {
+          type: "line", label: "Precisión", showLine: false,
+          data: medidas.map((f) => f.precision * 100),
+          backgroundColor: "#4a3aa7", borderColor: "#4a3aa7", pointRadius: 5,
+        },
+        {
+          label: "IC95", data: medidas.map((f) => [f.precision_ic95_inf * 100, f.precision_ic95_sup * 100]),
+          backgroundColor: "rgba(42, 120, 214, 0.35)", barPercentage: 0.4,
+        },
+      ],
+    },
+    options: {
+      scales: { y: { min: 0, title: { display: true, text: "%" } } },
+      plugins: { tooltip: { callbacks: { label: (c) => (Array.isArray(c.raw)
+        ? `IC95: ${c.raw[0].toFixed(1)}% – ${c.raw[1].toFixed(1)}%` : `Precisión: ${c.parsed.y.toFixed(1)}%`) } } },
+    },
+  });
+
+  // Origen del nombre de producto (barras apiladas al 100%)
+  const conDatos = filas.filter((f) => f.registros > 0);
+  renderChart("chartOrigen", {
+    type: "bar",
+    data: {
+      labels: conDatos.map((f) => f.tienda),
+      datasets: [
+        { label: "Catálogo (exacto/fuzzy/fuzzy_bajo)", data: conDatos.map((f) => f.pct_catalogo), backgroundColor: "#4a3aa7" },
+        { label: "Heurístico", data: conDatos.map((f) => f.pct_heuristico), backgroundColor: "#eda100" },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      scales: { x: { stacked: true, max: 100, title: { display: true, text: "% de registros" } }, y: { stacked: true } },
+    },
+  });
+}
+
+async function cargarFiltrosConfiabilidad() {
+  const tiendas = await fetchJSON("/api/filtros/tiendas");
+  crearFiltroLista("fConfTienda", tiendas.map((t) => t.nombre), "Todas");
+}
+
+document.getElementById("btnConfAplicar").addEventListener("click", cargarConfiabilidad);
+cargarFiltrosConfiabilidad().then(cargarConfiabilidad);
 
 document.getElementById("btnAplicar").addEventListener("click", cargarTabla);
 cargarFiltros().then(cargarTabla);

@@ -28,6 +28,10 @@ def pagina_calidad(request):
     return render(request, "dashboard/calidad.html", {"activo": "calidad"})
 
 
+def pagina_cobertura(request):
+    return render(request, "dashboard/cobertura.html", {"activo": "cobertura"})
+
+
 def pagina_promociones(request):
     return render(request, "dashboard/promociones.html", {"activo": "promociones"})
 
@@ -122,6 +126,28 @@ def api_calidad(request):
         fuente=request.GET.get("fuente") or None,
         estado=request.GET.get("estado") or None,
         tasa_util_min=float(tasa_util_min) if tasa_util_min else None,
+    )
+    return JsonResponse(datos, safe=False)
+
+
+def api_confiabilidad(request):
+    datos = queries.confiabilidad_por_tienda(
+        tiendas=request.GET.getlist("tienda") or None,
+        desde=request.GET.get("desde") or None,
+        hasta=request.GET.get("hasta") or None,
+    )
+    return JsonResponse(datos)
+
+
+def api_cobertura(request):
+    return JsonResponse(queries.cobertura_por_tienda(tiendas=request.GET.getlist("tienda") or None))
+
+
+def api_cobertura_semanal(request):
+    datos = queries.folletos_por_semana(
+        tiendas=request.GET.getlist("tienda") or None,
+        desde=request.GET.get("desde") or None,
+        hasta=request.GET.get("hasta") or None,
     )
     return JsonResponse(datos, safe=False)
 

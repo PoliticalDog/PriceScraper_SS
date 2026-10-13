@@ -24,15 +24,16 @@
 
 {% block script %}
 <script>
-function tarjetaKpi(icono, valor, etiqueta) {
+function tarjetaKpi(icono, valor, etiqueta, nota = "", titulo = "") {
   return `
     <div class="col-6 col-lg-3">
-      <div class="card kpi-card p-3">
+      <div class="card kpi-card p-3" title="${escaparHtml(titulo)}">
         <div class="d-flex align-items-center gap-3">
           <div class="kpi-icono"><i class="ti ${icono}"></i></div>
           <div>
             <div class="kpi-valor">${valor}</div>
             <div class="kpi-etiqueta">${etiqueta}</div>
+            ${nota ? `<div class="small text-muted">${nota}</div>` : ""}
           </div>
         </div>
       </div>
@@ -42,12 +43,16 @@ function tarjetaKpi(icono, valor, etiqueta) {
 async function cargar() {
   const datos = await fetchJSON("/api/resumen");
   const k = datos.kpis || {};
+  const dudosos = k.folletos_vigentes_dudosos ?? 0;
 
   document.getElementById("kpis").innerHTML = [
     tarjetaKpi("ti-building-store", k.tiendas_activas ?? "—", "Tiendas activas"),
     tarjetaKpi("ti-files", (k.total_folletos ?? 0).toLocaleString("es-MX"), "Folletos cargados"),
-    tarjetaKpi("ti-currency-dollar", (k.productos_con_precio ?? 0).toLocaleString("es-MX"), "Precios detectados"),
-    tarjetaKpi("ti-calendar", k.folleto_mas_reciente ?? "—", "Folleto más reciente"),
+    tarjetaKpi("ti-currency-dollar", (k.registros_dashboard ?? 0).toLocaleString("es-MX"), "Precios detectados",
+      "", "Registros de precio que muestra el dashboard (v_precios_actuales), todas las fechas"),
+    tarjetaKpi("ti-calendar-check", (k.folletos_vigentes ?? 0).toLocaleString("es-MX"), "Folletos vigentes hoy",
+      dudosos ? `<a href="/cobertura">+${dudosos} con fecha dudosa</a>` : "",
+      "Folletos con fecha confiable cuyo rango incluye hoy (v_folletos_vigencia)"),
   ].join("");
 
   const cats = datos.top_categorias || [];
