@@ -8,6 +8,10 @@
 --   servicio > msi_financiamiento > lealtad_puntos > vigencia > precio_generico > condicion_compra > unidad_presentacion
 -- Esperado 12-oct-2026: unidad_presentacion 1,250 | lealtad_puntos 485 | precio_generico 444 | condicion_compra 334 |
 --   msi_financiamiento 325 | servicio 61 | vigencia 13 | producto 25,722 (100% de los no-producto son heuristicos).
+-- Tras recarga 2f616c3+6d0670b (27,760 registros): unidad 1,267 | precio_generico 79 | condicion 67 | msi 36 | servicio 14 |
+--   lealtad 12 | vigencia 5 | producto 26,280. Variantes OCR nuevas no cubiertas aqui: promos_como_producto_residual.sql.
+-- Tras recarga 01c2420 (13-oct, 27,760): unidad 694 | precio_generico 80 | condicion 71 | msi 36 | servicio 16 | lealtad 14 |
+--   vigencia 5 | producto 26,844 (promo total 222).
 -- "unidad_presentacion" no es promo, pero tampoco es producto (Carton, Pieza, Paquete...): se reporta aparte.
 -- Esperado 12-oct-2026: ver ruta promos_como_producto_validacion.sql (mismo total por otro camino).
 WITH base AS (

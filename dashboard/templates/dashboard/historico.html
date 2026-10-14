@@ -71,16 +71,19 @@ async function cargar() {
   const datos = await fetchJSON(`/api/historico${qs(params)}`);
 
   renderTabla("#tablaHistorico", datos, [
-    { data: "tienda", title: "Tienda" },
+    { data: "tienda", title: "Tienda", render: (d) => escaparHtml(d) },
     { data: "fecha", title: "Fecha" },
     { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
     { data: "precio_anterior", title: "Precio anterior", render: (d) => formatoMoneda(d) },
+    // Procedencia (13-oct-2026): "fecha" es el inicio de vigencia del folleto
+    { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
   ], { order: [[1, "asc"]] });
 
+  // Cada punto conserva su fila para el tooltip (folleto/pagina) y el clic (abre el visor de origen)
   const porTienda = {};
   datos.forEach((d) => {
     if (!porTienda[d.tienda]) porTienda[d.tienda] = [];
-    porTienda[d.tienda].push({ x: d.fecha, y: d.precio });
+    porTienda[d.tienda].push({ x: d.fecha, y: d.precio, fila: d });
   });
 
   const datasets = Object.entries(porTienda).map(([tienda, puntos], i) => ({
@@ -97,6 +100,26 @@ async function cargar() {
     options: {
       parsing: false,
       scales: { x: { type: "time", time: { unit: "week" } } },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            // Chart.js pinta el tooltip en canvas (texto plano): no requiere escape
+            afterLabel: (ctx) => {
+              const f = ctx.raw.fila;
+              return f && f.folleto_id_fuente
+                ? `folleto ${f.folleto_id_fuente} · pág. ${f.numero_pagina ?? "?"} (clic para ver)`
+                : "";
+            },
+          },
+        },
+      },
+      onClick: (evt, elementos, chart) => {
+        if (!elementos.length) return;
+        const el = elementos[0];
+        const f = chart.data.datasets[el.datasetIndex].data[el.index].fila;
+        const url = f ? urlVisor(f) : null;
+        if (url) window.open(url, "_blank", "noopener");
+      },
     },
   });
 }

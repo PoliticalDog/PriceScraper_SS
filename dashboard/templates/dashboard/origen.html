@@ -1,0 +1,225 @@
+{% extends "dashboard/base.html" %}
+{% block titulo %}Origen del registro — PriceScraper{% endblock %}
+
+{% block contenido %}
+{# Visor de procedencia (13-oct-2026, docs/bi/metricas.md "Procedencia por registro"). Solo lectura. #}
+<div id="origenCabecera" class="mb-2">
+  <h4 class="mb-1" id="origenTitulo">Cargando…</h4>
+  <div class="text-muted" id="origenSubtitulo"></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xl-7">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <a class="btn btn-sm btn-outline-secondary disabled" id="btnAnterior" href="#">&laquo; pág. anterior</a>
+      <a class="btn btn-sm btn-outline-secondary disabled" id="btnSiguiente" href="#">pág. siguiente &raquo;</a>
+      <div class="form-check ms-2">
+        <input class="form-check-input" type="checkbox" id="chkTodos">
+        <label class="form-check-label" for="chkTodos">Mostrar todos los bloques</label>
+      </div>
+      <div class="form-check ms-2">
+        <input class="form-check-input" type="checkbox" id="chkOriginal">
+        <label class="form-check-label" for="chkOriginal">Imagen original (sin escalar)</label>
+      </div>
+      <span class="visor-leyenda small ms-auto">
+        <span class="muestra" style="border:3px solid #e34948"></span>precio
+        <span class="muestra ms-2" style="border:3px solid #2a78d6"></span>producto asociado
+      </span>
+    </div>
+    <div class="alert alert-warning py-1 small d-none" id="avisoCajas"></div>
+    <div class="visor-pagina" id="visor">
+      <img id="imgPagina" alt="Página del folleto">
+    </div>
+  </div>
+
+  <div class="col-xl-5">
+    <div class="card mb-3 d-none" id="tarjetaRegistro">
+      <div class="card-body py-2">
+        <h6 class="card-title mb-2">Registro seleccionado</h6>
+        <dl class="row mb-0 small" id="datosRegistro"></dl>
+      </div>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabOcr" type="button">OCR</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabNlp" type="button">NLP</button></li>
+    </ul>
+    <div class="tab-content border border-top-0 p-2 bg-white">
+      <div class="tab-pane fade show active" id="tabOcr">
+        <div class="small text-muted mb-1" id="estadoOcr">Cargando…</div>
+        <pre class="visor-json" id="jsonOcr"></pre>
+      </div>
+      <div class="tab-pane fade" id="tabNlp">
+        <div class="small text-muted mb-1" id="estadoNlp">Cargando…</div>
+        <pre class="visor-json" id="jsonNlp"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{{ pagina_id|json_script:"datoPaginaId" }}
+{{ extraccion_id|json_script:"datoExtraccionId" }}
+{% endblock %}
+
+{% block script %}
+<script>
+const PAGINA_ID = JSON.parse(document.getElementById("datoPaginaId").textContent);
+const EXTRACCION_ID = JSON.parse(document.getElementById("datoExtraccionId").textContent);
+let datosPagina = null;
+
+const ESTADOS_JSON = {
+  ausente: "No existe el archivo procesado de este folleto.",
+  corrupto: "El archivo no se pudo leer (JSON corrupto o con otra estructura).",
+  muy_grande: "El archivo supera el límite de tamaño para mostrarse.",
+  sin_pagina: "El archivo no contiene esta página.",
+};
+
+function agregarCaja(caja, clases, titulo) {
+  if (!caja) return;
+  const div = document.createElement("div");
+  div.className = `visor-caja ${clases}`;
+  div.style.left = `${caja.left}%`;
+  div.style.top = `${caja.top}%`;
+  div.style.width = `${caja.width}%`;
+  div.style.height = `${caja.height}%`;
+  if (titulo) div.title = titulo;  // textContent/title: no se interpreta como HTML
+  document.getElementById("visor").append(div);
+}
+
+function dibujarCajas(registro) {
+  document.querySelectorAll("#visor .visor-caja").forEach((el) => el.remove());
+  if (document.getElementById("chkTodos").checked) {
+    datosPagina.bloques.forEach((b) => agregarCaja(b.caja_pct, `bloque ${b.tipo}`, `${b.tipo}: ${b.texto_raw}`));
+  }
+  if (registro) {
+    if (registro.producto) agregarCaja(registro.producto.caja_pct, "producto", registro.producto.texto_raw);
+    agregarCaja(registro.extraccion.caja_pct, "precio", registro.extraccion.texto_raw);
+  }
+}
+
+function filaDato(dl, etiqueta, valor) {
+  const dt = document.createElement("dt");
+  dt.className = "col-4";
+  dt.textContent = etiqueta;
+  const dd = document.createElement("dd");
+  dd.className = "col-8 mb-1";
+  dd.textContent = valor ?? "—";
+  dl.append(dt, dd);
+}
+
+// JSON legible con los elementos marcados resaltados. Todo el texto pasa por escaparHtml.
+function renderFragmento(pagina, marcas) {
+  const lineas = ["{"];
+  const claves = Object.keys(pagina);
+  claves.forEach((clave, ci) => {
+    const coma = ci < claves.length - 1 ? "," : "";
+    const valor = pagina[clave];
+    if (!Array.isArray(valor)) {
+      lineas.push(escaparHtml(`  ${JSON.stringify(clave)}: ${JSON.stringify(valor)}${coma}`));
+      return;
+    }
+    const m = (marcas && marcas[clave]) || {};
+    lineas.push(escaparHtml(`  ${JSON.stringify(clave)}: [`) + (valor.length ? "" : escaparHtml(`]${coma}`)));
+    valor.forEach((elem, i) => {
+      const texto = JSON.stringify(elem, null, 2).split("\n").map((l) => `    ${l}`).join("\n");
+      const sep = i < valor.length - 1 ? "," : "";
+      let clase = "";
+      if ((m.precio || []).includes(i)) clase = "marca-precio";
+      else if ((m.producto || []).includes(i)) clase = "marca-producto";
+      const html = escaparHtml(texto + sep);
+      lineas.push(clase ? `<span class="${clase}" data-marca="1">${html}</span>` : html);
+    });
+    if (valor.length) lineas.push(escaparHtml(`  ]${coma}`));
+  });
+  lineas.push("}");
+  return lineas.join("\n");
+}
+
+async function cargarJson(tipo, estadoId, preId) {
+  const extra = EXTRACCION_ID ? `?e=${encodeURIComponent(EXTRACCION_ID)}` : "";
+  const resp = await fetch(`/api/origen/pagina/${PAGINA_ID}/${tipo}${extra}`);
+  const estado = document.getElementById(estadoId);
+  const pre = document.getElementById(preId);
+  if (!resp.ok) { estado.textContent = `Error ${resp.status} al consultar.`; return; }
+  const d = await resp.json();
+  if (d.estado !== "ok") { estado.textContent = `${d.archivo}: ${ESTADOS_JSON[d.estado] || d.estado}`; return; }
+  const n = Object.values(d.marcas || {}).reduce(
+    (acc, porCaja) => acc + Object.values(porCaja).reduce((a, idx) => a + idx.length, 0), 0);
+  estado.textContent = `${d.archivo} · elemento "${d.pagina_archivo}"` +
+    (EXTRACCION_ID ? ` · ${n} elemento(s) resaltado(s) por coincidencia de caja` : "");
+  pre.innerHTML = renderFragmento(d.pagina, d.marcas);
+  pre.querySelector("[data-marca]")?.scrollIntoView({ block: "center" });
+}
+
+async function cargar() {
+  datosPagina = await fetchJSON(`/api/origen/pagina/${PAGINA_ID}`);
+  const p = datosPagina.pagina;
+  document.getElementById("origenTitulo").textContent =
+    `${p.tienda} · folleto ${p.folleto_id_fuente} · página ${p.numero_pagina}` +
+    (p.total_paginas ? ` de ${p.total_paginas}` : "");
+  const sub = document.getElementById("origenSubtitulo");
+  sub.textContent = `${p.fuente} · vigencia ${formatoVigencia(p.vigencia_desde, p.vigencia_hasta)}` +
+    (p.folleto_titulo ? ` · "${p.folleto_titulo}"` : "") + " ";
+  if (p.url_origen) {
+    const a = document.createElement("a");
+    a.href = p.url_origen; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "[ver folleto]";
+    sub.append(a);
+  }
+  const nav = (id, destino) => {
+    const btn = document.getElementById(id);
+    if (destino) { btn.href = `/origen/pagina/${destino}`; btn.classList.remove("disabled"); }
+  };
+  nav("btnAnterior", datosPagina.vecinas.anterior);
+  nav("btnSiguiente", datosPagina.vecinas.siguiente);
+
+  let registro = null;
+  if (EXTRACCION_ID) {
+    registro = await fetchJSON(`/api/origen/extraccion/${EXTRACCION_ID}`);
+    const e = registro.extraccion, pr = registro.producto;
+    const dl = document.getElementById("datosRegistro");
+    filaDato(dl, "Tipo", e.tipo);
+    filaDato(dl, "Valor", e.valor !== null ? formatoMoneda(e.valor) : null);
+    filaDato(dl, "Texto OCR", e.texto_raw);
+    filaDato(dl, "Producto (texto)", e.texto_norm);
+    if (pr) {
+      filaDato(dl, "Fila PRODUCTO", pr.texto_raw);
+      filaDato(dl, "Normalización", pr.metodo_norm);
+      filaDato(dl, "Catálogo", pr.producto_canonico__nombre_canonico);
+      if (pr.otra_pagina) filaDato(dl, "Aviso", "El producto asociado está en otra página.");
+    }
+    filaDato(dl, "Confianza OCR", e.confianza_ocr !== null ? Number(e.confianza_ocr).toFixed(3) : null);
+    document.getElementById("tarjetaRegistro").classList.remove("d-none");
+  } else {
+    document.getElementById("chkTodos").checked = true;
+  }
+
+  const img = document.getElementById("imgPagina");
+  const fijarImagen = () => {
+    img.src = document.getElementById("chkOriginal").checked ? datosPagina.imagen.raw : datosPagina.imagen.proc;
+  };
+  img.addEventListener("error", () => {
+    if (!document.getElementById("chkOriginal").checked) {
+      // sin imagen procesada: se muestra la original y se avisa (las cajas en % siguen valiendo si hubo dimensiones)
+      document.getElementById("chkOriginal").checked = true;
+      fijarImagen();
+    }
+  }, { once: true });
+  fijarImagen();
+  if (!datosPagina.imagen.dimensiones_proc) {
+    const aviso = document.getElementById("avisoCajas");
+    aviso.textContent = "Caja no disponible: no se encontró la imagen procesada de esta página.";
+    aviso.classList.remove("d-none");
+  }
+  dibujarCajas(registro);
+  document.getElementById("chkTodos").addEventListener("change", () => dibujarCajas(registro));
+  document.getElementById("chkOriginal").addEventListener("change", fijarImagen);
+  document.querySelector('[data-bs-target="#tabNlp"]').addEventListener("shown.bs.tab", () => {
+    document.querySelector("#jsonNlp [data-marca]")?.scrollIntoView({ block: "center" });
+  });
+
+  cargarJson("ocr", "estadoOcr", "jsonOcr");
+  cargarJson("nlp", "estadoNlp", "jsonNlp");
+}
+
+cargar();
+</script>
+{% endblock %}

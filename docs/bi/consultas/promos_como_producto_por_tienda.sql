@@ -1,6 +1,8 @@
 -- Impacto por tienda: registros del dashboard (= v_precios_actuales) cuyo nombre es promo/condicion/servicio/vigencia
 -- (promo_total) o unidad de presentacion (unidad), y cuanto bajaria el ruido si se excluyeran.
 -- Grano: tienda (+ fila total ROLLUP). Esperado 12-oct-2026 total: 28,634; promo_total 1,662 (5.80%); unidad 1,250; no-producto 10.17%.
+-- Tras recarga 2f616c3+6d0670b: total 27,760; promo_total 213 (0.77%); unidad 1,267; no-producto 5.33%.
+-- Tras recarga 01c2420 (13-oct): promo_total 222 (0.80%); unidad 694 (casa_ley 365); no-producto 3.30%.
 -- Misma clasificacion (CTE base/clas) que promos_como_producto.sql; si cambia una, cambia la otra.
 -- Universo = lo que ve el dashboard (= v_precios_actuales):
 --   extracciones tipo='PRECIO' AND valor IS NOT NULL AND texto_norm IS NOT NULL  (28,634 filas)

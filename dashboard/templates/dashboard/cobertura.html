@@ -144,6 +144,14 @@ async function cargarTabla() {
     { data: "scrapeado", title: "Scrapeado" },
     { data: "anomalia_fecha", title: "Etiqueta", render: (v) => escaparHtml(ETIQUETAS_FECHA[v] || v) },
     { data: "vigente_dudoso", title: "En rango hoy", render: (v) => (v ? "Sí" : "No") },
+    // Procedencia (13-oct-2026): pagina 1 en el visor y folleto original si hay url_origen
+    {
+      data: null, title: "Origen", orderable: false,
+      render: (d, t, f) => [
+        f.primera_pagina_id ? `<a href="/origen/pagina/${encodeURIComponent(f.primera_pagina_id)}" target="_blank" rel="noopener">[pág. 1]</a>` : "",
+        f.url_origen ? `<a href="${escaparHtml(f.url_origen)}" target="_blank" rel="noopener noreferrer">[folleto]</a>` : "",
+      ].join(" ") || "—",
+    },
   ], { pageLength: 10 });
 }
 

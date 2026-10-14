@@ -6,6 +6,9 @@
 -- Esperado: reg_bd por tienda = metricas.tiendas.<slug>.conteos.registros_dashboard del JSON y
 --           pags_bd por tienda = metricas.tiendas.<slug>.conteos.paginas. Total 1,401 registros / 158 paginas.
 -- Resultado 12-oct-2026: cuadra exacto en las 14 tiendas medidas (1,401 / 158).
+-- Recarga 12-oct-2026 vs corrida 20261012_231957_6d0670b_dev.json (mismas 158 paginas, mismo sello de split):
+-- cuadra exacto en las 14 tiendas medidas (1,393 / 158).
+-- Recarga 13-oct (01c2420) vs corrida 20261013_204559_01c2420_dev.json: cuadra exacto (1,393 / 158, 14 tiendas).
 -- Join: ev -> folletos (1 folleto por folleto_id_fuente en estas 56 claves) -> paginas (1:1 por numero_pagina)
 --       -> extracciones LEFT (N por pagina; se cuenta e.id, no filas, y pags con DISTINCT).
 WITH ev(fid, np) AS (VALUES

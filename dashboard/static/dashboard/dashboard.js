@@ -174,3 +174,37 @@ function formatoPct(valor) {
   if (valor === null || valor === undefined) return "—";
   return `${Number(valor).toFixed(1)}%`;
 }
+
+// -- Procedencia por registro (13-oct-2026, docs/bi/metricas.md "Procedencia por registro") --
+// Celda "Origen": folleto_id_fuente · vigencia · pag. N, titulo en tooltip, [pag] al visor y [folleto] a
+// url_origen (solo si existe; el servidor ya descarto lo que no sea http/https). Todo texto pasa por escaparHtml.
+function formatoVigencia(desde, hasta) {
+  const corto = (d) => (d ? String(d).slice(5).split("-").reverse().join("/") : "?");
+  if (!desde && !hasta) return "sin vigencia";
+  return `${corto(desde)}→${corto(hasta)}`;
+}
+
+function urlVisor(fila) {
+  if (fila.id) return `/origen/extraccion/${encodeURIComponent(fila.id)}`;
+  if (fila.pagina_id) return `/origen/pagina/${encodeURIComponent(fila.pagina_id)}`;
+  return null;
+}
+
+function renderOrigen(fila, opciones = {}) {
+  if (!fila || !fila.folleto_id_fuente) return "—";
+  const partes = [];
+  if (opciones.conTienda && fila.tienda) partes.push(escaparHtml(fila.tienda));
+  partes.push(escaparHtml(fila.folleto_id_fuente));
+  if (opciones.conVigencia !== false) {
+    partes.push(escaparHtml(formatoVigencia(fila.vigencia_desde ?? fila.fecha, fila.vigencia_hasta)));
+  }
+  if (fila.numero_pagina) partes.push(`pág. ${escaparHtml(fila.numero_pagina)}`);
+  const titulo = fila.folleto_titulo ? ` title="${escaparHtml(fila.folleto_titulo)}"` : "";
+  const visor = urlVisor(fila);
+  const enlaces = [];
+  if (visor) enlaces.push(`<a href="${visor}" target="_blank" rel="noopener">[pág]</a>`);
+  if (fila.url_origen) {
+    enlaces.push(`<a href="${escaparHtml(fila.url_origen)}" target="_blank" rel="noopener noreferrer">[folleto]</a>`);
+  }
+  return `<span class="origen-celda"${titulo}>${partes.join(" · ")}</span> ${enlaces.join(" ")}`;
+}

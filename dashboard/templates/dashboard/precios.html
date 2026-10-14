@@ -62,14 +62,16 @@ async function cargarTabla() {
   const datos = await fetchJSON(`/api/precios${qs(params)}`);
 
   renderTabla("#tablaPrecios", datos, [
-    { data: "tienda", title: "Tienda" },
-    { data: "producto", title: "Producto" },
-    { data: "categoria", title: "Categoría" },
+    { data: "tienda", title: "Tienda", render: (d) => escaparHtml(d) },
+    { data: "producto", title: "Producto", render: (d) => escaparHtml(d) },
+    { data: "categoria", title: "Categoría", render: (d) => escaparHtml(d) },
     { data: "precio_actual", title: "Precio actual", render: (d) => formatoMoneda(d) },
     { data: "precio_anterior", title: "Precio anterior", render: (d) => formatoMoneda(d) },
     { data: "descuento_pct", title: "Descuento", render: (d) => formatoPct(d) },
     { data: "vigencia_desde", title: "Desde" },
     { data: "vigencia_hasta", title: "Hasta" },
+    // Procedencia (13-oct-2026): la vigencia ya tiene columnas propias
+    { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
   ], { order: [[5, "desc"]] });
 }
 

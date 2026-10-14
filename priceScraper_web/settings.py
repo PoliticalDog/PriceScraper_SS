@@ -80,4 +80,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+# Procedencia de cada registro (visor de origen del dashboard). Solo lectura: Django sirve desde aqui la imagen
+# de la pagina (raw = original, processed = la que vio el OCR, donde caen los bbox) y el fragmento de
+# ocr_resultado.json / nlp_resultado.json de esa pagina. La ruta se arma con datos de la BD, nunca con la URL.
+ORIGEN_RAW_DIR = BASE_DIR / "data" / "raw"
+ORIGEN_PROCESSED_DIR = BASE_DIR / "data" / "processed"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -217,3 +217,18 @@ table.dataTable thead {
 .fila-critica {
   background-color: #fbe4e2 !important;
 }
+
+/* -- Procedencia por registro (13-oct-2026) -- */
+.origen-celda { white-space: nowrap; font-size: 0.875em; color: var(--color-texto-muted); }
+.visor-pagina { position: relative; display: inline-block; max-width: 100%; }
+.visor-pagina img { display: block; max-width: 100%; height: auto; border: 1px solid #ddd; }
+.visor-caja { position: absolute; box-sizing: border-box; pointer-events: none; }
+.visor-caja.precio { border: 3px solid #e34948; background: rgba(227, 73, 72, 0.12); }
+.visor-caja.producto { border: 3px solid #2a78d6; background: rgba(42, 120, 214, 0.12); }
+.visor-caja.bloque { border: 1px dashed #8b8b96; }
+.visor-caja.bloque.PRECIO { border-color: #e34948; }
+.visor-caja.bloque.PRODUCTO { border-color: #2a78d6; }
+.visor-leyenda .muestra { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 4px; }
+.visor-json { max-height: 70vh; overflow: auto; font-size: 0.8em; background: #fff; border: 1px solid #ddd; padding: 8px; }
+.visor-json .marca-precio { background: rgba(227, 73, 72, 0.18); display: block; }
+.visor-json .marca-producto { background: rgba(42, 120, 214, 0.18); display: block; }

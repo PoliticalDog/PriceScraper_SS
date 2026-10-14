@@ -5,6 +5,10 @@
 --   resumen_* = resumen_kpis(): VPreciosActuales.count() y VFolletosVigencia vigente / vigente_dudoso
 -- Esperado 12-oct-2026: 20 tiendas, 28,634 registros, 4,146 catalogo (14.5%), 18,601 sin categoria (65.0%);
 -- resumen 28,634 / 52 vigentes / 16 dudosos.
+-- Recarga 12-oct-2026 (tras 2f616c3 + 6d0670b): 20 tiendas, 27,760 registros, 4,201 catalogo (15.1%), 17,539 sin
+-- categoria (63.2%); 674 folletos en 27 semanas; resumen 27,760 / 52 vigentes / 16 dudosos.
+-- Recarga 13-oct (01c2420): 27,760 registros, 4,153 catalogo (15.0%), 17,147 sin categoria (61.8%); 672 folletos/27 semanas;
+-- resumen 27,760 / 52 / 16.
 WITH base AS (
     SELECT e.tienda_id, p.metodo_norm, e.categoria_nlp
     FROM extracciones e

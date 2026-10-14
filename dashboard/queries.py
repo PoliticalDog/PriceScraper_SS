@@ -5,11 +5,12 @@ from typing import Optional
 from django.db import connection
 from django.db.models import Count, F, Max, Q
 
-from dashboard import confiabilidad
+from dashboard import confiabilidad, origen
 from dashboard.models import (
     ErrorCarga,
     Extraccion,
     Folleto,
+    Pagina,
     ProductoCanonico,
     Tienda,
     VCalidadPipeline,
@@ -131,12 +132,12 @@ def precios_actuales(
     qs = qs.order_by(F("descuento_pct").desc(nulls_last=True))[:limite]
 
     filas = list(qs.values(
-        "tienda", "producto", "categoria", "precio_actual", "precio_anterior",
+        "id", "tienda", "producto", "categoria", "precio_actual", "precio_anterior",
         "descuento_pct", "vigencia_desde", "vigencia_hasta", "confianza_ocr",
     ))
     for f in filas:
         f["descuento_pct"] = _num(f["descuento_pct"])
-    return filas
+    return agregar_procedencia(filas)
 
 
 # -- Comparativa entre tiendas --------------------------------------------------
@@ -168,13 +169,26 @@ def comparativa_precios(
 def comparativa_por_tienda(producto: str) -> list[dict]:
     # Mismo motivo que resumen_folletos_por_tienda(): "tienda" colisiona con
     # el campo FK real de Extraccion, no se puede usar como alias en .values().
+    # 13-oct-2026: + vigencia y procedencia (folleto/pagina) por registro para el detalle por tienda.
+    # Mismo filtro que v_comparativa_precios (texto_norm no nulo queda implicito en texto_norm=producto).
     qs = (
         Extraccion.objects
         .filter(tipo="PRECIO", valor__isnull=False, texto_norm=producto)
-        .values("tienda__nombre", "valor")
-        .order_by("valor")
+        .values(
+            "id", "tienda__nombre", "valor", "folleto__fecha_inicio", "folleto__fecha_fin",
+            "pagina_id", "pagina__numero_pagina", "folleto_id", "folleto__folleto_id_fuente",
+            "folleto__titulo", "folleto__url_origen",
+        )
+        .order_by("valor", "id")
     )
-    return [{"tienda": f["tienda__nombre"], "precio": f["valor"]} for f in qs]
+    return [{
+        "id": f["id"],
+        "tienda": f["tienda__nombre"],
+        "precio": f["valor"],
+        "vigencia_desde": f["folleto__fecha_inicio"],
+        "vigencia_hasta": f["folleto__fecha_fin"],
+        **_procedencia_de_valores(f),
+    } for f in qs]
 
 
 # -- Historico de precios --------------------------------------------------------
@@ -194,8 +208,9 @@ def historico_precios(
     if hasta:
         qs = qs.filter(fecha__lte=hasta)
 
-    qs = qs.order_by("fecha")
-    return list(qs.values("tienda", "producto", "categoria", "fecha", "precio", "precio_anterior"))
+    qs = qs.order_by("fecha", "id")
+    filas = list(qs.values("id", "tienda", "producto", "categoria", "fecha", "precio", "precio_anterior"))
+    return agregar_procedencia(filas)
 
 
 def sugerir_productos(q: str, limite: int = 20) -> list[str]:
@@ -414,10 +429,16 @@ GROUP BY 1, 2
 ORDER BY 1, 2
 """
 
+# 13-oct-2026 (procedencia): + url_origen y la primera pagina del folleto. folletos se une por PK (1:1 con la vista)
+# y la pagina es subconsulta escalar: ninguno duplica filas.
 _SQL_FOLLETOS_DUDOSOS = """
 SELECT v.tienda, v.folleto_id_fuente, v.fuente, v.titulo, v.fecha_inicio, v.fecha_fin,
-       v.scrapeado_at::date AS scrapeado, v.anomalia_fecha, v.vigente_dudoso
+       v.scrapeado_at::date AS scrapeado, v.anomalia_fecha, v.vigente_dudoso,
+       f.url_origen,
+       (SELECT p.id FROM paginas p WHERE p.folleto_id = v.id
+        ORDER BY p.numero_pagina LIMIT 1)                       AS primera_pagina_id
 FROM v_folletos_vigencia v
+JOIN folletos f ON f.id = v.id
 WHERE v.anomalia_fecha IS NOT NULL
   AND (%(tiendas)s::text[] IS NULL OR v.tienda = ANY(%(tiendas)s::text[]))
 ORDER BY v.anomalia_fecha, v.tienda, v.fecha_inicio
@@ -445,8 +466,15 @@ def cobertura_por_tienda(tiendas: Optional[list[str]] = None) -> dict:
             "dias_vigencia_larga": DIAS_VIGENCIA_LARGA,
         },
         "filas": filas,
-        "dudosos": _filas_sql(_SQL_FOLLETOS_DUDOSOS, {"tiendas": tiendas or None}),
+        "dudosos": _dudosos(tiendas),
     }
+
+
+def _dudosos(tiendas: Optional[list[str]]) -> list[dict]:
+    filas = _filas_sql(_SQL_FOLLETOS_DUDOSOS, {"tiendas": tiendas or None})
+    for f in filas:
+        f["url_origen"] = origen.url_origen_segura(f["url_origen"])
+    return filas
 
 
 def folletos_por_semana(
@@ -480,10 +508,27 @@ def listar_folletos(tienda_id: Optional[str] = None, limite: int = 200) -> list[
     if tienda_id:
         qs = qs.filter(tienda_id=tienda_id)
     qs = qs.order_by("-created_at")[:limite]
-    return list(qs.values(
+    filas = list(qs.values(
         "id", "tienda__nombre", "fuente", "folleto_id_fuente", "titulo",
-        "fecha_inicio", "fecha_fin", "total_paginas", "estado", "scrapeado_at", "created_at",
+        "fecha_inicio", "fecha_fin", "total_paginas", "estado", "scrapeado_at", "created_at", "url_origen",
     ))
+    primeras = _primeras_paginas([f["id"] for f in filas])
+    for f in filas:
+        f["url_origen"] = origen.url_origen_segura(f["url_origen"])
+        f["primera_pagina_id"] = primeras.get(f["id"])
+    return filas
+
+
+def _primeras_paginas(folleto_ids: list[int]) -> dict:
+    """folleto_id -> id de su pagina con menor numero_pagina (una consulta, sin join)."""
+    primeras = {}
+    for p in (
+        Pagina.objects.filter(folleto_id__in=folleto_ids)
+        .order_by("folleto_id", "numero_pagina")
+        .values("id", "folleto_id")
+    ):
+        primeras.setdefault(p["folleto_id"], p["id"])
+    return primeras
 
 
 def listar_tipos_extraccion() -> list[str]:
@@ -510,7 +555,7 @@ def listar_extracciones(
     return list(qs.values(
         "id", "tienda__nombre", "folleto_id", "tipo", "texto_raw", "texto_norm",
         "categoria_nlp", "valor", "valor_anterior", "texto_promo", "confianza_ocr",
-        "producto_canonico__nombre_canonico", "created_at",
+        "producto_canonico__nombre_canonico", "created_at", "pagina_id", "pagina__numero_pagina",
     ))
 
 
@@ -590,3 +635,84 @@ def errores_carga(
         "categoria", "sqlstate", "mensaje", "detalle", "ruta_archivo", "resuelto", "resuelto_at",
     ))
     return {"kpis": kpis, "por_categoria": por_categoria, "filas": filas}
+
+
+# -- Procedencia por registro (docs/bi/metricas.md, "Procedencia por registro") -----------------------------
+# Opcion A aprobada 13-oct-2026: sin tocar las vistas. Las filas de v_precios_actuales / v_historico_precios traen
+# id = extracciones.id; la procedencia se resuelve con una segunda consulta por PK (id__in) y se combina en Python
+# (origen.combinar_procedencia). extracciones -> paginas y -> folletos son N:1 y la busqueda es por PK: no duplica
+# ni pierde filas (verificado con --contar: 27,760 = 27,760).
+
+def _procedencia_de_valores(f: dict) -> dict:
+    return {
+        "pagina_id": f["pagina_id"],
+        "numero_pagina": f["pagina__numero_pagina"],
+        "folleto_id": f["folleto_id"],
+        "folleto_id_fuente": f["folleto__folleto_id_fuente"],
+        "folleto_titulo": f["folleto__titulo"],
+        "url_origen": origen.url_origen_segura(f["folleto__url_origen"]),
+    }
+
+
+def procedencia_por_ids(ids) -> dict:
+    ids = sorted({i for i in ids if i is not None})
+    if not ids:
+        return {}
+    qs = Extraccion.objects.filter(id__in=ids).values(
+        "id", "pagina_id", "pagina__numero_pagina", "folleto_id", "folleto__folleto_id_fuente",
+        "folleto__titulo", "folleto__url_origen",
+    )
+    return {f["id"]: _procedencia_de_valores(f) for f in qs}
+
+
+def agregar_procedencia(filas: list[dict]) -> list[dict]:
+    return origen.combinar_procedencia(filas, procedencia_por_ids([f.get("id") for f in filas]))
+
+
+_CAMPOS_PAGINA = (
+    "id", "numero_pagina", "archivo_imagen", "folleto_id", "folleto__fuente", "folleto__folleto_id_fuente",
+    "folleto__tienda__slug", "folleto__tienda__nombre", "folleto__titulo", "folleto__url_origen",
+    "folleto__fecha_inicio", "folleto__fecha_fin", "folleto__total_paginas",
+)
+
+_CAMPOS_EXTRACCION = (
+    "id", "tipo", "texto_raw", "texto_norm", "valor", "valor_anterior", "confianza_ocr",
+    "bbox_x", "bbox_y", "bbox_ancho", "bbox_alto", "pagina_id", "producto_extraccion_id", "metodo_norm",
+    "producto_canonico__nombre_canonico",
+)
+
+
+def pagina_origen(pagina_id: int) -> Optional[dict]:
+    """Datos de una pagina para armar la ruta de su imagen y de sus JSON. None si no existe."""
+    return Pagina.objects.filter(id=pagina_id).values(*_CAMPOS_PAGINA).first()
+
+
+def contexto_pagina(pagina_id: int) -> Optional[dict]:
+    """Pagina + paginas vecinas del mismo folleto + todos los bloques extraidos de la pagina. None si no existe."""
+    pag = pagina_origen(pagina_id)
+    if pag is None:
+        return None
+    hermanas = Pagina.objects.filter(folleto_id=pag["folleto_id"])
+    ant = hermanas.filter(numero_pagina__lt=pag["numero_pagina"]).order_by("-numero_pagina").values("id").first()
+    sig = hermanas.filter(numero_pagina__gt=pag["numero_pagina"]).order_by("numero_pagina").values("id").first()
+    bloques = list(
+        Extraccion.objects.filter(pagina_id=pagina_id)
+        .order_by("bbox_y", "bbox_x", "id")
+        .values("id", "tipo", "texto_raw", "valor", "bbox_x", "bbox_y", "bbox_ancho", "bbox_alto")
+    )
+    return {
+        "pagina": pag,
+        "vecinas": {"anterior": ant["id"] if ant else None, "siguiente": sig["id"] if sig else None},
+        "bloques": bloques,
+    }
+
+
+def origen_extraccion(extraccion_id: int) -> Optional[dict]:
+    """Extraccion + su fila PRODUCTO asociada (producto_extraccion_id, N:1). None si no existe."""
+    ext = Extraccion.objects.filter(id=extraccion_id).values(*_CAMPOS_EXTRACCION).first()
+    if ext is None:
+        return None
+    producto = None
+    if ext["producto_extraccion_id"]:
+        producto = Extraccion.objects.filter(id=ext["producto_extraccion_id"]).values(*_CAMPOS_EXTRACCION).first()
+    return {"extraccion": ext, "producto": producto}

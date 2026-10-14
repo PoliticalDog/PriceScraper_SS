@@ -33,6 +33,11 @@
       <h6 id="tituloGrafico">Selecciona un producto de la tabla para ver el precio por tienda</h6>
       <canvas id="chartPorTienda" height="280"></canvas>
     </div>
+    <div class="chart-card mt-3 d-none" id="detalleCard">
+      <h6 class="mb-1">Registros del producto (de qué folleto y página viene cada uno)</h6>
+      <p class="small text-muted mb-2">Mezcla todas las fechas, igual que la tabla; revisa la vigencia de cada registro.</p>
+      <table id="tablaDetalle" class="table table-sm table-striped w-100"></table>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -45,7 +50,7 @@ async function cargarFiltros() {
 }
 
 async function cargarGraficoProducto(producto) {
-  document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;
+  document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;  // textContent: sin HTML
   const datos = await fetchJSON(`/api/comparativa/${encodeURIComponent(producto)}/por-tienda`);
   renderChart("chartPorTienda", {
     type: "bar",
@@ -55,6 +60,13 @@ async function cargarGraficoProducto(producto) {
     },
     options: { plugins: { legend: { display: false } } },
   });
+  document.getElementById("detalleCard").classList.remove("d-none");
+  renderTabla("#tablaDetalle", datos, [
+    { data: "tienda", title: "Tienda", render: (d) => escaparHtml(d) },
+    { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
+    { data: null, title: "Vigencia", render: (d, t, f) => escaparHtml(formatoVigencia(f.vigencia_desde, f.vigencia_hasta)) },
+    { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
+  ], { order: [[1, "asc"]], pageLength: 10 });
 }
 
 async function cargarTabla() {
@@ -66,8 +78,8 @@ async function cargarTabla() {
   const datos = await fetchJSON(`/api/comparativa${qs(params)}`);
 
   const tabla = renderTabla("#tablaComparativa", datos, [
-    { data: "producto", title: "Producto" },
-    { data: "categoria", title: "Categoría" },
+    { data: "producto", title: "Producto", render: (d) => escaparHtml(d) },
+    { data: "categoria", title: "Categoría", render: (d) => escaparHtml(d) },
     { data: "precio_min", title: "Mín.", render: (d) => formatoMoneda(d) },
     { data: "precio_max", title: "Máx.", render: (d) => formatoMoneda(d) },
     { data: "diferencia", title: "Diferencia", render: (d) => formatoMoneda(d) },
