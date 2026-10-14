@@ -248,6 +248,19 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
     propio precio debajo (_tiene_precio_propio; `precios` = todos los precios de la pagina).
     alinear_debajo=False desactiva esa excepcion (paginas que no son de diseno "nombre debajo",
     ver diseno_nombre_debajo).
+    Columna propia (solo con admitir_debajo): si el ganador queda en diagonal (su bbox no traslapa
+    con el del precio ni en x ni en y: otra columna y otra fila) y algun candidato del alcance
+    traslapa en x con el precio, gana el mas cercano de esos con el mismo criterio. Dev 13-oct-2026
+    (base 20261013_100356): 225 precios tomaban un bloque en diagonal habiendo uno en su columna; en
+    los 78 con articulo GT de ese monto, el de la columna era el nombre correcto en 16 y el diagonal
+    en 1 (Casa Ley/Alsuper: reticula con el nombre de la casilla vecina a 200-300 px pero mas cerca
+    en vertical; 3B, S-Mart, Soriana). El ganador en la FILA del precio (traslape en y) no se toca:
+    es el nombre a la izquierda de Merco/Alsuper/S-Mart (fila_izq), y cambiarlo por la columna daba
+    +16/-23 en dev. Costo conocido: en la reticula de Casa Ley el bloque mas cercano de la columna
+    puede ser el encabezado de la casilla de abajo cuando su precio no se leyo (no lo frena
+    _tiene_precio_propio). Preferir el de la columna ARRIBA en paginas no "nombre debajo" lo
+    corregia en produccion (18/24 cambios a su casilla) pero en dev perdia 2 sin ganar ninguno
+    (Soriana Hiper 422326 p13 y 3B 419897 p13: nombre propio debajo del precio); siempre: -10.
     """
     if not productos:
         return None
@@ -270,6 +283,7 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
                 return primero
 
     mejor, menor_dist, mejor_es_debajo = None, float("inf"), False
+    mejor_col, menor_dist_col, mejor_col_es_debajo = None, float("inf"), False
 
     for prod in productos:
         prod_bbox = prod.get("bbox", {})
@@ -291,8 +305,22 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
         dist = abs(diff_y)
         if dist < menor_dist or (dist == menor_dist and mejor_es_debajo and not es_debajo):
             menor_dist, mejor, mejor_es_debajo = dist, prod, es_debajo
+        if _traslape(prod, item, "x") > 0 and (
+                dist < menor_dist_col or (dist == menor_dist_col and mejor_col_es_debajo and not es_debajo)):
+            menor_dist_col, mejor_col, mejor_col_es_debajo = dist, prod, es_debajo
 
+    if (mejor is not None and mejor_col is not None
+            and _traslape(mejor, item, "x") <= 0 and _traslape(mejor, item, "y") <= 0):
+        return mejor_col
     return mejor
+
+
+def _traslape(a: dict, b: dict, eje: str) -> float:
+    """Traslape de los bbox de `a` y `b` en el eje "x" o "y" (<= 0: no se traslapan)."""
+    inicio, largo = ("x", "ancho") if eje == "x" else ("y", "alto")
+    p, q = a.get("bbox", {}), b.get("bbox", {})
+    return (min(p.get(inicio, 0) + p.get(largo, 0), q.get(inicio, 0) + q.get(largo, 0))
+            - max(p.get(inicio, 0), q.get(inicio, 0)))
 
 
 # -- Unidad de presentacion como ultima linea del nombre ------------------------------

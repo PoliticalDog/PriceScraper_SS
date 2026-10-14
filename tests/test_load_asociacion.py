@@ -201,6 +201,51 @@ def test_atributos_conservan_distancia_solo_vertical():
     assert asociar_por_cercania(PRECIO, [encima, lado]) is lado
 
 
+# -- Columna propia sobre la casilla vecina en diagonal ----------------------------------------
+
+def test_vecina_en_diagonal_cede_a_nombre_de_la_propia_columna():
+    # Casa Ley 426471 p3: "$305.66" (Pinol) tomaba "lalo" de la casilla vecina (dx -368, mas cerca
+    # en vertical) teniendo "Aceite De Pino Pinol" encima, en su columna
+    vecina = _bloque("lalo", 250, 960, alto=30)          # otra columna y otra fila, dy 40
+    propia = _bloque("Aceite De Pino", 510, 900, alto=30)  # traslapa en x con el precio, dy 100
+    assert asociar_por_cercania(PRECIO, [vecina, propia], admitir_debajo=True) is propia
+
+
+def test_vecina_debajo_en_diagonal_cede_a_la_propia_columna():
+    vecina = _bloque("Paquete", 760, 1065, alto=14)                  # debajo, dx 260, dy 65
+    propia = _bloque("Toallitas humedas", 490, 930, ancho=120)       # arriba, dy 70
+    assert asociar_por_cercania(PRECIO, [vecina, propia], admitir_debajo=True) is propia
+
+
+def test_vecina_en_diagonal_sin_alternativa_en_la_columna_se_mantiene():
+    vecina = _bloque("vecina", 250, 960, alto=30)
+    otra = _bloque("otra mas lejos", 800, 900)  # tampoco traslapa en x con el precio
+    assert asociar_por_cercania(PRECIO, [otra, vecina], admitir_debajo=True) is vecina
+
+
+def test_merco_nombre_a_la_izquierda_en_la_fila_no_cambia():
+    # Merco 415805 (fila_izq): el nombre va a la izquierda, a la altura del precio, sin traslape en x;
+    # lo de encima en la columna del precio (otro articulo, titulo) no le gana
+    precio = _bloque("$7.99", 400, 871, ancho=100, alto=68)
+    nombre = _bloque("SANDIA ROJA", 223, 901, ancho=145, alto=49)
+    encima = _bloque("ARMA AQUI", 380, 700, ancho=600, alto=60)
+    assert asociar_por_cercania(precio, [encima, nombre], admitir_debajo=True) is nombre
+
+
+def test_chedraui_nombre_alineado_debajo_no_cambia():
+    # Pagina "nombre debajo": la regla de alineacion decide antes que la de columna
+    vecina = _bloque("Lavadora", 272, 960, alto=30)     # diagonal arriba, dy 40
+    alineado = _bloque("Lavasecadora", 507, 1080)
+    assert asociar_por_cercania(PRECIO, [vecina, alineado], admitir_debajo=True,
+                                alinear_debajo=True) is alineado
+
+
+def test_columna_propia_no_aplica_a_atributos():
+    vecina = _bloque("vecina", 250, 960, alto=30)
+    propia = _bloque("propia", 510, 900, alto=30)
+    assert asociar_por_cercania(PRECIO, [vecina, propia]) is vecina
+
+
 def test_tolerancia_horizontal_se_mantiene():
     debajo_otra_columna = _bloque("otro", 950, 1020)
     assert asociar_por_cercania(PRECIO, [debajo_otra_columna], admitir_debajo=True) is None
