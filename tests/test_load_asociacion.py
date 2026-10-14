@@ -240,6 +240,60 @@ def test_chedraui_nombre_alineado_debajo_no_cambia():
                                 alinear_debajo=True) is alineado
 
 
+def test_reticula_encabezado_de_abajo_cede_al_nombre_de_arriba():
+    # Casa Ley 430500 p1: "$68.04" (Inflallantas) con la casilla vecina en diagonal; en su columna el
+    # mas cercano es "Protector", encabezado de la casilla de abajo sin precio leido
+    vecina = _bloque("Pieza", 250, 1065, alto=14)          # diagonal, dy 65
+    abajo = _bloque("Protector", 495, 1070)                 # columna, debajo, dy 70
+    arriba = _bloque("Inflallantas", 495, 900)              # columna, arriba, dy 100
+    prods = [vecina, abajo, arriba]
+    assert asociar_por_cercania(PRECIO, prods, admitir_debajo=True, alinear_debajo=False) is abajo
+    assert asociar_por_cercania(PRECIO, prods, admitir_debajo=True, alinear_debajo=False,
+                                reticula=True) is arriba
+
+
+def test_reticula_sin_nombre_arriba_en_la_columna_usa_el_de_abajo():
+    vecina = _bloque("Pieza", 250, 1065, alto=14)
+    abajo = _bloque("Protector", 495, 1070)
+    assert asociar_por_cercania(PRECIO, [vecina, abajo], admitir_debajo=True, alinear_debajo=False,
+                                reticula=True) is abajo
+
+
+def test_reticula_detectada_por_vecinos_alineados_en_ambos_lados():
+    from load.load import _es_reticula, conteo_vecinos_alineados
+    assert _es_reticula(conteo_vecinos_alineados(*_pagina_reticula_nombre_arriba())) is True
+    assert _es_reticula(conteo_vecinos_alineados(*_pagina_nombre_debajo())) is False
+
+
+def test_paginas_de_dev_con_nombre_propio_debajo_no_son_reticula():
+    # Conteos reales: Soriana Hiper 422326 p13 ("Tapete de bano" debajo del precio) y 3B 419897 p13
+    # ("Mermelada de Fresa"); en reticula perdian su nombre por el de la casilla de arriba
+    from load.load import _es_reticula
+    assert _es_reticula({"solo_debajo": 0, "solo_arriba": 5, "ambos": 1}) is False
+    assert _es_reticula({"solo_debajo": 0, "solo_arriba": 1, "ambos": 0}) is False
+    # pocas casillas: no basta con que "ambos" sea mayoria
+    assert _es_reticula({"solo_debajo": 0, "solo_arriba": 0, "ambos": 2}) is False
+
+
+def test_pagina_no_reticula_conserva_el_nombre_propio_debajo():
+    # Como Soriana Hiper 422326 p13: el nombre propio en la columna, debajo y mas cerca que el de la
+    # casilla de arriba; la casilla vecina en diagonal. Fuera de reticula gana el de debajo
+    from load.load import construir_registros_pagina
+
+    class _Norm:
+        def normalizar(self, texto):
+            from types import SimpleNamespace
+            return SimpleNamespace(descartado=False, metodo="exacto", categoria="x", nombre_canonico=texto)
+
+    precio = _bloque("$199", 500, 1000, alto=60)
+    productos = [_bloque("Cobertor", 250, 1065, alto=14),            # diagonal
+                 _bloque("Tapete de bano", 530, 1070),              # columna, debajo (no alineado)
+                 _bloque("MATRIMONIAL", 530, 880)]                  # columna, arriba
+    pag = {"productos": productos, "precios": [precio], "precios_anteriores": []}
+    registro = construir_registros_pagina(pag, None, _Norm())["precios"][0]
+    assert registro["producto"]["texto"] == "Tapete de bano"
+
+
 def test_columna_propia_no_aplica_a_atributos():
     vecina = _bloque("vecina", 250, 960, alto=30)
     propia = _bloque("propia", 510, 900, alto=30)

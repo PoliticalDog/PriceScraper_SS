@@ -210,7 +210,29 @@ def diseno_nombre_debajo(precios: list, productos: list) -> bool:
     casilla siguiente pegado debajo) domina "ambos" en las 9 paginas; en Walmart 413251/413647 y
     Chedraui domina "solo debajo"; en S-Mart, La Comer, Soriana Hiper 422326 domina "solo arriba".
     """
-    solo_debajo = otros = 0
+    return _es_nombre_debajo(conteo_vecinos_alineados(precios, productos))
+
+
+def _es_nombre_debajo(c: dict) -> bool:
+    return c["solo_debajo"] > c["solo_arriba"] + c["ambos"]
+
+
+# Reticula (Casa Ley: nombre arriba, precio al pie y el encabezado de la casilla siguiente pegado
+# debajo): los precios con vecino alineado arriba Y debajo son mayoria estricta, y al menos
+# MIN_AMBOS_RETICULA (sin minimo entraban paginas de 1-2 precios de Costco, HEB, La Comer, Merco).
+# Dev 13-oct-2026: las 9 paginas de Casa Ley y Chedraui 416057 p11; produccion sin holdout:
+# Casa Ley 158/185, Soriana Hiper 24, Chedraui 4, ninguna otra tienda.
+MIN_AMBOS_RETICULA = 3
+
+
+def _es_reticula(c: dict) -> bool:
+    return c["ambos"] >= MIN_AMBOS_RETICULA and c["ambos"] > c["solo_arriba"] + c["solo_debajo"]
+
+
+def conteo_vecinos_alineados(precios: list, productos: list) -> dict:
+    """Cuantos precios de la pagina tienen un producto alineado (|dx| <= ALINEACION_DEBAJO_PX) solo
+    arriba, solo debajo o en ambos lados (ventanas de diseno_nombre_debajo)."""
+    c = {"solo_debajo": 0, "solo_arriba": 0, "ambos": 0}
     for precio in precios:
         b = precio.get("bbox", {})
         x, y, alto = b.get("x", 0), b.get("y", 0), b.get("alto", 0)
@@ -223,15 +245,18 @@ def diseno_nombre_debajo(precios: list, productos: list) -> bool:
             qy = q.get("y", 0)
             arriba = arriba or y - limite <= qy < y
             debajo = debajo or y + alto / 2 <= qy <= y + limite
-        if debajo and not arriba:
-            solo_debajo += 1
+        if arriba and debajo:
+            c["ambos"] += 1
+        elif debajo:
+            c["solo_debajo"] += 1
         elif arriba:
-            otros += 1
-    return solo_debajo > otros
+            c["solo_arriba"] += 1
+    return c
 
 
 def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = False,
-                         precios: list | None = None, alinear_debajo: bool = True) -> dict | None:
+                         precios: list | None = None, alinear_debajo: bool = True,
+                         reticula: bool = False) -> dict | None:
     """
     Empareja un item (precio o atributo) con el producto reconocido mas
     cercano verticalmente arriba, dentro de una tolerancia horizontal de
@@ -258,9 +283,10 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
     es el nombre a la izquierda de Merco/Alsuper/S-Mart (fila_izq), y cambiarlo por la columna daba
     +16/-23 en dev. Costo conocido: en la reticula de Casa Ley el bloque mas cercano de la columna
     puede ser el encabezado de la casilla de abajo cuando su precio no se leyo (no lo frena
-    _tiene_precio_propio). Preferir el de la columna ARRIBA en paginas no "nombre debajo" lo
-    corregia en produccion (18/24 cambios a su casilla) pero en dev perdia 2 sin ganar ninguno
-    (Soriana Hiper 422326 p13 y 3B 419897 p13: nombre propio debajo del precio); siempre: -10.
+    _tiene_precio_propio). Por eso, con reticula=True (pagina de reticula, ver _es_reticula) entre
+    los de la columna gana el mas cercano de ARRIBA si lo hay. Aplicarlo en toda pagina no "nombre
+    debajo" perdia 2 en dev (Soriana Hiper 422326 p13 y 3B 419897 p13: nombre propio debajo del
+    precio, paginas que no son reticula); en todas las paginas: -10.
     """
     if not productos:
         return None
@@ -283,7 +309,7 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
                 return primero
 
     mejor, menor_dist, mejor_es_debajo = None, float("inf"), False
-    mejor_col, menor_dist_col, mejor_col_es_debajo = None, float("inf"), False
+    mejor_col, rango_col = None, (True, float("inf"), True)
 
     for prod in productos:
         prod_bbox = prod.get("bbox", {})
@@ -305,9 +331,11 @@ def asociar_por_cercania(item: dict, productos: list, admitir_debajo: bool = Fal
         dist = abs(diff_y)
         if dist < menor_dist or (dist == menor_dist and mejor_es_debajo and not es_debajo):
             menor_dist, mejor, mejor_es_debajo = dist, prod, es_debajo
-        if _traslape(prod, item, "x") > 0 and (
-                dist < menor_dist_col or (dist == menor_dist_col and mejor_col_es_debajo and not es_debajo)):
-            menor_dist_col, mejor_col, mejor_col_es_debajo = dist, prod, es_debajo
+        if _traslape(prod, item, "x") > 0:
+            # menor distancia y, en empate, el de arriba; en reticula, primero cualquiera de arriba
+            rango = (reticula and es_debajo, dist, es_debajo)
+            if rango < rango_col:
+                rango_col, mejor_col = rango, prod
 
     if (mejor is not None and mejor_col is not None
             and _traslape(mejor, item, "x") <= 0 and _traslape(mejor, item, "y") <= 0):
@@ -512,7 +540,8 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
     precios = pag_data.get("precios", [])
     anteriores = emparejar_precios_anteriores(precios, pag_data.get("precios_anteriores", []))
 
-    nombre_debajo = diseno_nombre_debajo(precios, productos)
+    conteo = conteo_vecinos_alineados(precios, productos)
+    nombre_debajo, reticula = _es_nombre_debajo(conteo), _es_reticula(conteo)
 
     registros_precio = []
     for precio, valor_anterior in zip(precios, anteriores):
@@ -523,7 +552,7 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
                 producto = None
         if producto is None:
             producto = asociar_por_cercania(precio, productos, admitir_debajo=True, precios=precios,
-                                            alinear_debajo=nombre_debajo)
+                                            alinear_debajo=nombre_debajo, reticula=reticula)
         if producto is not None and unidad_en_columna_del_precio(producto, precio):
             producto = nombre_con_unidad(producto, productos, normalizador)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
