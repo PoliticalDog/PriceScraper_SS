@@ -62,6 +62,71 @@ def test_unidad_sin_linea_encima_no_cambia():
     assert nombre_con_unidad(pieza, otros, NORM) is pieza
 
 
+def test_hueco_de_una_linea_perdida_por_el_ocr_se_tolera():
+    # casa_ley 424405 pag 3 (bboxes reales): "Nescafes" (conf 0.141, y 617) no llega al NLP;
+    # el hueco Dolca->Carton es de 18 px con alto 14
+    lineas = [_b("Solulole", 431, 587, 56, 16), _b("Dolca", 435, 603, 40), _b("Carton", 435, 635, 48)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Solulole Dolca Carton"
+
+
+def test_solo_se_tolera_un_hueco_por_pila():
+    lineas = [_b("Arriba", 100, 100), _b("Medio", 100, 134), _b("Carton", 100, 168)]  # dos huecos de 20 px
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Medio Carton"
+
+
+def test_hueco_bajo_encabezado_alto_no_salta_al_cintillo_de_arriba():
+    # casa_ley 426466 p1 $397.88 (bboxes reales): "Pieza" (del "1 Pieza Adicional" de la casilla de
+    # arriba) a 41 px de "Detergente" (alto 36); el alto de referencia es el menor (16 -> 32 px)
+    lineas = [_b("Pieza", 1633, 277, 38, 16), _b("Detergente", 1594, 334, 129, 36),
+              _b("En polvo", 1601, 369, 62, 18), _b("Regular", 1604, 384, 55, 20),
+              _b("Ariels", 1611, 401, 44, 16), _b("Cartón", 1607, 417, 50, 16)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Detergente En polvo Regular Ariels Cartón"
+
+
+def test_hueco_bajo_encabezado_alto_no_salta_a_la_unidad_de_arriba():
+    # casa_ley 425807 p3 $289.88 (bboxes reales): "Carton" de la casilla Bold a 54 px de "Detergente" (28)
+    lineas = [_b("Colores del", 1287, 509, 58, 14), _b("Verano", 1293, 521, 42, 14), _b("Carton", 1295, 535, 38, 12),
+              _b("Detergente", 1279, 601, 99, 28), _b("Polva", 1305, 627, 34, 14),
+              _b("Citrico", 1294, 648, 37, 13), _b("Carton", 1294, 670, 39, 14)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Detergente Polva Citrico Carton"
+
+
+def test_encabezado_alto_cierra_la_pila_tras_el_hueco():
+    # casa_ley 430500 p2 (bboxes reales): sobre "Puré" (28) estan "v8 Campbells" / "Nectar Lata"
+    # del cintillo GRATIS de la casilla de arriba, a 18 px
+    lineas = [_b("Nectar Lata", 819, 285, 72, 14), _b("v8 Campbells", 808, 296, 88, 32), _b("Puré", 806, 346, 58, 28),
+              _b("de Tomate", 821, 391, 60, 12), _b("Brid", 835, 403, 34, 14), _b("Del Fuena", 817, 417, 64, 14),
+              _b("Carton", 831, 433, 42, 12)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Puré de Tomate Brid Del Fuena Carton"
+
+
+def test_encabezado_alto_cierra_la_pila_sin_hueco():
+    # casa_ley 422941 p1 (bboxes reales): banner "NO NECESITAS" / "membresía" pegado sobre "Chiles" (26)
+    lineas = [_b("NO NECESITAS", 1472, 144, 160, 30), _b("membresía", 1466, 168, 138, 26),
+              _b("Chiles", 1476, 214, 56, 26), _b("Jalapeno", 1487, 247, 60, 16), _b("Carton", 1495, 289, 46)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Chiles Jalapeno Carton"
+
+
+def test_linea_alta_en_medio_no_corta_y_el_encabezado_entra_tras_hueco():
+    # casa_ley 424405 p3 $256.73 (bboxes reales): "Complete" (26) va pegada entre lineas de 14 px
+    lineas = [_b("Suavizante", 1408, 550, 128, 30), _b("Suavitele", 1427, 595, 56, 14),
+              _b("Complete", 1424, 608, 62, 26), _b("Primavera", 1423, 635, 62, 14), _b("Carton", 1433, 649, 44)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Suavizante Suavitele Complete Primavera Carton"
+
+
+def test_hueco_sobre_encabezado_usa_el_alto_del_texto_chico():
+    # casa_ley 427145 p1 (bboxes reales salvo "Carton"): la lata "oDORADO]" (24) del Atun de arriba
+    # queda a 44 px de "Cóctel" (30); el texto de la casilla mide 12-14 -> tolerancia 24
+    lineas = [_b("oDORADO]", 80, 478, 94, 24), _b("Cóctel", 10, 546, 72, 30), _b("omate", 41, 577, 40, 12),
+              _b("Amela", 33, 589, 42, 14), _b("Carton", 33, 605, 44, 14)]
+    assert nombre_con_unidad(lineas[-1], lineas, NORM)["texto"] == "Cóctel omate Amela Carton"
+
+
+def test_hueco_mayor_a_dos_alturas_no_se_une():
+    lineas = [_b("Lejos", 100, 100), _b("Carton", 100, 144)]  # 30 px > 2 x 14
+    assert nombre_con_unidad(lineas[-1], lineas, NORM) is lineas[-1]
+
+
 def test_linea_de_otra_columna_no_se_une():
     carton = _b("Carton", 1225, 437, 44)
     otros = [_b("oXion", 1284, 428, 50, 26), carton]  # pegado en y, pero sin traslape en x

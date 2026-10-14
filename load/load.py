@@ -397,13 +397,53 @@ def es_unidad_suelta(texto: str) -> bool:
     return bool(PATRON_UNIDAD_SUELTA.match(texto or ""))
 
 
-def _linea_encima(otro: dict, prod: dict) -> bool:
-    """True si `otro` es la linea inmediatamente superior de `prod` (criterio de _continua_otro_bloque)."""
+def _linea_encima(otro: dict, prod: dict, alto: float | None = None) -> bool:
+    """True si `otro` es la linea inmediatamente superior de `prod` (criterio de _continua_otro_bloque).
+    `alto` sustituye al alto de `prod` como tolerancia (ver _alto_tope)."""
     b, o = prod.get("bbox", {}), otro.get("bbox", {})
-    x0, x1, y, alto = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0), b.get("y", 0), b.get("alto", 0)
+    x0, x1, y = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0), b.get("y", 0)
+    alto = b.get("alto", 0) if alto is None else alto
     separacion = y - (o.get("y", 0) + o.get("alto", 0))
     traslape_x = min(x1, o.get("x", 0) + o.get("ancho", 0)) - max(x0, o.get("x", 0))
     return o.get("y", 0) < y and -alto / 2 <= separacion <= alto and traslape_x > 0
+
+
+# Hueco de una linea perdida (14-oct-2026): el OCR a veces lee una linea intermedia de la
+# descripcion con confianza tan baja que no llega al NLP, y el hueco corta la pila. casa_ley 424405
+# p3 $559: "Soluble" / "Dolca" / ["Nescafes", conf 0.141] / "Carton": hueco Dolca->Carton de 18 px
+# con alto 14. Solo en la pila de la unidad suelta y una vez por pila: se acepta como linea de
+# encima la que deja una separacion de hasta 2 altos si no hay ninguna contigua. El "1 Pieza" del
+# cintillo GRATIS queda a 58 px (3.6 altos) de su vecina y sigue sin unirse.
+# El alto de referencia es el MENOR de las dos lineas (la perdida mide como sus vecinas de texto
+# chico): con el alto de la de abajo, un encabezado alto ("Detergente", 28-36 px) admitia 56-72 px
+# y saltaba a la casilla de arriba (produccion casa_ley: "Pieza" del cintillo "1 Pieza Adicional"
+# a 41 px de "Detergente" en 426466 p1; "Carton" de la casilla Bold a 54 px en 425807 p3).
+HUECO_LINEA_PERDIDA_ALTURAS = 2
+
+
+def _alto_tope(lineas: list) -> float:
+    """Alto de referencia de la pila para el siguiente paso hacia arriba: el menor entre la linea
+    actual y la de abajo. Un encabezado o logo alto ("Puré" 28 px, "Chiles" 26 px) no agranda la
+    tolerancia de contiguidad: con su propio alto saltaba al cintillo GRATIS de la casilla de arriba
+    (casa_ley 430500 p2 "Puré" -> "v8 Campbells" a 18 px) o al banner (422941 p1 "Chiles" ->
+    "membresía" / "NO NECESITAS" a 20 px). Aplica con y sin hueco. Una linea alta en medio de la
+    descripcion no corta: "Primavera" (14) / "Complete" (26) / "Suavitele" (14) estan pegadas."""
+    altos = [l.get("bbox", {}).get("alto", 0) for l in lineas[-2:]]
+    return min(altos)
+
+
+def _linea_encima_tras_hueco(otro: dict, prod: dict, tope: float) -> bool:
+    """Como _linea_encima, pero admite una separacion de hasta HUECO_LINEA_PERDIDA_ALTURAS veces el
+    alto menor entre `otro` y el tope de la pila (_alto_tope): una linea intermedia que el OCR no
+    entrego. casa_ley 427145 p1: "Cóctel" (30, sobre texto de 14) no alcanza la lata "DORADO" (24)
+    de la casilla de arriba a 44 px."""
+    b, o = prod.get("bbox", {}), otro.get("bbox", {})
+    x0, x1, y = b.get("x", 0), b.get("x", 0) + b.get("ancho", 0), b.get("y", 0)
+    alto = min(tope, o.get("alto", 0))
+    separacion = y - (o.get("y", 0) + o.get("alto", 0))
+    traslape_x = min(x1, o.get("x", 0) + o.get("ancho", 0)) - max(x0, o.get("x", 0))
+    return (o.get("y", 0) < y and -alto / 2 <= separacion <= HUECO_LINEA_PERDIDA_ALTURAS * alto
+            and traslape_x > 0)
 
 
 def unidad_en_columna_del_precio(prod: dict, precio: dict, margen: float = MARGEN_COLUMNA_UNIDAD_PX) -> bool:
@@ -435,9 +475,14 @@ def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -
     PRODUCTO enlazada sigue siendo la de la unidad, solo cambia el nombre que muestra el precio."""
     if not es_unidad_suelta(prod.get("texto", "")):
         return prod
-    lineas, actual = [prod], prod
+    lineas, actual, hueco_usado = [prod], prod, False
     while len(lineas) <= MAX_LINEAS_DESCRIPCION:
-        encima = [o for o in productos if all(o is not l for l in lineas) and _linea_encima(o, actual)]
+        tope = _alto_tope(lineas)
+        encima = [o for o in productos if all(o is not l for l in lineas) and _linea_encima(o, actual, tope)]
+        if not encima and not hueco_usado:
+            encima = [o for o in productos if all(o is not l for l in lineas)
+                      and _linea_encima_tras_hueco(o, actual, tope)]
+            hueco_usado = bool(encima)
         if not encima:
             break
         siguiente = max(encima, key=lambda o: o.get("bbox", {}).get("y", 0) + o.get("bbox", {}).get("alto", 0))
