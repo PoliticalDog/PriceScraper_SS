@@ -74,8 +74,11 @@ def menu_motor() -> str:
     print("-" * 55)
     try:
         opc = int(input("   Motor (Enter = EasyOCR): ") or "1")
+        # fuera de rango (0, negativos) --> default; sin esto 0 daria el indice -1 (tesseract)
+        if not 1 <= opc <= len(MOTORES_DISPONIBLES):
+            return "easyocr"
         return MOTORES_DISPONIBLES[opc - 1]
-    except (ValueError, IndexError):
+    except ValueError:
         return "easyocr"
 
 # Menú perfil
@@ -94,9 +97,12 @@ def menu_perfil(tienda: str = "") -> str | None:
         raw = input("   Perfil (Enter = por tienda): ").strip()
         if not raw:
             return None  # None --> perfil por tienda
-        opc = int(raw) - 1
-        return _OPCIONES_PERFIL[opc]
-    except (ValueError, IndexError):
+        opc = int(raw)
+        # fuera de rango (0, negativos) --> por tienda; sin esto 0 daria el indice -1 (bn_fuerte)
+        if not 1 <= opc <= len(_OPCIONES_PERFIL):
+            return None
+        return _OPCIONES_PERFIL[opc - 1]
+    except ValueError:
         return None
 
 # Menú resolución px
@@ -114,8 +120,12 @@ def menu_resolucion() -> int | None:
         raw = input("   Resolución (Enter = por tienda): ").strip()
         if not raw:
             return None  # None --> resolución por tienda
-        return opciones[int(raw) - 1]
-    except (ValueError, IndexError):
+        opc = int(raw)
+        # fuera de rango (0, negativos) --> por tienda; sin esto 0 daria el indice -1 (1800px forzado)
+        if not 1 <= opc <= len(opciones):
+            return None
+        return opciones[opc - 1]
+    except ValueError:
         return None
 
 # Recopilación de carpetas
