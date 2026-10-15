@@ -172,6 +172,6 @@ def test_api_resumen_y_detalle_comparativa(monkeypatch):
 
     views.api_resumen(rf.get("/api/resumen?con_categoria=no"))
     views.api_comparativa_por_tienda(rf.get("/api/comparativa/leche/por-tienda?con_categoria=si"), "leche")
-    assert recibido["kpis"] == {"con_categoria": "no"}
-    assert recibido["top"] == {"con_categoria": "no"}
+    assert recibido["kpis"] == {"con_categoria": "no", "folleto": None}
+    assert recibido["top"] == {"con_categoria": "no", "folleto": None}
     assert recibido["detalle"] == ("leche", {"con_categoria": "si"})

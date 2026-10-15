@@ -22,6 +22,7 @@ urlpatterns = [
     # API
     path("api/filtros/tiendas", views.api_filtros_tiendas),
     path("api/filtros/categorias", views.api_filtros_categorias),
+    path("api/filtros/folleto", views.api_filtros_folleto),
     path("api/resumen", views.api_resumen),
     path("api/precios", views.api_precios),
     path("api/comparativa", views.api_comparativa),

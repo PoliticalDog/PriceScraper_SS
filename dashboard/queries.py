@@ -3,8 +3,8 @@
 from typing import Optional
 
 from django.db import connection
-from django.db.models import Count, F, Max, Q
-from django.db.models.functions import Trim
+from django.db.models import CharField, Count, Exists, F, Max, OuterRef, Q, Value
+from django.db.models.functions import Coalesce, Trim
 
 from dashboard import confiabilidad, origen
 from dashboard.models import (
@@ -75,6 +75,68 @@ _SQL_CON_CATEGORIA = (
 )
 
 
+# Filtro "Folleto" (aprobado por la persona 14-oct-2026; docs/bi/metricas.md seccion 6).
+# Parametro de querystring folleto: el ID DE LA FUENTE (folletos.folleto_id_fuente: el de Tiendeo/Ofertomat, el que
+# muestra la celda "Origen" y el nombre de la carpeta data/raw/<fuente>/<tienda>/<id>). Coincidencia exacta tras
+# quitar espacios de los extremos; vacio/ausente = todos. Un id inexistente o mal escrito da vacio (no se ignora).
+# No se acepta el folleto.id interno: no lo ve el usuario (salvo en /datos, que ya filtra por el con folleto_id).
+# Hoy folleto_id_fuente es unico en toda la tabla (694/694, 6 digitos); el esquema solo garantiza unicidad por
+# (fuente, folleto_id_fuente): si un dia se repite entre fuentes, el filtro traeria ambos folletos (sin duplicar filas).
+def normalizar_folleto(valor) -> Optional[str]:
+    """ID de la fuente sin espacios en los extremos, o None (todos)."""
+    v = (valor or "").strip()
+    return v or None
+
+
+def filtrar_folleto(qs, folleto: Optional[str], campo: str = "folleto_id_fuente"):
+    """Filtra por el id de la fuente del folleto (igualdad exacta). Las vistas traen la columna; en extracciones el
+    campo es folleto__folleto_id_fuente (FK N:1 a folletos: el join no duplica filas)."""
+    folleto = normalizar_folleto(folleto)
+    return qs if folleto is None else qs.filter(**{campo: folleto})
+
+
+# Misma regla en SQL crudo (requiere un alias f de folletos o la columna folleto_id_fuente calificada).
+# %(folleto)s: NULL = todos.
+_SQL_FOLLETO = "(%(folleto)s::text IS NULL OR f.folleto_id_fuente = %(folleto)s::text)"
+
+# Estados del folleto filtrado, para los avisos de las paginas (aprobado 14-oct-2026; metricas.md seccion 6):
+#   no_existe   ningun folleto con ese folleto_id_fuente (aunque pueda tener errores de carga: si fallo entero no
+#               tiene fila en folletos)
+#   sin_precios el folleto existe pero no tiene registros del dashboard (= v_precios_actuales; 76 de 694 al 14-oct)
+#   con_precios existe y tiene registros (sin aviso)
+FOLLETO_NO_EXISTE = "no_existe"
+FOLLETO_SIN_PRECIOS = "sin_precios"
+FOLLETO_CON_PRECIOS = "con_precios"
+
+
+def estado_folleto(folleto: Optional[str]) -> Optional[dict]:
+    """None si el filtro esta vacio. Si no, si el folleto existe, sus datos basicos, cuantos registros de precio y
+    cuantos errores de carga tiene. Conteos sobre una sola tabla/vista cada uno (sin joins que dupliquen)."""
+    folleto = normalizar_folleto(folleto)
+    if folleto is None:
+        return None
+    folletos = list(
+        Folleto.objects.filter(folleto_id_fuente=folleto)
+        .order_by("fuente", "id")
+        .values("fuente", "tienda__nombre")
+    )
+    registros = VPreciosActuales.objects.filter(folleto_id_fuente=folleto).count() if folletos else 0
+    estado = (
+        FOLLETO_NO_EXISTE if not folletos
+        else FOLLETO_SIN_PRECIOS if registros == 0
+        else FOLLETO_CON_PRECIOS
+    )
+    return {
+        "folleto": folleto,
+        "estado": estado,
+        "folletos": len(folletos),
+        "tiendas": sorted({f["tienda__nombre"] for f in folletos}),
+        "fuentes": sorted({str(f["fuente"]) for f in folletos}),
+        "registros": registros,
+        "errores_carga": ErrorCarga.objects.filter(folleto_id_fuente=folleto).count(),
+    }
+
+
 def listar_tiendas() -> list[dict]:
     return list(
         Tienda.objects.filter(activa=True).order_by("nombre").values("id", "nombre", "slug")
@@ -94,7 +156,7 @@ def listar_categorias() -> list[str]:
 
 # -- Resumen (home) -----------------------------------------------------------
 
-def resumen_kpis(con_categoria: Optional[str] = None) -> dict:
+def resumen_kpis(con_categoria: Optional[str] = None, folleto: Optional[str] = None) -> dict:
     # Corregido 12-oct-2026 (aprobado por la persona, docs/bi/metricas.md "3. KPIs del Resumen"):
     # - "productos_con_precio" contaba PRECIO con valor (28,867) e incluia filas sin texto_norm que ningun
     #   panel muestra; ahora son los registros del dashboard = v_precios_actuales (28,634).
@@ -104,12 +166,14 @@ def resumen_kpis(con_categoria: Optional[str] = None) -> dict:
         vigentes=Count("id", filter=Q(vigente=True)),
         dudosos=Count("id", filter=Q(vigente_dudoso=True)),
     )
-    # 14-oct-2026: el filtro con/sin categoria solo aplica a "Precios detectados" (los otros KPIs no son de producto).
+    # 14-oct-2026: los filtros con/sin categoria y folleto solo aplican a "Precios detectados" (los otros KPIs no son
+    # de registros).
     registros_todos = VPreciosActuales.objects.count()
     con_categoria = normalizar_con_categoria(con_categoria)
+    folleto = normalizar_folleto(folleto)
     registros = (
-        registros_todos if con_categoria is None
-        else filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria).count()
+        registros_todos if con_categoria is None and folleto is None
+        else filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria), folleto).count()
     )
     return {
         "tiendas_activas": Tienda.objects.filter(activa=True).count(),
@@ -117,12 +181,15 @@ def resumen_kpis(con_categoria: Optional[str] = None) -> dict:
         "registros_dashboard": registros,
         "registros_dashboard_todos": registros_todos,
         "con_categoria": con_categoria,
+        "folleto": folleto,
         "folletos_vigentes": vigencia["vigentes"],
         "folletos_vigentes_dudosos": vigencia["dudosos"],
     }
 
 
-def resumen_top_categorias(limite: int = 10, con_categoria: Optional[str] = None) -> list[dict]:
+def resumen_top_categorias(
+    limite: int = 10, con_categoria: Optional[str] = None, folleto: Optional[str] = None,
+) -> list[dict]:
     # 14-oct-2026 (aprobado por la persona): cuenta por la categoria del registro sobre los registros del dashboard
     # (v_precios_actuales.categoria = categoria_nlp), igual que Precios/Comparativa/Historico y el KPI
     # "Precios detectados". Antes contaba por productos_canonicos.categoria sobre todas las filas PRECIO y no cuadraba.
@@ -130,7 +197,7 @@ def resumen_top_categorias(limite: int = 10, con_categoria: Optional[str] = None
     if normalizar_con_categoria(con_categoria) == CON_CATEGORIA_NO:
         return []
     qs = (
-        filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI)
+        filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI), folleto)
         .values("categoria")
         .annotate(n=Count("id"))
         .order_by("-n", "categoria")[:limite]
@@ -163,9 +230,10 @@ def precios_actuales(
     q: Optional[str] = None,
     solo_descuento: bool = False,
     con_categoria: Optional[str] = None,
+    folleto: Optional[str] = None,
     limite: int = 500,
 ) -> list[dict]:
-    qs = filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria)
+    qs = filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria), folleto)
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -198,11 +266,18 @@ def comparativa_precios(
     q: Optional[str] = None,
     min_tiendas: int = 1,
     con_categoria: Optional[str] = None,
+    folleto: Optional[str] = None,
     limite: int = 300,
 ) -> list[dict]:
     # La vista agrupa por (texto_norm, categoria_nlp): cada fila tiene una sola categoria y el filtro la clasifica
     # entera (no parte grupos).
     qs = filtrar_con_categoria(VComparativaPrecios.objects.filter(num_tiendas__gte=min_tiendas), con_categoria)
+    # Folleto (14-oct-2026): la vista no tiene folleto (agrega todas las fechas y folletos). Se dejan los grupos
+    # (texto, categoria) que tienen al menos un registro del folleto, con EXISTS (no une ni duplica); min/max/
+    # diferencia siguen siendo entre todas las tiendas, que es el sentido de comparar.
+    folleto = normalizar_folleto(folleto)
+    if folleto is not None:
+        qs = qs.filter(_en_folleto(folleto))
 
     if categorias:
         qs = qs.filter(categoria__in=categorias)
@@ -220,7 +295,23 @@ def comparativa_precios(
     return filas
 
 
+def _en_folleto(folleto: str) -> Exists:
+    """EXISTS: el grupo (producto, categoria) de v_comparativa_precios tiene un registro del dashboard en el folleto.
+    Misma base que la vista (PRECIO, valor y texto_norm no nulos); la categoria se compara con COALESCE(..., '')
+    porque la vista agrupa NULL como su propio grupo."""
+    vacia = Value("", output_field=CharField())
+    return Exists(
+        Extraccion.objects
+        .filter(tipo="PRECIO", valor__isnull=False, texto_norm=OuterRef("producto"),
+                folleto__folleto_id_fuente=folleto)
+        .alias(_cat=Coalesce("categoria_nlp", vacia))
+        .filter(_cat=Coalesce(OuterRef("categoria"), vacia, output_field=CharField()))
+    )
+
+
 def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None) -> list[dict]:
+    # Folleto (14-oct-2026): el detalle NO se filtra por folleto (quedaria una sola tienda y no habria que comparar);
+    # la pagina marca las filas del folleto filtrado.
     # Mismo motivo que resumen_folletos_por_tienda(): "tienda" colisiona con
     # el campo FK real de Extraccion, no se puede usar como alias en .values().
     # 13-oct-2026: + vigencia y procedencia (folleto/pagina) por registro para el detalle por tienda.
@@ -257,8 +348,11 @@ def historico_precios(
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
     con_categoria: Optional[str] = None,
+    folleto: Optional[str] = None,
 ) -> list[dict]:
-    qs = filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto=producto), con_categoria)
+    qs = filtrar_folleto(
+        filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto=producto), con_categoria), folleto,
+    )
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -291,9 +385,10 @@ def calidad_pipeline(
     fuente: Optional[str] = None,
     estado: Optional[str] = None,
     tasa_util_min: Optional[float] = None,
+    folleto: Optional[str] = None,
     limite: int = 500,
 ) -> list[dict]:
-    qs = VCalidadPipeline.objects.all()
+    qs = filtrar_folleto(VCalidadPipeline.objects.all(), folleto)  # una fila por folleto: queda 0 o 1
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -331,6 +426,7 @@ WITH base AS (
       AND (%(desde)s::date IS NULL OR f.fecha_inicio >= %(desde)s::date)
       AND (%(hasta)s::date IS NULL OR f.fecha_inicio <= %(hasta)s::date)
       AND """ + _SQL_CON_CATEGORIA + """
+      AND """ + _SQL_FOLLETO + """
 ),
 dup AS (
     SELECT tienda_id, SUM(n - 1)::bigint AS sobrantes
@@ -367,6 +463,9 @@ FROM tiendas t
 LEFT JOIN agg a ON a.tienda_id = t.id
 LEFT JOIN dup d ON d.tienda_id = t.id
 WHERE (%(tiendas)s::text[] IS NULL OR t.nombre = ANY(%(tiendas)s::text[]))
+  -- con folleto: solo la tienda duenia del folleto (EXISTS, sin join); id inexistente -> sin filas
+  AND (%(folleto)s::text IS NULL
+       OR EXISTS (SELECT 1 FROM folletos fx WHERE fx.tienda_id = t.id AND fx.folleto_id_fuente = %(folleto)s::text))
 ORDER BY registros DESC, t.nombre
 """
 
@@ -376,10 +475,12 @@ def confiabilidad_por_tienda(
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
     con_categoria: Optional[str] = None,
+    folleto: Optional[str] = None,
 ) -> dict:
     filas = _filas_sql(_SQL_CONFIABILIDAD, {
         "tiendas": tiendas or None, "desde": desde, "hasta": hasta,
         "con_categoria": normalizar_con_categoria(con_categoria),
+        "folleto": normalizar_folleto(folleto),
     })
     corrida = confiabilidad.corrida_vigente()
     total = sum(f["registros"] for f in filas)
@@ -573,8 +674,8 @@ def listar_tiendas_detalle() -> list[dict]:
     )
 
 
-def listar_folletos(tienda_id: Optional[str] = None, limite: int = 200) -> list[dict]:
-    qs = Folleto.objects.all()
+def listar_folletos(tienda_id: Optional[str] = None, folleto: Optional[str] = None, limite: int = 200) -> list[dict]:
+    qs = filtrar_folleto(Folleto.objects.all(), folleto)
     if tienda_id:
         qs = qs.filter(tienda_id=tienda_id)
     qs = qs.order_by("-created_at")[:limite]
@@ -612,9 +713,14 @@ def listar_extracciones(
     folleto_id: Optional[str] = None,
     tipo: Optional[str] = None,
     con_categoria: Optional[str] = None,
+    folleto: Optional[str] = None,
     limite: int = 200,
 ) -> list[dict]:
-    qs = filtrar_con_categoria(Extraccion.objects.all(), con_categoria, "categoria_nlp")
+    # folleto = id de la fuente (filtro "Folleto"); folleto_id = id interno (enlaces del explorador). Van en AND.
+    qs = filtrar_folleto(
+        filtrar_con_categoria(Extraccion.objects.all(), con_categoria, "categoria_nlp"),
+        folleto, "folleto__folleto_id_fuente",
+    )
     if tienda_id:
         qs = qs.filter(tienda_id=tienda_id)
     if folleto_id:
@@ -664,8 +770,9 @@ def listar_tiendas_error() -> list[str]:
     )
 
 
-def _filtrar_errores(categorias, tiendas, fuente, estado):
-    qs = ErrorCarga.objects.all()
+def _filtrar_errores(categorias, tiendas, fuente, estado, folleto=None):
+    # errores_carga guarda el id de la fuente (sin FK a folletos: un folleto que fallo entero no tiene fila alli)
+    qs = filtrar_folleto(ErrorCarga.objects.all(), folleto)
     if categorias:
         qs = qs.filter(categoria__in=categorias)
     if tiendas:
@@ -684,9 +791,10 @@ def errores_carga(
     tiendas: Optional[list[str]] = None,
     fuente: Optional[str] = None,
     estado: Optional[str] = None,
+    folleto: Optional[str] = None,
     limite: int = 1000,
 ) -> dict:
-    # KPIs sobre toda la tabla (estado general); grafica y tabla respetan los filtros
+    # KPIs sobre toda la tabla (estado general); grafica y tabla respetan los filtros (incluido folleto, 14-oct-2026)
     abiertos = ErrorCarga.objects.filter(resuelto=False)
     kpis = {
         "abiertos": abiertos.count(),
@@ -695,7 +803,7 @@ def errores_carga(
         "ultima_corrida": ErrorCarga.objects.aggregate(m=Max("corrida_at"))["m"],
     }
 
-    qs = _filtrar_errores(categorias, tiendas, fuente, estado)
+    qs = _filtrar_errores(categorias, tiendas, fuente, estado, folleto)
 
     # Todas las categorias, aunque tengan 0, para que el eje no cambie con los filtros
     conteo = dict(qs.values_list("categoria").annotate(n=Count("id")))
@@ -705,7 +813,22 @@ def errores_carga(
         "id", "corrida_at", "fuente", "tienda_slug", "folleto_id_fuente", "pagina",
         "categoria", "sqlstate", "mensaje", "detalle", "ruta_archivo", "resuelto", "resuelto_at",
     ))
-    return {"kpis": kpis, "por_categoria": por_categoria, "filas": filas}
+    return {
+        "kpis": kpis, "por_categoria": por_categoria, "filas": filas,
+        "ocultos_por_estado": errores_ocultos_por_estado(categorias, tiendas, fuente, estado, folleto),
+    }
+
+
+def errores_ocultos_por_estado(categorias, tiendas, fuente, estado, folleto=None) -> Optional[dict]:
+    """Errores que cumplen todos los demas filtros (incluido folleto) pero quedan fuera por el filtro de Estado
+    (aviso aprobado 14-oct-2026). Con estado "abiertos" son los resueltos y viceversa; sin filtro de estado, None.
+    Solo con un folleto escrito (decision de la persona 15-oct-2026): sin folleto, None y la vista por defecto
+    no muestra aviso. Es un COUNT sobre errores_carga sola (sin joins)."""
+    opuesto = {"abiertos": "resueltos", "resueltos": "abiertos"}.get(estado)
+    if opuesto is None or normalizar_folleto(folleto) is None:
+        return None
+    n = _filtrar_errores(categorias, tiendas, fuente, opuesto, folleto).count()
+    return {"n": n, "estado_oculto": opuesto, "estado_filtro": estado}
 
 
 # -- Procedencia por registro (docs/bi/metricas.md, "Procedencia por registro") -----------------------------

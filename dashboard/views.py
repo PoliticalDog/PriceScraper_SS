@@ -13,6 +13,11 @@ def _con_categoria(request):
     return queries.normalizar_con_categoria(request.GET.get("con_categoria"))
 
 
+def _folleto(request):
+    """Filtro "Folleto" (?folleto=<id de la fuente>, exacto; vacio = todos). Ver queries.filtrar_folleto."""
+    return queries.normalizar_folleto(request.GET.get("folleto"))
+
+
 # -- Paginas (HTML) -------------------------------------------------------------
 
 def pagina_resumen(request):
@@ -54,18 +59,22 @@ def pagina_explorador(request):
     folleto_id = request.GET.get("folleto_id") or None
     tipo = request.GET.get("tipo") or None
     con_categoria = _con_categoria(request)
+    folleto_fuente = _folleto(request)
 
     contexto = {
         "tiendas": queries.listar_tiendas_detalle(),
-        "folletos": queries.listar_folletos(tienda_id=tienda_id),
+        "folletos": queries.listar_folletos(tienda_id=tienda_id, folleto=folleto_fuente),
         "tipos": queries.listar_tipos_extraccion(),
         "extracciones": queries.listar_extracciones(
-            tienda_id=tienda_id, folleto_id=folleto_id, tipo=tipo, con_categoria=con_categoria
+            tienda_id=tienda_id, folleto_id=folleto_id, tipo=tipo, con_categoria=con_categoria,
+            folleto=folleto_fuente,
         ),
         "tienda_id": tienda_id,
         "folleto_id": folleto_id,
         "tipo": tipo,
         "con_categoria": con_categoria,
+        "folleto_fuente": folleto_fuente,
+        "estado_folleto": queries.estado_folleto(folleto_fuente),
     }
     return render(request, "dashboard/explorador.html", contexto)
 
@@ -76,15 +85,21 @@ def api_filtros_tiendas(request):
     return JsonResponse(queries.listar_tiendas(), safe=False)
 
 
+def api_filtros_folleto(request):
+    """Estado del folleto filtrado para el aviso de las paginas: {"estado": null} si el filtro esta vacio."""
+    return JsonResponse(queries.estado_folleto(_folleto(request)) or {"estado": None})
+
+
 def api_filtros_categorias(request):
     return JsonResponse(queries.listar_categorias(), safe=False)
 
 
 def api_resumen(request):
     con_categoria = _con_categoria(request)
+    folleto = _folleto(request)
     return JsonResponse({
-        "kpis": queries.resumen_kpis(con_categoria=con_categoria),
-        "top_categorias": queries.resumen_top_categorias(con_categoria=con_categoria),
+        "kpis": queries.resumen_kpis(con_categoria=con_categoria, folleto=folleto),
+        "top_categorias": queries.resumen_top_categorias(con_categoria=con_categoria, folleto=folleto),
         "folletos_por_tienda": queries.resumen_folletos_por_tienda(),
     })
 
@@ -98,6 +113,7 @@ def api_precios(request):
         q=request.GET.get("q") or None,
         solo_descuento=request.GET.get("solo_descuento") == "true",
         con_categoria=_con_categoria(request),
+        folleto=_folleto(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -108,6 +124,7 @@ def api_comparativa(request):
         q=request.GET.get("q") or None,
         min_tiendas=int(request.GET.get("min_tiendas", 1)),
         con_categoria=_con_categoria(request),
+        folleto=_folleto(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -126,6 +143,7 @@ def api_historico(request):
         desde=request.GET.get("desde") or None,
         hasta=request.GET.get("hasta") or None,
         con_categoria=_con_categoria(request),
+        folleto=_folleto(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -141,6 +159,7 @@ def api_calidad(request):
         fuente=request.GET.get("fuente") or None,
         estado=request.GET.get("estado") or None,
         tasa_util_min=float(tasa_util_min) if tasa_util_min else None,
+        folleto=_folleto(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -151,6 +170,7 @@ def api_confiabilidad(request):
         desde=request.GET.get("desde") or None,
         hasta=request.GET.get("hasta") or None,
         con_categoria=_con_categoria(request),
+        folleto=_folleto(request),
     )
     return JsonResponse(datos)
 
@@ -193,6 +213,7 @@ def api_errores(request):
         tiendas=request.GET.getlist("tienda") or None,
         fuente=request.GET.get("fuente") or None,
         estado=request.GET.get("estado") or None,
+        folleto=_folleto(request),
     )
     return JsonResponse(datos)
 

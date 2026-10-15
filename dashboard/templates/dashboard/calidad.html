@@ -10,12 +10,15 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-4">
+    <div class="col-md-2">
       <label class="form-label">Tienda</label>
       <select id="fConfTienda" multiple hidden></select>
     </div>
     <div class="col-md-2">
       {% include "dashboard/_filtro_con_categoria.html" with fid="fConfConCategoria" %}
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fConfFolleto" %}
     </div>
     <div class="col-md-2">
       <label class="form-label">Folletos desde (inicio)</label>
@@ -29,10 +32,12 @@
       <button class="btn btn-primary w-100" id="btnConfAplicar">Aplicar</button>
     </div>
   </div>
-  <div class="form-text">Los filtros de fechas y de categoría aplican a los datos de la BD; las métricas del evaluador
-    (precisión, IC95, recall, error dominante) son las de la corrida y no se filtran por categoría.</div>
+  <div class="form-text">Los filtros de fechas, categoría y folleto aplican a los datos de la BD (con folleto queda solo
+    su tienda, con los datos de ese folleto); las métricas del evaluador (precisión, IC95, recall, error dominante) son
+    las de la corrida para toda la tienda y no se filtran.</div>
 </div>
 
+<div id="avisoConfFolleto" hidden></div>
 <table id="tablaConfiabilidad" class="table table-striped table-hover w-100"></table>
 
 <div class="row g-3 my-3">
@@ -67,7 +72,7 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Tienda</label>
       <select id="fTienda" multiple hidden></select>
     </div>
@@ -89,9 +94,12 @@
         <option value="error">error</option>
       </select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Tasa útil mínima (0–1)</label>
       <input type="number" id="fTasaMin" class="form-control" step="0.05" min="0" max="1" placeholder="ej. 0.3">
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
     </div>
     <div class="col-md-2">
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
@@ -99,6 +107,7 @@
   </div>
 </div>
 
+<div id="avisoFolleto" hidden></div>
 <table id="tablaCalidad" class="table table-striped table-hover w-100"></table>
 {% endblock %}
 
@@ -115,7 +124,10 @@ async function cargarTabla() {
     fuente: document.getElementById("fFuente").value,
     estado: document.getElementById("fEstado").value,
     tasa_util_min: document.getElementById("fTasaMin").value,
+    folleto: valorFolleto("fFolleto"),
   };
+  // Tabla por folleto (paginas, OCR): un folleto sin precios igual tiene fila; solo se avisa si no existe
+  avisoFolleto(params.folleto, "avisoFolleto", "folletos");
   const datos = await fetchJSON(`/api/calidad${qs(params)}`);
 
   renderTabla("#tablaCalidad", datos, [
@@ -185,11 +197,13 @@ function pintarUmbrales(u) {
   });
 }
 
-function pintarCorrida(corrida, totales, conCategoria = "") {
+function pintarCorrida(corrida, totales, conCategoria = "", folleto = "") {
   const info = document.getElementById("confCorrida");
   const aviso = document.getElementById("confAviso");
   const heur = totales.pct_heuristico ?? "—";
-  const filtro = textoConCategoria(conCategoria);
+  // escaparHtml: el aviso se pinta con innerHTML y el folleto lo escribe el usuario
+  const filtro = [textoConCategoria(conCategoria), folleto ? `del folleto ${escaparHtml(folleto)}` : ""]
+    .filter(Boolean).join(" ");
   const deRegistros = filtro ? `de los registros ${filtro}` : "de los registros del dashboard";
   if (!corrida) {
     info.textContent = "Corrida del evaluador: no disponible.";
@@ -210,13 +224,15 @@ async function cargarConfiabilidad() {
   const params = {
     tienda: valoresSeleccionados(document.getElementById("fConfTienda")),
     con_categoria: paramsCategoria("fConfConCategoria").con_categoria,
+    folleto: valorFolleto("fConfFolleto"),
     desde: document.getElementById("fConfDesde").value,
     hasta: document.getElementById("fConfHasta").value,
   };
+  avisoFolleto(params.folleto, "avisoConfFolleto");
   const datos = await fetchJSON(`/api/confiabilidad${qs(params)}`);
   const filas = datos.filas || [];
   pintarUmbrales(datos.umbrales || {});
-  pintarCorrida(datos.corrida, datos.totales || {}, params.con_categoria);
+  pintarCorrida(datos.corrida, datos.totales || {}, params.con_categoria, params.folleto);
 
   renderTabla("#tablaConfiabilidad", filas, [
     { data: "tienda", title: "Tienda", render: (v) => escaparHtml(v) },

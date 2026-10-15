@@ -1,0 +1,9 @@
+{% comment %}
+Filtro "Folleto" (aprobado 14-oct-2026, docs/bi/metricas.md seccion 6). Uso:
+  {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
+Envia ?folleto=<id de la fuente> (vacio = todos). Coincidencia exacta con folletos.folleto_id_fuente: el id de
+Tiendeo/Ofertomat que muestra la celda "Origen" y la carpeta data/raw/<fuente>/<tienda>/<id>.
+{% endcomment %}
+<label class="form-label" for="{{ fid }}">Folleto (ID)</label>
+<input type="text" id="{{ fid }}" class="form-control" maxlength="30" inputmode="numeric" placeholder="ej. 430658"
+       title="ID del folleto en la fuente (Tiendeo/Ofertomat), el de la columna Origen y de la carpeta data/raw/&lt;fuente&gt;/&lt;tienda&gt;/&lt;id&gt;. Coincidencia exacta.">

@@ -10,13 +10,16 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Categoría</label>
       <select id="fCategoria" multiple hidden></select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Tienda</label>
       <select id="fTienda" multiple hidden></select>
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
     </div>
     <div class="col-md-2">
       <label class="form-label">Fuente</label>
@@ -39,6 +42,10 @@
     </div>
   </div>
 </div>
+
+<!-- Avisos (14-oct-2026): folleto no encontrado y errores ocultos por el filtro de Estado -->
+<div id="avisoFolleto" hidden></div>
+<div id="avisoEstado" hidden></div>
 
 <div class="row g-3 mb-4">
   <div class="col-lg-6">
@@ -101,9 +108,12 @@ async function cargar() {
     tienda: valoresSeleccionados(document.getElementById("fTienda")),
     fuente: document.getElementById("fFuente").value,
     estado: document.getElementById("fEstado").value,
+    folleto: valorFolleto("fFolleto"),
   };
+  avisoFolleto(params.folleto, "avisoFolleto", "errores");
   const datos = await fetchJSON(`/api/errores${qs(params)}`);
   const k = datos.kpis || {};
+  pintarAvisoEstado(datos.ocultos_por_estado);
 
   document.getElementById("kpis").innerHTML = [
     tarjetaKpi("ti-alert-circle", (k.abiertos ?? 0).toLocaleString("es-MX"), "Errores abiertos"),
@@ -165,6 +175,40 @@ async function cargar() {
       },
     },
   ], { order: [[0, "desc"]] });
+}
+
+// Aviso (14-oct-2026): errores que cumplen los demas filtros (incluido folleto) pero el filtro de Estado oculta.
+// Solo numeros y textos fijos; se arma con createElement igualmente.
+const NOMBRE_ESTADO = { abiertos: "Abiertos", resueltos: "Resueltos" };
+
+function pintarAvisoEstado(ocultos) {
+  const cont = document.getElementById("avisoEstado");
+  cont.replaceChildren();
+  cont.hidden = true;
+  if (!ocultos || !ocultos.n) return;
+  const div = document.createElement("div");
+  div.className = "alert alert-info py-2 small mb-3 d-flex align-items-center gap-2";
+  div.setAttribute("role", "status");
+  const icono = document.createElement("i");
+  icono.className = "ti ti-eye-off";
+  const n = ocultos.n.toLocaleString("es-MX");
+  const texto = document.createElement("span");
+  texto.textContent = ocultos.estado_oculto === "resueltos"
+    ? `Hay ${n} error(es) resuelto(s) que cumplen los demás filtros y no se muestran porque Estado = ` +
+      `"${NOMBRE_ESTADO[ocultos.estado_filtro]}". Para verlos, elige Estado "Todos".`
+    : `Hay ${n} error(es) abierto(s) que cumplen los demás filtros y no se muestran porque Estado = ` +
+      `"${NOMBRE_ESTADO[ocultos.estado_filtro]}". Para verlos, elige Estado "Todos".`;
+  const boton = document.createElement("button");
+  boton.type = "button";
+  boton.className = "btn btn-sm btn-outline-primary ms-auto";
+  boton.textContent = 'Ver "Todos"';
+  boton.addEventListener("click", () => {
+    document.getElementById("fEstado").value = "";
+    cargar();
+  });
+  div.append(icono, texto, boton);
+  cont.append(div);
+  cont.hidden = false;
 }
 
 document.getElementById("btnAplicar").addEventListener("click", cargar);

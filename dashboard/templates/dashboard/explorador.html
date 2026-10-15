@@ -40,8 +40,23 @@
       {% endfor %}
     </select>
   </label>
+  {# Filtro "Folleto" (14-oct-2026): ID de la fuente, exacto; filtra folletos y extracciones #}
+  <label>Folleto (ID fuente):
+    <input type="text" name="folleto" value="{{ folleto_fuente|default:'' }}" maxlength="30" placeholder="ej. 430658">
+  </label>
   <button type="submit">Filtrar</button>
 </form>
+
+{# Aviso del filtro Folleto (14-oct-2026). Sin filtro, estado_folleto es None y no se pinta nada. Django escapa el id. #}
+{% if estado_folleto.estado == "no_existe" %}
+<p role="status"><strong>Folleto no encontrado:</strong> no existe ningun folleto con ID "{{ estado_folleto.folleto }}".
+  El filtro usa el ID de la fuente (Tiendeo/Ofertomat), exacto.
+  {% if estado_folleto.errores_carga %}Tiene {{ estado_folleto.errores_carga }} error(es) de carga registrados: su carga pudo fallar completa (ver <a href="/errores">Errores de carga</a>).{% endif %}</p>
+{% elif estado_folleto.estado == "sin_precios" %}
+<p role="status"><strong>Aviso:</strong> el folleto "{{ estado_folleto.folleto }}" existe
+  ({{ estado_folleto.tiendas|join:", " }} &middot; {{ estado_folleto.fuentes|join:", " }}) pero no tiene precios
+  registrados; abajo se listan sus extracciones de otros tipos, si las hay.</p>
+{% endif %}
 
 <table border="1" cellpadding="4" cellspacing="0">
 <tr>
@@ -60,7 +75,7 @@
   <td>{{ f.total_paginas }}</td>
   <td>{{ f.estado }}</td>
   <td>{{ f.scrapeado_at|default:"-" }}</td>
-  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">ver</a></td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}&amp;folleto={{ folleto_fuente|default:''|urlencode }}">ver</a></td>
   <td>
     {% if f.primera_pagina_id %}<a href="/origen/pagina/{{ f.primera_pagina_id }}" target="_blank" rel="noopener">[pág. 1]</a>{% endif %}
     {% if f.url_origen %}<a href="{{ f.url_origen }}" target="_blank" rel="noopener noreferrer">[folleto]</a>{% endif %}
@@ -72,10 +87,12 @@
 <h2>
   Datos cargados / extracciones ({{ extracciones|length }})
   {% if folleto_id %}&mdash; folleto #{{ folleto_id }}{% endif %}
+  {% if folleto_fuente %}&mdash; ID fuente {{ folleto_fuente }}{% endif %}
 </h2>
 <form method="get">
   <input type="hidden" name="tienda_id" value="{{ tienda_id|default:'' }}">
   <input type="hidden" name="folleto_id" value="{{ folleto_id|default:'' }}">
+  <input type="hidden" name="folleto" value="{{ folleto_fuente|default:'' }}">
   <label>Tipo:
     <select name="tipo">
       <option value="">-- todos --</option>
@@ -93,7 +110,7 @@
     </select>
   </label>
   <button type="submit">Filtrar</button>
-  {% if folleto_id %}
+  {% if folleto_id or folleto_fuente %}
   <a href="?tienda_id={{ tienda_id|default:'' }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">Quitar filtro de folleto</a>
   {% endif %}
 </form>
@@ -108,7 +125,7 @@
 <tr>
   <td>{{ e.id }}</td>
   <td>{{ e.tienda__nombre }}</td>
-  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ e.folleto_id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">{{ e.folleto_id }}</a></td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ e.folleto_id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}&amp;folleto={{ folleto_fuente|default:''|urlencode }}">{{ e.folleto_id }}</a></td>
   <td>{{ e.pagina__numero_pagina|default:"-" }}</td>
   <td><a href="/origen/extraccion/{{ e.id }}" target="_blank" rel="noopener">[pág]</a></td>
   <td>{{ e.tipo }}</td>

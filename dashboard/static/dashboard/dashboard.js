@@ -142,6 +142,65 @@ function enlazarConCategoria(conCategoriaId, listaId) {
   actualizar();
 }
 
+// Filtro "Folleto" (14-oct-2026, docs/bi/metricas.md seccion 6). El <input> lo pinta
+// templates/dashboard/_filtro_folleto.html. Devuelve el id de la fuente sin espacios ("" = todos; qs() lo omite).
+// Coincidencia exacta en el servidor: un id inexistente da vacio.
+function valorFolleto(folletoId) {
+  return document.getElementById(folletoId).value.trim();
+}
+
+// Aviso del filtro "Folleto" (14-oct-2026, docs/bi/metricas.md seccion 6). Consulta /api/filtros/folleto y pinta
+// en `contenedorId` un aviso si el id no existe o si el folleto existe pero no tiene precios registrados. Con el
+// filtro vacio no consulta nada y deja el contenedor oculto (la pagina queda igual que antes).
+// modo: "precios" (paneles de registros: avisa no_existe y sin_precios) | "folletos" (paneles por folleto que no
+// dependen de precios: solo no_existe) | "errores" (no_existe, diciendo si tiene errores de carga).
+// Todo el texto va por textContent: el id lo escribe el usuario y nunca se interpreta como HTML.
+function textoAvisoFolleto(e, modo = "precios") {
+  if (!e || !e.estado) return null;
+  const id = `"${e.folleto}"`;
+  if (e.estado === "no_existe") {
+    if (modo === "errores" && e.errores_carga > 0) {
+      return { nivel: "warning", icono: "ti-file-alert",
+        texto: `El folleto ${id} no está cargado en la BD (no hay fila en folletos), pero tiene ` +
+               `${e.errores_carga} error(es) de carga registrados: su carga pudo fallar completa.` };
+    }
+    return { nivel: "warning", icono: "ti-alert-triangle",
+      texto: `Folleto no encontrado: no existe ningún folleto con ID ${id}. El filtro usa el ID de la fuente ` +
+             "(Tiendeo/Ofertomat), exacto, como aparece en la columna Origen o en la carpeta " +
+             "data/raw/<fuente>/<tienda>/<id>." };
+  }
+  if (e.estado === "sin_precios" && modo === "precios") {
+    const donde = [e.tiendas.join(", "), e.fuentes.join(", ")].filter(Boolean).join(" · ");
+    return { nivel: "info", icono: "ti-info-circle",
+      texto: `El folleto ${id} existe${donde ? ` (${donde})` : ""} pero no tiene precios registrados: ` +
+             "no hay registros que mostrar con este filtro." };
+  }
+  return null;
+}
+
+async function avisoFolleto(folleto, contenedorId, modo = "precios") {
+  const cont = document.getElementById(contenedorId);
+  const turno = String(Number(cont.dataset.turno || 0) + 1);  // ignora respuestas de un Aplicar anterior
+  cont.dataset.turno = turno;
+  cont.replaceChildren();
+  cont.hidden = true;
+  if (!folleto) return null;
+  const estado = await fetchJSON(`/api/filtros/folleto${qs({ folleto })}`);
+  if (cont.dataset.turno !== turno) return estado;
+  const aviso = textoAvisoFolleto(estado, modo);
+  if (aviso) {
+    const div = document.createElement("div");
+    div.className = `alert alert-${aviso.nivel} py-2 small mb-3`;
+    div.setAttribute("role", "status");
+    const icono = document.createElement("i");
+    icono.className = `ti ${aviso.icono} me-1`;
+    div.append(icono, document.createTextNode(aviso.texto));
+    cont.append(div);
+    cont.hidden = false;
+  }
+  return estado;
+}
+
 // Texto corto del filtro activo, para notas de KPIs y avisos ("" si es todos).
 function textoConCategoria(valor) {
   return valor === "si" ? "con categoría" : valor === "no" ? "sin categoría" : "";

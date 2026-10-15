@@ -273,3 +273,81 @@ Joins: la base de Confiabilidad (PRECIO -> PRODUCTO -> folletos, N:1) da 27,760 
 
 **Confiabilidad:** "con categoria" no significa "producto de catalogo": de los 10,658 con categoria, 6,505 son
 heuristicos (6,113 + 392). La categoria la asigna el NLP; no esta medida por el evaluador.
+
+---
+
+## 6. Filtro "Folleto"
+
+| Campo | Valor |
+|---|---|
+| Estado | **aprobada** (pedido y aprobado explicitamente por la persona 14-oct-2026; construido, pendiente de que la persona lo vea) |
+| Pregunta | Ver solo los registros, errores o metricas de un folleto concreto |
+| Parametro | `?folleto=<id de la fuente>` en las APIs y en `/datos`; vacio o ausente = todos (default sin cambios) |
+| Id aceptado | **Solo `folletos.folleto_id_fuente`**: el id de Tiendeo/Ofertomat que muestra la celda "Origen" y el nombre de la carpeta `data/raw/<fuente>/<tienda>/<id>`. Coincidencia **exacta** tras quitar espacios de los extremos (sin LIKE). Un id inexistente o mal escrito da vacio sin error (no se ignora). El `folletos.id` interno no se acepta en este campo (el usuario no lo ve; `/datos` ya filtra por el con `folleto_id`, y ambos van en AND) |
+| Unicidad | El esquema solo garantiza `UNIQUE (fuente, folleto_id_fuente)`. Hoy el id es unico en toda la tabla: 694/694, todos de 6 digitos, ninguno repetido entre Tiendeo y Ofertomat y ninguno igual a un `folletos.id` (verificado 14-oct-2026). Si un dia se repite entre fuentes, el filtro traeria ambos folletos (sin duplicar filas) |
+| Combinacion | AND con los demas filtros (tienda, categoria, con/sin categoria, fechas, producto...) |
+| Codigo | `dashboard/queries.py` (`normalizar_folleto`, `filtrar_folleto`, `_en_folleto`, `_SQL_FOLLETO`), `dashboard/views.py` (`_folleto`), `dashboard/templates/dashboard/_filtro_folleto.html`, `valorFolleto` en `dashboard.js` |
+| Consulta | `docs/bi/consultas/filtro_folleto.sql` (mismo predicado que el dashboard, por panel, 2 folletos reales + 1 inexistente) |
+| Validacion | `docs/bi/consultas/filtro_folleto_validacion.sql` (resuelve `folletos.id` por llave natural y cuenta desde `extracciones` por `folleto_id`; comparativa recalculada con agregacion propia) -> cuadra |
+| Pruebas | `tests/test_dashboard_filtro_folleto.py` (56, sin BD) |
+| Fecha / autor | 14-oct-2026, especialista BI |
+
+**Donde aplica y como (sin joins que dupliquen)**
+
+| Pagina | Que filtra | Como |
+|---|---|---|
+| Resumen | KPI "Precios detectados" (nota "folleto X · de N en total") y grafica Top categorias | `v_precios_actuales.folleto_id_fuente =` |
+| Precios | Tabla (ningun folleto pasa de 409 registros: el limite de 500 filas no corta) | igual |
+| Comparativa | Tabla: grupos (texto, categoria) con al menos un registro del folleto; min/max/diferencia siguen siendo entre todas las tiendas | `EXISTS` sobre `extracciones` (la vista no tiene folleto; no se toca) |
+| Comparativa, detalle por tienda | **No se filtra** (quedaria una sola tienda y no habria que comparar); resalta las filas del folleto | - |
+| Historico | Tabla y grafica del producto | `v_historico_precios.folleto_id_fuente =` |
+| Calidad, Confiabilidad | Solo la tienda del folleto, con los datos de ese folleto; las metricas del evaluador son de la tienda (no se filtran) | `f.folleto_id_fuente =` en la base + `EXISTS` para la fila de tienda |
+| Calidad, tabla operativa | La fila del folleto | `v_calidad_pipeline.folleto_id_fuente =` |
+| Errores de carga | Grafica y tabla (los KPIs son globales por diseno) | `errores_carga.folleto_id_fuente =` (sin FK) |
+| Explorador (`/datos`) | Tabla de folletos y de extracciones (todos los tipos; muestra hasta 200, 275 folletos tienen mas) | `folletos.folleto_id_fuente =`; extracciones via FK N:1 a folletos |
+
+**Donde no aplica:** Cobertura (es por tienda: con un solo folleto, "ultimo folleto", "dias desde el ultimo" y la
+serie semanal pierden sentido) y Promociones (`v_eventos_activos` agrupa eventos de varios folletos y no tiene
+columna de folleto; filtrar requiere cambiar la vista, con aprobacion).
+
+**Verificacion 14-oct-2026** (BD vigente ese dia, rol de solo lectura):
+
+| Folleto | Precios / Resumen / Historico / Confiabilidad | Con categoria (Top categorias) | Comparativa | Calidad | Errores | Extracciones (/datos) |
+|---|---|---|---|---|---|---|
+| 430658 (la_comer, id 311) | 213 | 113 | 14 | 1 fila | 0 | 1,408 |
+| 413647 (walmart, id 707) | 173 | 112 | 12 | 1 fila | 1 | 899 |
+| 999999 (no existe) | 0 | 0 | 0 | 0 | 0 | 0 |
+
+La validacion independiente reproduce todas las cifras. Un folleto que existe pero sin registros (76 de 694) tambien
+da vacio en los paneles de registros.
+
+### 6.1 Avisos del filtro "Folleto" y de Errores de carga
+
+Aprobados por la persona 14-oct-2026. Con el filtro de folleto vacio no se consulta nada y no se pinta ningun aviso.
+
+| Aviso | Cuando | Texto (resumen) | Donde |
+|---|---|---|---|
+| Folleto no encontrado (amarillo) | ningun `folletos.folleto_id_fuente` igual al id | `Folleto no encontrado: no existe ningun folleto con ID "X"...` (explica que es el ID de la fuente, exacto) | Resumen, Precios, Comparativa, Historico, Calidad (ambas secciones), Errores, Explorador |
+| No esta cargado pero tiene errores (amarillo) | no existe en `folletos` y si hay filas en `errores_carga` (folleto que fallo entero; hoy 0 casos) | `El folleto "X" no esta cargado en la BD ... tiene N error(es) de carga` | Errores, Explorador |
+| Existe sin precios (azul) | existe y 0 registros en `v_precios_actuales` (76 de 694) | `El folleto "X" existe (tienda · fuente) pero no tiene precios registrados` | Paginas de registros: Resumen, Precios, Comparativa, Historico, Calidad-Confiabilidad, Explorador. No en Calidad-tabla operativa ni Errores (no dependen de precios) |
+| Errores ocultos por Estado (azul, boton `Ver "Todos"`) | Estado = Abiertos (o Resueltos) y hay errores del estado contrario que cumplen los demas filtros, incluido el folleto | `Hay N error(es) resuelto(s) que cumplen los demas filtros y no se muestran porque Estado = "Abiertos". Para verlos, elige Estado "Todos".` | Errores de carga. Solo con un folleto escrito (decision de la persona 15-oct-2026): con el folleto vacio no hay aviso ni consulta |
+
+Fuente: `queries.estado_folleto` (endpoint `/api/filtros/folleto?folleto=`; tres COUNT sobre `folletos`,
+`v_precios_actuales` y `errores_carga`, cada uno sin joins) y `queries.errores_ocultos_por_estado` (mismo filtro de
+Errores con el estado contrario, COUNT sobre `errores_carga`). En el navegador el aviso se arma con `createElement` y
+`textContent` (el id nunca se interpreta como HTML); en el Explorador lo escapa Django.
+Consulta: `docs/bi/consultas/avisos_folleto.sql`. Validacion: `docs/bi/consultas/avisos_folleto_validacion.sql`
+(clasifica desde `extracciones` con LEFT JOIN y agrega errores con FILTER) -> cuadra. Pruebas:
+`tests/test_dashboard_avisos_folleto.py` (29, sin BD).
+
+**Verificacion 14-oct-2026:**
+
+| Folleto | Estado | Registros | Errores de carga | Errores ocultos con Estado = Abiertos |
+|---|---|---|---|---|
+| 999999 | no_existe -> "Folleto no encontrado" | 0 | 0 | 0 (sin aviso de estado) |
+| 413679 | sin_precios -> "existe pero no tiene precios" | 0 | 0 | 0 |
+| 430658 | con_precios -> sin aviso | 213 | 0 | 0 |
+| 413647 | con_precios -> sin aviso | 173 | 1 (resuelto) | 1 -> aviso "Hay 1 error(es) resuelto(s)..." |
+| (vacio) | sin aviso de folleto | - | 13 | sin aviso (desde 15-oct-2026 solo se avisa con folleto escrito) |
+
+Folletos sin precios: 76 de 694 (ambos caminos).

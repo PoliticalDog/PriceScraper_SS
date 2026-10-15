@@ -10,11 +10,15 @@
       {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
     </div>
     <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
+    </div>
+    <div class="col-md-2">
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
     </div>
   </div>
   <div class="form-text">Aplica a "Precios detectados" y a la gráfica de categorías; tiendas y folletos no dependen de productos.</div>
 </div>
+<div id="avisoFolleto" hidden></div>
 
 <div class="row g-3 mb-4" id="kpis"></div>
 
@@ -55,10 +59,14 @@ function tarjetaKpi(icono, valor, etiqueta, nota = "", titulo = "") {
 
 async function cargar() {
   const conCategoria = paramsCategoria("fConCategoria").con_categoria;
-  const datos = await fetchJSON(`/api/resumen${qs({ con_categoria: conCategoria })}`);
+  const folleto = valorFolleto("fFolleto");
+  avisoFolleto(folleto, "avisoFolleto");
+  const datos = await fetchJSON(`/api/resumen${qs({ con_categoria: conCategoria, folleto })}`);
   const k = datos.kpis || {};
   const dudosos = k.folletos_vigentes_dudosos ?? 0;
-  const filtroCat = textoConCategoria(k.con_categoria);
+  // escaparHtml: la nota se pinta con innerHTML y el folleto lo escribe el usuario
+  const filtroCat = [textoConCategoria(k.con_categoria), k.folleto ? `folleto ${escaparHtml(k.folleto)}` : ""]
+    .filter(Boolean).join(" · ");
   const notaPrecios = filtroCat
     ? `${filtroCat} · de ${(k.registros_dashboard_todos ?? 0).toLocaleString("es-MX")} en total` : "";
 

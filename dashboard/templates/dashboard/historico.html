@@ -6,18 +6,23 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-3">
+    <div class="col-md-4">
       <label class="form-label">Producto</label>
       <input type="text" id="fProducto" class="form-control" list="sugerenciasProducto" placeholder="Escribe para buscar...">
       <datalist id="sugerenciasProducto"></datalist>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
       <label class="form-label">Tienda (opcional)</label>
       <select id="fTienda" multiple hidden></select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
       {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
     </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
+    </div>
+  </div>
+  <div class="row g-2 align-items-end mt-2">
     <div class="col-md-2">
       <label class="form-label">Desde</label>
       <input type="date" id="fDesde" class="form-control">
@@ -32,6 +37,7 @@
   </div>
 </div>
 
+<div id="avisoFolleto" hidden></div>
 <div class="chart-card mb-3">
   <canvas id="chartHistorico" height="220"></canvas>
 </div>
@@ -63,12 +69,14 @@ document.getElementById("fProducto").addEventListener("input", (e) => {
 
 async function cargar() {
   const producto = document.getElementById("fProducto").value.trim();
+  avisoFolleto(valorFolleto("fFolleto"), "avisoFolleto");
   if (!producto) return;
 
   const params = {
     producto: producto,
     tienda: valoresSeleccionados(document.getElementById("fTienda")),
     con_categoria: paramsCategoria("fConCategoria").con_categoria,
+    folleto: valorFolleto("fFolleto"),
     desde: document.getElementById("fDesde").value,
     hasta: document.getElementById("fHasta").value,
   };

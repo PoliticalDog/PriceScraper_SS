@@ -6,16 +6,19 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Categoría</label>
       <select id="fCategoria" multiple hidden></select>
     </div>
     <div class="col-md-2">
       {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Producto</label>
       <input type="text" id="fBusqueda" class="form-control" placeholder="Buscar...">
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
     </div>
     <div class="col-md-2">
       <label class="form-label">Mín. tiendas</label>
@@ -25,8 +28,11 @@
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
     </div>
   </div>
+  <div class="form-text">Con folleto: productos que aparecen en ese folleto, comparados contra todas las tiendas y fechas.
+    El detalle por tienda muestra todos los registros y resalta los del folleto.</div>
 </div>
 
+<div id="avisoFolleto" hidden></div>
 <div class="row g-3">
   <div class="col-lg-7">
     <table id="tablaComparativa" class="table table-striped table-hover w-100"></table>
@@ -55,6 +61,8 @@ async function cargarFiltros() {
 
 // Filtro con/sin categoria con el que se cargo la tabla: el detalle por tienda usa el mismo (14-oct-2026).
 let conCategoriaTabla = "";
+// Folleto con el que se cargo la tabla: el detalle NO se filtra por el (quedaria una sola tienda), solo resalta sus filas.
+let folletoTabla = "";
 
 async function cargarGraficoProducto(producto) {
   document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;  // textContent: sin HTML
@@ -74,7 +82,16 @@ async function cargarGraficoProducto(producto) {
     { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
     { data: null, title: "Vigencia", render: (d, t, f) => escaparHtml(formatoVigencia(f.vigencia_desde, f.vigencia_hasta)) },
     { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
-  ], { order: [[1, "asc"]], pageLength: 10 });
+  ], {
+    order: [[1, "asc"]],
+    pageLength: 10,
+    rowCallback: (row, fila) => {
+      // Resaltado siempre acompaniado de texto (title) ademas del color
+      const delFolleto = folletoTabla !== "" && fila.folleto_id_fuente === folletoTabla;
+      $(row).toggleClass("table-info", delFolleto);
+      if (delFolleto) row.title = `Registro del folleto ${folletoTabla}`;
+    },
+  });
 }
 
 async function cargarTabla() {
@@ -82,8 +99,11 @@ async function cargarTabla() {
     ...paramsCategoria("fConCategoria", "fCategoria"),
     q: document.getElementById("fBusqueda").value,
     min_tiendas: document.getElementById("fMinTiendas").value,
+    folleto: valorFolleto("fFolleto"),
   };
   conCategoriaTabla = params.con_categoria;
+  folletoTabla = params.folleto;
+  avisoFolleto(params.folleto, "avisoFolleto");
   const datos = await fetchJSON(`/api/comparativa${qs(params)}`);
 
   const tabla = renderTabla("#tablaComparativa", datos, [
