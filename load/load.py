@@ -472,7 +472,8 @@ def _es_banda(otro: dict, lineas: list, productos: list) -> bool:
 def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -> dict:
     """Si `prod` es una unidad suelta con lineas contiguas encima, devuelve una copia cuyo nombre es
     esa pila + la unidad (bbox = union); si no, `prod` tal cual. _idx/_resultado no cambian: la fila
-    PRODUCTO enlazada sigue siendo la de la unidad, solo cambia el nombre que muestra el precio."""
+    PRODUCTO enlazada sigue siendo la de la unidad. _resultado_unido lleva la normalizacion del nombre
+    unido para que el precio se ligue a su canonico y no al de la unidad ("Carton", "Gramos")."""
     if not es_unidad_suelta(prod.get("texto", "")):
         return prod
     lineas, actual, hueco_usado = [prod], prod, False
@@ -505,6 +506,7 @@ def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -
         "bbox": {"x": x0, "y": y0, "ancho": x1 - x0, "alto": y1 - y0},
         "_nombre_norm": (resultado.nombre_canonico or texto) if not resultado.descartado else texto,
         "categoria": resultado.categoria or prod.get("categoria", ""),
+        "_resultado_unido": None if resultado.descartado else resultado,
     }
 
 
@@ -889,6 +891,10 @@ class Loader:
             precio, producto_match = registro["precio"], registro["producto"]
             precio_ant_val = registro["valor_anterior"]
             prod_id, prod_canonico_id = ids_producto[producto_match["_idx"]] if producto_match else (None, None)
+            # Nombre unido con su unidad suelta: el canonico es el del nombre unido, no el de la unidad
+            resultado_unido = producto_match.get("_resultado_unido") if producto_match else None
+            if resultado_unido is not None and resultado_unido.nombre_canonico:
+                prod_canonico_id = self._upsert_producto_canonico(cur, resultado_unido)
             bbox           = precio.get("bbox", {})
 
             cur.execute("""

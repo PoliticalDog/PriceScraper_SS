@@ -240,3 +240,41 @@ def test_registro_del_dashboard_muestra_la_descripcion():
     # la fila PRODUCTO enlazada sigue siendo la de la unidad (load inserta los productos tal cual)
     assert [p["texto"] for p in regs["productos"]] == ["MARGARINA", "IBERIA CON SAL", "GRAMOS"]
     assert prod["_idx"] == 2
+
+
+class _CursorFalso:
+    """Registra las sentencias y devuelve ids crecientes; productos_canonicos recuerda nombre -> id."""
+
+    def __init__(self):
+        self.sentencias, self._siguiente, self._canonicos, self._ultimo = [], 1, {}, None
+
+    def execute(self, sql, params=()):
+        self.sentencias.append((sql, params))
+        if "INSERT INTO productos_canonicos" in sql:
+            self._ultimo = self._canonicos.setdefault(params[0], len(self._canonicos) + 100)
+        else:
+            self._ultimo, self._siguiente = self._siguiente, self._siguiente + 1
+
+    def fetchone(self):
+        return {"id": self._ultimo}
+
+    def canonico(self, id_):
+        return next(n for n, i in self._canonicos.items() if i == id_)
+
+
+def test_precio_se_liga_al_canonico_del_nombre_unido():
+    # mismo caso alsuper 423212 pag 3: el PRECIO quedaba ligado al canonico "GRAMOS" (hallazgo BI, 392 registros)
+    from load.load import Loader
+    loader = Loader.__new__(Loader)
+    loader._normalizador = NORM
+    productos = [_b("MARGARINA", 802, 1106, 118, 24), _b("IBERIA CON SAL", 800, 1124, 146, 24),
+                 _b("GRAMOS", 850, 1142, 90, 24)]
+    pag = {"pagina": "pagina_003.webp", "productos": productos, "precios_anteriores": [],
+           "precios": [{"texto": "$36.90", "valor": 36.9, "confianza": 0.9,
+                        "bbox": {"x": 807, "y": 1163, "ancho": 120, "alto": 50}}]}
+    cur = _CursorFalso()
+    loader._procesar_pagina(cur, tienda_id=1, folleto_id=1, pag_data=pag)
+    sql, params = next(s for s in cur.sentencias if "INSERT INTO extracciones" in s[0] and "PRECIO" in s[1])
+    texto_norm, canonico_id = params[5], params[-1]
+    assert cur.canonico(canonico_id) == texto_norm
+    assert texto_norm.lower() == "margarina iberia con sal gramos"
