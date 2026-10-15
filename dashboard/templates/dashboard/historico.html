@@ -6,14 +6,17 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label">Producto</label>
       <input type="text" id="fProducto" class="form-control" list="sugerenciasProducto" placeholder="Escribe para buscar...">
       <datalist id="sugerenciasProducto"></datalist>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Tienda (opcional)</label>
       <select id="fTienda" multiple hidden></select>
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
     </div>
     <div class="col-md-2">
       <label class="form-label">Desde</label>
@@ -65,6 +68,7 @@ async function cargar() {
   const params = {
     producto: producto,
     tienda: valoresSeleccionados(document.getElementById("fTienda")),
+    con_categoria: paramsCategoria("fConCategoria").con_categoria,
     desde: document.getElementById("fDesde").value,
     hasta: document.getElementById("fHasta").value,
   };

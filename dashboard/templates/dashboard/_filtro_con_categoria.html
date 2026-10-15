@@ -1,0 +1,11 @@
+{% comment %}
+Filtro "Con / sin categoria" (aprobado 14-oct-2026, docs/bi/metricas.md seccion 5). Uso:
+  {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
+Envia ?con_categoria=si|no (vacio = todos, default). Sin categoria = categoria del registro NULL, vacia o solo espacios.
+{% endcomment %}
+<label class="form-label" for="{{ fid }}">Con / sin categoría</label>
+<select id="{{ fid }}" class="form-select" title="Sin categoría: el registro no tiene categoría (vacía o nula)">
+  <option value="" selected>Todos</option>
+  <option value="si">Con categoría</option>
+  <option value="no">Sin categoría</option>
+</select>

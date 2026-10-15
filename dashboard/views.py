@@ -8,6 +8,11 @@ from django.views.decorators.http import require_GET
 from dashboard import origen, queries
 
 
+def _con_categoria(request):
+    """Filtro "Con / sin categoria" (?con_categoria=si|no; vacio o invalido = todos). Ver queries.filtrar_con_categoria."""
+    return queries.normalizar_con_categoria(request.GET.get("con_categoria"))
+
+
 # -- Paginas (HTML) -------------------------------------------------------------
 
 def pagina_resumen(request):
@@ -48,17 +53,19 @@ def pagina_explorador(request):
     tienda_id = request.GET.get("tienda_id") or None
     folleto_id = request.GET.get("folleto_id") or None
     tipo = request.GET.get("tipo") or None
+    con_categoria = _con_categoria(request)
 
     contexto = {
         "tiendas": queries.listar_tiendas_detalle(),
         "folletos": queries.listar_folletos(tienda_id=tienda_id),
         "tipos": queries.listar_tipos_extraccion(),
         "extracciones": queries.listar_extracciones(
-            tienda_id=tienda_id, folleto_id=folleto_id, tipo=tipo
+            tienda_id=tienda_id, folleto_id=folleto_id, tipo=tipo, con_categoria=con_categoria
         ),
         "tienda_id": tienda_id,
         "folleto_id": folleto_id,
         "tipo": tipo,
+        "con_categoria": con_categoria,
     }
     return render(request, "dashboard/explorador.html", contexto)
 
@@ -74,9 +81,10 @@ def api_filtros_categorias(request):
 
 
 def api_resumen(request):
+    con_categoria = _con_categoria(request)
     return JsonResponse({
-        "kpis": queries.resumen_kpis(),
-        "top_categorias": queries.resumen_top_categorias(),
+        "kpis": queries.resumen_kpis(con_categoria=con_categoria),
+        "top_categorias": queries.resumen_top_categorias(con_categoria=con_categoria),
         "folletos_por_tienda": queries.resumen_folletos_por_tienda(),
     })
 
@@ -89,6 +97,7 @@ def api_precios(request):
         hasta=request.GET.get("hasta") or None,
         q=request.GET.get("q") or None,
         solo_descuento=request.GET.get("solo_descuento") == "true",
+        con_categoria=_con_categoria(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -98,12 +107,15 @@ def api_comparativa(request):
         categorias=request.GET.getlist("categoria") or None,
         q=request.GET.get("q") or None,
         min_tiendas=int(request.GET.get("min_tiendas", 1)),
+        con_categoria=_con_categoria(request),
     )
     return JsonResponse(datos, safe=False)
 
 
 def api_comparativa_por_tienda(request, producto):
-    return JsonResponse(queries.comparativa_por_tienda(producto), safe=False)
+    return JsonResponse(
+        queries.comparativa_por_tienda(producto, con_categoria=_con_categoria(request)), safe=False
+    )
 
 
 def api_historico(request):
@@ -113,6 +125,7 @@ def api_historico(request):
         tiendas=request.GET.getlist("tienda") or None,
         desde=request.GET.get("desde") or None,
         hasta=request.GET.get("hasta") or None,
+        con_categoria=_con_categoria(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -137,12 +150,16 @@ def api_confiabilidad(request):
         tiendas=request.GET.getlist("tienda") or None,
         desde=request.GET.get("desde") or None,
         hasta=request.GET.get("hasta") or None,
+        con_categoria=_con_categoria(request),
     )
     return JsonResponse(datos)
 
 
 def api_cobertura(request):
-    return JsonResponse(queries.cobertura_por_tienda(tiendas=request.GET.getlist("tienda") or None))
+    return JsonResponse(queries.cobertura_por_tienda(
+        tiendas=request.GET.getlist("tienda") or None,
+        con_categoria=_con_categoria(request),
+    ))
 
 
 def api_cobertura_semanal(request):

@@ -31,6 +31,7 @@
 <form method="get">
   <input type="hidden" name="folleto_id" value="{{ folleto_id|default:'' }}">
   <input type="hidden" name="tipo" value="{{ tipo|default:'' }}">
+  <input type="hidden" name="con_categoria" value="{{ con_categoria|default:'' }}">
   <label>Tienda:
     <select name="tienda_id">
       <option value="">-- todas --</option>
@@ -59,7 +60,7 @@
   <td>{{ f.total_paginas }}</td>
   <td>{{ f.estado }}</td>
   <td>{{ f.scrapeado_at|default:"-" }}</td>
-  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}">ver</a></td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">ver</a></td>
   <td>
     {% if f.primera_pagina_id %}<a href="/origen/pagina/{{ f.primera_pagina_id }}" target="_blank" rel="noopener">[pág. 1]</a>{% endif %}
     {% if f.url_origen %}<a href="{{ f.url_origen }}" target="_blank" rel="noopener noreferrer">[folleto]</a>{% endif %}
@@ -83,9 +84,17 @@
       {% endfor %}
     </select>
   </label>
+  {# Filtro con/sin categoria (14-oct-2026): sobre categoria_nlp; sin categoria = NULL, vacia o solo espacios #}
+  <label>Categoria NLP:
+    <select name="con_categoria">
+      <option value="">-- todos --</option>
+      <option value="si" {% if con_categoria == "si" %}selected{% endif %}>con categoria</option>
+      <option value="no" {% if con_categoria == "no" %}selected{% endif %}>sin categoria</option>
+    </select>
+  </label>
   <button type="submit">Filtrar</button>
   {% if folleto_id %}
-  <a href="?tienda_id={{ tienda_id|default:'' }}&amp;tipo={{ tipo|default:'' }}">Quitar filtro de folleto</a>
+  <a href="?tienda_id={{ tienda_id|default:'' }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">Quitar filtro de folleto</a>
   {% endif %}
 </form>
 
@@ -99,7 +108,7 @@
 <tr>
   <td>{{ e.id }}</td>
   <td>{{ e.tienda__nombre }}</td>
-  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ e.folleto_id }}&amp;tipo={{ tipo|default:'' }}">{{ e.folleto_id }}</a></td>
+  <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ e.folleto_id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}">{{ e.folleto_id }}</a></td>
   <td>{{ e.pagina__numero_pagina|default:"-" }}</td>
   <td><a href="/origen/extraccion/{{ e.id }}" target="_blank" rel="noopener">[pág]</a></td>
   <td>{{ e.tipo }}</td>

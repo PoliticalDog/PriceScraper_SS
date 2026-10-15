@@ -6,11 +6,14 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label">Categoría</label>
       <select id="fCategoria" multiple hidden></select>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
+    </div>
+    <div class="col-md-3">
       <label class="form-label">Producto</label>
       <input type="text" id="fBusqueda" class="form-control" placeholder="Buscar...">
     </div>
@@ -47,11 +50,16 @@
 async function cargarFiltros() {
   const categorias = await fetchJSON("/api/filtros/categorias");
   crearFiltroLista("fCategoria", categorias, "Todas");
+  enlazarConCategoria("fConCategoria", "fCategoria");
 }
+
+// Filtro con/sin categoria con el que se cargo la tabla: el detalle por tienda usa el mismo (14-oct-2026).
+let conCategoriaTabla = "";
 
 async function cargarGraficoProducto(producto) {
   document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;  // textContent: sin HTML
-  const datos = await fetchJSON(`/api/comparativa/${encodeURIComponent(producto)}/por-tienda`);
+  const datos = await fetchJSON(
+    `/api/comparativa/${encodeURIComponent(producto)}/por-tienda${qs({ con_categoria: conCategoriaTabla })}`);
   renderChart("chartPorTienda", {
     type: "bar",
     data: {
@@ -71,10 +79,11 @@ async function cargarGraficoProducto(producto) {
 
 async function cargarTabla() {
   const params = {
-    categoria: valoresSeleccionados(document.getElementById("fCategoria")),
+    ...paramsCategoria("fConCategoria", "fCategoria"),
     q: document.getElementById("fBusqueda").value,
     min_tiendas: document.getElementById("fMinTiendas").value,
   };
+  conCategoriaTabla = params.con_categoria;
   const datos = await fetchJSON(`/api/comparativa${qs(params)}`);
 
   const tabla = renderTabla("#tablaComparativa", datos, [

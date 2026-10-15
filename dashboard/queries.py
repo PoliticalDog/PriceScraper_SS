@@ -4,6 +4,7 @@ from typing import Optional
 
 from django.db import connection
 from django.db.models import Count, F, Max, Q
+from django.db.models.functions import Trim
 
 from dashboard import confiabilidad, origen
 from dashboard.models import (
@@ -37,6 +38,43 @@ def _filas_sql(sql: str, params: dict) -> list[dict]:
 
 # -- Filtros compartidos ------------------------------------------------------
 
+# Filtro "Con / sin categoria" (aprobado por la persona 14-oct-2026; docs/bi/metricas.md seccion 5).
+# Parametro de querystring con_categoria: ausente/vacio = todos (default, no cambia nada), "si" o "no".
+# Un registro esta SIN categoria si la categoria que muestra el dashboard es NULL, cadena vacia o solo espacios:
+#     COALESCE(BTRIM(extracciones.categoria_nlp), '') = ''
+# Esa columna es la "categoria" de v_precios_actuales, v_comparativa_precios y v_historico_precios (fila PRECIO).
+# No se usa productos_canonicos.categoria: no es la que ve el usuario y difiere en 392 registros (verificado
+# 14-oct-2026). En la BD no hay categorias genericas tipo "otros"/"sin categoria" (18 categorias, todas especificas).
+# Se combina en AND con el resto de filtros (incluida la lista de categorias). Con valores invalidos no filtra.
+CON_CATEGORIA_SI = "si"
+CON_CATEGORIA_NO = "no"
+
+
+def normalizar_con_categoria(valor) -> Optional[str]:
+    """'si' | 'no' | None (todos). Cualquier otro valor se trata como todos."""
+    v = (valor or "").strip().lower()
+    return v if v in (CON_CATEGORIA_SI, CON_CATEGORIA_NO) else None
+
+
+def filtrar_con_categoria(qs, con_categoria: Optional[str], campo: str = "categoria"):
+    """Aplica el filtro con/sin categoria a un queryset sobre `campo` (misma regla que _SQL_CON_CATEGORIA).
+    Solo filtra filas (WHERE): no agrega joins ni cambia el grano."""
+    con_categoria = normalizar_con_categoria(con_categoria)
+    if con_categoria is None:
+        return qs
+    qs = qs.alias(_categoria_limpia=Trim(campo))
+    vacia = Q(_categoria_limpia__isnull=True) | Q(_categoria_limpia="")
+    return qs.exclude(vacia) if con_categoria == CON_CATEGORIA_SI else qs.filter(vacia)
+
+
+# Misma regla para las consultas SQL crudas (columna e.categoria_nlp de la fila PRECIO).
+# %(con_categoria)s: NULL = todos, 'si' = con categoria, 'no' = sin categoria.
+_SQL_CON_CATEGORIA = (
+    "(%(con_categoria)s::text IS NULL"
+    " OR (COALESCE(BTRIM(e.categoria_nlp), '') <> '') = (%(con_categoria)s::text = 'si'))"
+)
+
+
 def listar_tiendas() -> list[dict]:
     return list(
         Tienda.objects.filter(activa=True).order_by("nombre").values("id", "nombre", "slug")
@@ -44,10 +82,10 @@ def listar_tiendas() -> list[dict]:
 
 
 def listar_categorias() -> list[str]:
+    # 14-oct-2026 (aprobado por la persona): sale de la categoria del registro (v_precios_actuales.categoria =
+    # categoria_nlp), la misma que filtran los paneles; antes salia de productos_canonicos.categoria.
     return list(
-        ProductoCanonico.objects
-        .exclude(categoria__isnull=True)
-        .exclude(categoria="")
+        filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI)
         .order_by("categoria")
         .values_list("categoria", flat=True)
         .distinct()
@@ -56,7 +94,7 @@ def listar_categorias() -> list[str]:
 
 # -- Resumen (home) -----------------------------------------------------------
 
-def resumen_kpis() -> dict:
+def resumen_kpis(con_categoria: Optional[str] = None) -> dict:
     # Corregido 12-oct-2026 (aprobado por la persona, docs/bi/metricas.md "3. KPIs del Resumen"):
     # - "productos_con_precio" contaba PRECIO con valor (28,867) e incluia filas sin texto_norm que ningun
     #   panel muestra; ahora son los registros del dashboard = v_precios_actuales (28,634).
@@ -66,24 +104,36 @@ def resumen_kpis() -> dict:
         vigentes=Count("id", filter=Q(vigente=True)),
         dudosos=Count("id", filter=Q(vigente_dudoso=True)),
     )
+    # 14-oct-2026: el filtro con/sin categoria solo aplica a "Precios detectados" (los otros KPIs no son de producto).
+    registros_todos = VPreciosActuales.objects.count()
+    con_categoria = normalizar_con_categoria(con_categoria)
+    registros = (
+        registros_todos if con_categoria is None
+        else filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria).count()
+    )
     return {
         "tiendas_activas": Tienda.objects.filter(activa=True).count(),
         "total_folletos": Folleto.objects.count(),
-        "registros_dashboard": VPreciosActuales.objects.count(),
+        "registros_dashboard": registros,
+        "registros_dashboard_todos": registros_todos,
+        "con_categoria": con_categoria,
         "folletos_vigentes": vigencia["vigentes"],
         "folletos_vigentes_dudosos": vigencia["dudosos"],
     }
 
 
-def resumen_top_categorias(limite: int = 10) -> list[dict]:
+def resumen_top_categorias(limite: int = 10, con_categoria: Optional[str] = None) -> list[dict]:
+    # 14-oct-2026 (aprobado por la persona): cuenta por la categoria del registro sobre los registros del dashboard
+    # (v_precios_actuales.categoria = categoria_nlp), igual que Precios/Comparativa/Historico y el KPI
+    # "Precios detectados". Antes contaba por productos_canonicos.categoria sobre todas las filas PRECIO y no cuadraba.
+    # Siempre excluye la categoria vacia, asi que con el filtro "no" la grafica queda vacia.
+    if normalizar_con_categoria(con_categoria) == CON_CATEGORIA_NO:
+        return []
     qs = (
-        Extraccion.objects
-        .filter(tipo="PRECIO")
-        .exclude(producto_canonico__categoria__isnull=True)
-        .exclude(producto_canonico__categoria="")
-        .values(categoria=F("producto_canonico__categoria"))
+        filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI)
+        .values("categoria")
         .annotate(n=Count("id"))
-        .order_by("-n")[:limite]
+        .order_by("-n", "categoria")[:limite]
     )
     return list(qs)
 
@@ -112,9 +162,10 @@ def precios_actuales(
     hasta: Optional[str] = None,
     q: Optional[str] = None,
     solo_descuento: bool = False,
+    con_categoria: Optional[str] = None,
     limite: int = 500,
 ) -> list[dict]:
-    qs = VPreciosActuales.objects.all()
+    qs = filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria)
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -146,9 +197,12 @@ def comparativa_precios(
     categorias: Optional[list[str]] = None,
     q: Optional[str] = None,
     min_tiendas: int = 1,
+    con_categoria: Optional[str] = None,
     limite: int = 300,
 ) -> list[dict]:
-    qs = VComparativaPrecios.objects.filter(num_tiendas__gte=min_tiendas)
+    # La vista agrupa por (texto_norm, categoria_nlp): cada fila tiene una sola categoria y el filtro la clasifica
+    # entera (no parte grupos).
+    qs = filtrar_con_categoria(VComparativaPrecios.objects.filter(num_tiendas__gte=min_tiendas), con_categoria)
 
     if categorias:
         qs = qs.filter(categoria__in=categorias)
@@ -166,14 +220,18 @@ def comparativa_precios(
     return filas
 
 
-def comparativa_por_tienda(producto: str) -> list[dict]:
+def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None) -> list[dict]:
     # Mismo motivo que resumen_folletos_por_tienda(): "tienda" colisiona con
     # el campo FK real de Extraccion, no se puede usar como alias en .values().
     # 13-oct-2026: + vigencia y procedencia (folleto/pagina) por registro para el detalle por tienda.
     # Mismo filtro que v_comparativa_precios (texto_norm no nulo queda implicito en texto_norm=producto).
+    # 14-oct-2026: el detalle respeta el filtro con/sin categoria de la tabla (sin filtro, igual que antes).
+    qs = filtrar_con_categoria(
+        Extraccion.objects.filter(tipo="PRECIO", valor__isnull=False, texto_norm=producto),
+        con_categoria, "categoria_nlp",
+    )
     qs = (
-        Extraccion.objects
-        .filter(tipo="PRECIO", valor__isnull=False, texto_norm=producto)
+        qs
         .values(
             "id", "tienda__nombre", "valor", "folleto__fecha_inicio", "folleto__fecha_fin",
             "pagina_id", "pagina__numero_pagina", "folleto_id", "folleto__folleto_id_fuente",
@@ -198,8 +256,9 @@ def historico_precios(
     tiendas: Optional[list[str]] = None,
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
+    con_categoria: Optional[str] = None,
 ) -> list[dict]:
-    qs = VHistoricoPrecios.objects.filter(producto=producto)
+    qs = filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto=producto), con_categoria)
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -271,6 +330,7 @@ WITH base AS (
     WHERE e.tipo = 'PRECIO' AND e.valor IS NOT NULL AND e.texto_norm IS NOT NULL
       AND (%(desde)s::date IS NULL OR f.fecha_inicio >= %(desde)s::date)
       AND (%(hasta)s::date IS NULL OR f.fecha_inicio <= %(hasta)s::date)
+      AND """ + _SQL_CON_CATEGORIA + """
 ),
 dup AS (
     SELECT tienda_id, SUM(n - 1)::bigint AS sobrantes
@@ -283,7 +343,7 @@ agg AS (
            COUNT(*)                                                                 AS registros,
            COUNT(*) FILTER (WHERE metodo_norm IN ('exacto', 'fuzzy', 'fuzzy_bajo')) AS reg_catalogo,
            COUNT(*) FILTER (WHERE metodo_norm = 'heuristico')                       AS reg_heuristico,
-           COUNT(*) FILTER (WHERE COALESCE(categoria_nlp, '') = '')                 AS reg_sin_categoria,
+           COUNT(*) FILTER (WHERE COALESCE(BTRIM(categoria_nlp), '') = '')          AS reg_sin_categoria,
            COUNT(*) FILTER (WHERE valor < 1 OR valor > 100000)                      AS reg_atipicos,
            AVG(confianza_ocr)                                                       AS conf_ocr_media,
            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY confianza_ocr)               AS conf_ocr_mediana,
@@ -315,8 +375,12 @@ def confiabilidad_por_tienda(
     tiendas: Optional[list[str]] = None,
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
+    con_categoria: Optional[str] = None,
 ) -> dict:
-    filas = _filas_sql(_SQL_CONFIABILIDAD, {"tiendas": tiendas or None, "desde": desde, "hasta": hasta})
+    filas = _filas_sql(_SQL_CONFIABILIDAD, {
+        "tiendas": tiendas or None, "desde": desde, "hasta": hasta,
+        "con_categoria": normalizar_con_categoria(con_categoria),
+    })
     corrida = confiabilidad.corrida_vigente()
     total = sum(f["registros"] for f in filas)
     catalogo = sum(f["reg_catalogo"] for f in filas)
@@ -361,10 +425,11 @@ WITH pag AS (
     FROM paginas GROUP BY folleto_id
 ),
 pre AS (
-    SELECT folleto_id, COUNT(*) AS precios
-    FROM extracciones
-    WHERE tipo = 'PRECIO' AND valor IS NOT NULL AND texto_norm IS NOT NULL
-    GROUP BY folleto_id
+    SELECT e.folleto_id, COUNT(*) AS precios
+    FROM extracciones e
+    WHERE e.tipo = 'PRECIO' AND e.valor IS NOT NULL AND e.texto_norm IS NOT NULL
+      AND """ + _SQL_CON_CATEGORIA + """
+    GROUP BY e.folleto_id
 ),
 err AS (
     SELECT tienda_slug, COUNT(*) FILTER (WHERE NOT resuelto) AS abiertos, COUNT(*) AS total
@@ -445,8 +510,13 @@ ORDER BY v.anomalia_fecha, v.tienda, v.fecha_inicio
 """
 
 
-def cobertura_por_tienda(tiendas: Optional[list[str]] = None) -> dict:
-    params = {"tiendas": tiendas or None, "anom": list(ANOMALIAS_INICIO_NO_CONFIABLE)}
+def cobertura_por_tienda(tiendas: Optional[list[str]] = None, con_categoria: Optional[str] = None) -> dict:
+    # con_categoria (14-oct-2026) solo afecta los conteos de precios (CTE pre); folletos, paginas, fechas y errores no
+    # son de producto. "Pags. con precio" sale de paginas.total_precios y no se puede filtrar por categoria.
+    params = {
+        "tiendas": tiendas or None, "anom": list(ANOMALIAS_INICIO_NO_CONFIABLE),
+        "con_categoria": normalizar_con_categoria(con_categoria),
+    }
     filas = _filas_sql(_SQL_COBERTURA, params)
     ultimo_scrapeo = max((f["ultimo_scrapeo"] for f in filas if f["ultimo_scrapeo"]), default=None)
     return {
@@ -541,9 +611,10 @@ def listar_extracciones(
     tienda_id: Optional[str] = None,
     folleto_id: Optional[str] = None,
     tipo: Optional[str] = None,
+    con_categoria: Optional[str] = None,
     limite: int = 200,
 ) -> list[dict]:
-    qs = Extraccion.objects.all()
+    qs = filtrar_con_categoria(Extraccion.objects.all(), con_categoria, "categoria_nlp")
     if tienda_id:
         qs = qs.filter(tienda_id=tienda_id)
     if folleto_id:

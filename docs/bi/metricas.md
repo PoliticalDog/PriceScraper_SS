@@ -1,6 +1,6 @@
 # Catalogo de metricas BI - PriceScraper MX
 
-Autor: agente BI. Ultima actualizacion: 12-oct-2026.
+Autor: agente BI. Ultima actualizacion: 14-oct-2026.
 
 Estado de cada metrica: **propuesta** (definida y validada contra la BD, no construida en el dashboard),
 **aprobada** (la persona la acepto) o **publicada** (visible en el dashboard).
@@ -12,7 +12,8 @@ Convenciones comunes:
 - **Producto de catalogo**: `metodo_norm IN ('exacto','fuzzy','fuzzy_bajo')` en la fila PRODUCTO a la que apunta el
   PRECIO (`producto_extraccion_id`). `heuristico` = texto del folleto tal cual. En la fila PRECIO `metodo_norm` siempre
   es NULL.
-- **Categoria vacia**: `categoria_nlp = ''` o NULL (hoy todas las vacias son `''`).
+- **Categoria vacia** (= "sin categoria"): `COALESCE(BTRIM(categoria_nlp), '') = ''` sobre la fila PRECIO, es decir
+  `''`, NULL o solo espacios (hoy todas las vacias son `''`: 17,102 de 27,760 al 14-oct-2026). Ver seccion 5.
 - **Corrida del evaluador vigente**: el JSON mas reciente de `data/processed/_eval/runs/*_dev.json` con
   `meta.split='dev'`, `meta.codigo.cambios_sin_commit=false` e `integridad.valida=true`. Mide solo los folletos de dev
   con ground truth (56 folletos en el split, 16 tiendas; 158 paginas y 14 tiendas con articulos con precio en la corrida
@@ -220,3 +221,55 @@ Cualquier fallo -> 404. Bases: `settings.ORIGEN_RAW_DIR` y `settings.ORIGEN_PROC
 
 **Confiabilidad:** la procedencia es exacta (llaves de la BD). Ver el origen no valida el registro: el visor sirve
 justamente para comprobar si el precio y el producto asociado son correctos (precision medida baja, ver seccion 1).
+
+---
+
+## 5. Filtro "Con / sin categoria"
+
+| Campo | Valor |
+|---|---|
+| Estado | **aprobada** (pedido y aprobado explicitamente por la persona 14-oct-2026; construido, pendiente de que la persona lo vea) |
+| Pregunta | Ver por separado los registros que si tienen categoria y los que no (~62% de los registros no tiene) |
+| Parametro | `?con_categoria=si\|no` en las APIs; vacio, ausente o invalido = todos (default: lo que se veia antes no cambia) |
+| Definicion | **Sin categoria** <=> la categoria del registro (`extracciones.categoria_nlp` de la fila PRECIO; es la columna `categoria` de `v_precios_actuales`, `v_comparativa_precios` y `v_historico_precios`) es NULL, `''` o solo espacios: `COALESCE(BTRIM(categoria_nlp), '') = ''`. **Con categoria** = el complemento exacto. ORM: `Trim(campo)` IS NULL OR = `''` (con = NOT de eso; NULL nunca se cuela). SQL crudo: `_SQL_CON_CATEGORIA` |
+| Casos ambiguos | `''` vs NULL vs espacios: los tres = sin categoria. Categorias genericas tipo "otros"/"sin categoria": no existen (18 categorias, todas especificas; verificado 14-oct-2026). Categoria del canonico (`productos_canonicos.categoria`): **no se usa** para el filtro porque no es la que ve el usuario; difiere de `categoria_nlp` en 392 registros (hallazgo `bi/hallazgos/categoria-nlp-vs-canonico`) |
+| Combinacion | AND con los demas filtros. Con "Sin categoria" la lista de categorias se desactiva en la UI y no se envia (AND daria vacio) |
+| Grano | el de cada panel; el filtro es solo un WHERE sobre filas (no agrega joins). En Comparativa la vista agrupa por (texto, categoria): cada fila tiene una sola categoria y se clasifica entera |
+| Codigo | `dashboard/queries.py` (`normalizar_con_categoria`, `filtrar_con_categoria`, `_SQL_CON_CATEGORIA`), `dashboard/views.py` (`_con_categoria`), `dashboard/templates/dashboard/_filtro_con_categoria.html`, `paramsCategoria`/`enlazarConCategoria`/`textoConCategoria` en `dashboard.js` |
+| Consulta | `docs/bi/consultas/filtro_con_categoria.sql` (mismos predicados que el dashboard, por panel; columna `cuadra`) |
+| Validacion | `docs/bi/consultas/filtro_con_categoria_validacion.sql` (tabla base, `LENGTH(BTRIM())`, EXISTS en vez de JOIN) -> cuadra |
+| Pruebas | `tests/test_dashboard_filtro_categoria.py` (46, sin BD) |
+| Fecha / autor | 14-oct-2026, especialista BI |
+
+**Donde aplica**
+
+| Pagina | Que filtra | Que no filtra (no depende de productos) |
+|---|---|---|
+| Resumen | KPI "Precios detectados" (nota "de N en total") y grafica Top categorias (con "Sin categoria" queda vacia, con aviso) | Tiendas activas, folletos cargados, folletos vigentes, folletos por tienda |
+| Precios | Tabla | - |
+| Comparativa | Tabla y detalle por tienda (usa el filtro con el que se cargo la tabla) | - |
+| Historico | Tabla y grafica | Sugerencias de producto (catalogo) |
+| Calidad | Seccion Confiabilidad: registros, % catalogo, % sin categoria, OCR, duplicados, atipicos | Metricas del evaluador (precision, IC95, recall, error dominante: son de la corrida) y la tabla operativa por folleto (`v_calidad_pipeline`, conteos de `paginas`) |
+| Cobertura | KPI y columna "Precios vigentes" (CTE `pre`) | Folletos, paginas, "Pags. con precio" (`paginas.total_precios`, sin categoria), fechas, errores, serie semanal |
+| Explorador (`/datos`) | Tabla de extracciones (sobre `categoria_nlp`, todos los tipos) | Tiendas y folletos |
+| Promociones | - | `v_eventos_activos.num_precios_asociados` (la vista no expone categoria; cambiarla requiere aprobacion) |
+
+**Verificacion 14-oct-2026** (BD vigente ese dia, rol de solo lectura; con + sin = todos en todos los casos):
+
+| Panel | Todos | Con categoria | Sin categoria |
+|---|---|---|---|
+| Resumen "Precios detectados" / Precios / Historico / Confiabilidad (registros) | 27,760 | 10,658 | 17,102 |
+| Comparativa (filas, min. 2 tiendas) | 771 | 319 | 452 |
+| Cobertura "Precios en folletos vigentes" | 1,741 | 507 | 1,234 |
+| Resumen Top categorias (suma de barras, top 10, categoria del registro) | 10,230 | 10,230 | 0 |
+
+Top categorias se alineo el 14-oct-2026 (aprobado por la persona): cuenta por la categoria del registro sobre
+`v_precios_actuales` (antes, categoria del canonico sobre todas las filas PRECIO: 10,266, que no cuadraba). Sumando
+las 18 categorias da 10,658 = registros con categoria; el top 10 suma 10,230. La lista del filtro de categorias
+(`listar_categorias`) tambien sale ya de la categoria del registro (mismas 18 que antes).
+
+La validacion independiente reproduce 27,760 / 10,658 / 17,102, 1,741 / 507 / 1,234 y 771 / 319 / 452.
+Joins: la base de Confiabilidad (PRECIO -> PRODUCTO -> folletos, N:1) da 27,760 = `v_precios_actuales`.
+
+**Confiabilidad:** "con categoria" no significa "producto de catalogo": de los 10,658 con categoria, 6,505 son
+heuristicos (6,113 + 392). La categoria la asigna el NLP; no esta medida por el evaluador.

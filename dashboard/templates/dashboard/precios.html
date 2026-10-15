@@ -6,13 +6,16 @@
 
 <div class="filtros-card">
   <div class="row g-2 align-items-end">
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Tienda</label>
       <select id="fTienda" multiple hidden></select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Categoría</label>
       <select id="fCategoria" multiple hidden></select>
+    </div>
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
     </div>
     <div class="col-md-2">
       <label class="form-label">Vigente desde</label>
@@ -48,12 +51,13 @@ async function cargarFiltros() {
   const categorias = await fetchJSON("/api/filtros/categorias");
   crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
   crearFiltroLista("fCategoria", categorias, "Todas");
+  enlazarConCategoria("fConCategoria", "fCategoria");
 }
 
 async function cargarTabla() {
   const params = {
     tienda: valoresSeleccionados(document.getElementById("fTienda")),
-    categoria: valoresSeleccionados(document.getElementById("fCategoria")),
+    ...paramsCategoria("fConCategoria", "fCategoria"),
     desde: document.getElementById("fDesde").value,
     hasta: document.getElementById("fHasta").value,
     q: document.getElementById("fBusqueda").value,

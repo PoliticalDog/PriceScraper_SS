@@ -15,11 +15,14 @@
       <label class="form-label">Tienda</label>
       <select id="fTienda" multiple hidden></select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
+      {% include "dashboard/_filtro_con_categoria.html" with fid="fConCategoria" %}
+    </div>
+    <div class="col-md-2">
       <label class="form-label">Serie semanal desde</label>
       <input type="date" id="fDesde" class="form-control">
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label">Serie semanal hasta</label>
       <input type="date" id="fHasta" class="form-control">
     </div>
@@ -27,7 +30,9 @@
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
     </div>
   </div>
-  <div class="form-text">"Hoy" es la fecha del servidor de BD. Sin fechas, la serie muestra las últimas 26 semanas y 30 días adelante.</div>
+  <div class="form-text">"Hoy" es la fecha del servidor de BD. Sin fechas, la serie muestra las últimas 26 semanas y 30 días adelante.
+    "Con / sin categoría" solo cambia los conteos de precios (KPI y columna "Precios vigentes"); folletos, páginas
+    (incluida "Págs. con precio") y la serie semanal no dependen de productos.</div>
 </div>
 
 <table id="tablaCobertura" class="table table-striped table-hover w-100"></table>
@@ -96,15 +101,18 @@ function diasRender(dias, tipo) {
 
 async function cargarTabla() {
   const tienda = valoresSeleccionados(document.getElementById("fTienda"));
-  const datos = await fetchJSON(`/api/cobertura${qs({ tienda })}`);
+  const conCategoria = paramsCategoria("fConCategoria").con_categoria;
+  const datos = await fetchJSON(`/api/cobertura${qs({ tienda, con_categoria: conCategoria })}`);
   const k = datos.kpis || {};
   const u = datos.umbrales || {};
+  const filtroCat = textoConCategoria(conCategoria);
 
   document.getElementById("kpis").innerHTML = [
     tarjetaKpi("ti-building-store", `${k.tiendas_con_vigente ?? 0}/${k.tiendas ?? 0}`, "Tiendas con folleto vigente"),
     tarjetaKpi("ti-calendar-check", (k.folletos_vigentes ?? 0).toLocaleString("es-MX"), "Folletos vigentes hoy",
       `+${k.vigentes_fecha_dudosa ?? 0} con fecha dudosa · ${k.proximos ?? 0} próximos`),
-    tarjetaKpi("ti-currency-dollar", (k.precios_vigentes ?? 0).toLocaleString("es-MX"), "Precios en folletos vigentes",
+    tarjetaKpi("ti-currency-dollar", (k.precios_vigentes ?? 0).toLocaleString("es-MX"),
+      filtroCat ? `Precios ${filtroCat} en folletos vigentes` : "Precios en folletos vigentes",
       `${(k.paginas_vigentes ?? 0).toLocaleString("es-MX")} páginas`),
     tarjetaKpi("ti-cloud-download", k.ultimo_scrapeo ?? "—", "Último scrapeo"),
   ].join("");

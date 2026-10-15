@@ -116,6 +116,37 @@ function crearFiltroLista(selectId, valores, etiquetaTodas = "Todas") {
   sincronizar();
 }
 
+// Filtro "Con / sin categoria" (14-oct-2026, docs/bi/metricas.md seccion 5). El <select> lo pinta
+// templates/dashboard/_filtro_con_categoria.html. Valor del parametro con_categoria: "" = todos (default), "si", "no".
+// Sin categoria = la categoria del registro es NULL, vacia o solo espacios (regla en dashboard/queries.py).
+// Con "Sin categoria" la lista de categorias no aplica (en AND daria siempre vacio): se desactiva y no se envia.
+function paramsCategoria(conCategoriaId, listaId = null) {
+  const con = document.getElementById(conCategoriaId).value;
+  const lista = listaId ? document.getElementById(listaId) : null;
+  return {
+    con_categoria: con,
+    categoria: lista && con !== "no" ? valoresSeleccionados(lista) : [],
+  };
+}
+
+function enlazarConCategoria(conCategoriaId, listaId) {
+  const sel = document.getElementById(conCategoriaId);
+  const actualizar = () => {
+    const lista = document.getElementById(listaId);
+    const boton = lista?.parentElement.querySelector(".filtro-lista > button");
+    if (!boton) return;
+    boton.disabled = sel.value === "no";
+    boton.title = boton.disabled ? "No aplica a registros sin categoría" : valoresSeleccionados(lista).join(", ");
+  };
+  sel.addEventListener("change", actualizar);
+  actualizar();
+}
+
+// Texto corto del filtro activo, para notas de KPIs y avisos ("" si es todos).
+function textoConCategoria(valor) {
+  return valor === "si" ? "con categoría" : valor === "no" ? "sin categoría" : "";
+}
+
 // Inicializa o reinicializa una DataTable en `selector` con `data` (array de
 // objetos) y `columns` (array de {data, title, render?}). Destruye la
 // instancia previa si existia, para poder recargar filtros sin duplicar.
