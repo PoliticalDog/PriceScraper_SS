@@ -5,12 +5,22 @@ from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
-from dashboard import origen, queries
+from dashboard import origen, promociones, queries
 
 
 def _con_categoria(request):
     """Filtro "Con / sin categoria" (?con_categoria=si|no; vacio o invalido = todos). Ver queries.filtrar_con_categoria."""
     return queries.normalizar_con_categoria(request.GET.get("con_categoria"))
+
+
+def _promo_params(request) -> dict:
+    """Filtros de promociones (15-oct-2026): ?promocion=con|sin, ?nivel=campania|producto|bancaria,
+    ?campania=<slug> (repetible). Vacio o invalido = sin filtro. Ver queries.filtrar_promocion."""
+    return {
+        "promocion": request.GET.get("promocion") or None,
+        "nivel": request.GET.get("nivel") or None,
+        "campanias": request.GET.getlist("campania") or None,
+    }
 
 
 def _folleto(request):
@@ -114,6 +124,7 @@ def api_precios(request):
         solo_descuento=request.GET.get("solo_descuento") == "true",
         con_categoria=_con_categoria(request),
         folleto=_folleto(request),
+        **_promo_params(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -125,6 +136,7 @@ def api_comparativa(request):
         min_tiendas=int(request.GET.get("min_tiendas", 1)),
         con_categoria=_con_categoria(request),
         folleto=_folleto(request),
+        **_promo_params(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -144,6 +156,7 @@ def api_historico(request):
         hasta=request.GET.get("hasta") or None,
         con_categoria=_con_categoria(request),
         folleto=_folleto(request),
+        **_promo_params(request),
     )
     return JsonResponse(datos, safe=False)
 
@@ -191,13 +204,26 @@ def api_cobertura_semanal(request):
     return JsonResponse(datos, safe=False)
 
 
-def api_eventos(request):
-    datos = queries.eventos_promo(
+def api_promociones(request):
+    """Pagina Promociones (15-oct-2026): filas (folleto, campania) leidas de eventos_promo, sin v_eventos_activos."""
+    return JsonResponse(queries.promociones_por_folleto(
         tiendas=request.GET.getlist("tienda") or None,
-        desde=request.GET.get("desde") or None,
-        hasta=request.GET.get("hasta") or None,
-    )
-    return JsonResponse(datos, safe=False)
+        folleto=_folleto(request),
+        campanias=request.GET.getlist("campania") or None,
+        vigencia=request.GET.get("vigencia") or None,
+        clase=request.GET.get("clase") or None,
+        categorias=request.GET.getlist("categoria") or None,
+    ))
+
+
+def api_filtros_promociones(request):
+    """Opciones de los filtros de promociones: campanias canonicas, niveles (con o sin datos) y clases."""
+    return JsonResponse({
+        "campanias": [{"slug": s, "nombre": n} for s, n in promociones.CAMPANIAS.items()],
+        "niveles": [{"nivel": n, "con_datos": n in promociones.NIVELES_CON_DATOS} for n in promociones.NIVELES],
+        "clases": [{"clase": c, "nombre": promociones.NOMBRES_CLASE[c]} for c in promociones.CLASES],
+        "vigencias": [{"vigencia": v, "nombre": queries.NOMBRES_VIGENCIA[v]} for v in queries.VIGENCIAS],
+    })
 
 
 def api_filtros_errores(request):
@@ -313,7 +339,7 @@ def api_origen_pagina(request, pagina_id: int):
     pag = ctx["pagina"]
     dims = _dimensiones_proc(pag)
     return JsonResponse({
-        "pagina": _meta_pagina(pag),
+        "pagina": {**_meta_pagina(pag), "promos": ctx.get("promos") or promociones.promos_vacias()},
         "vecinas": ctx["vecinas"],
         "imagen": {
             "proc": f"/origen/pagina/{pag['id']}.webp?version=proc",

@@ -1,0 +1,28 @@
+{% comment %}
+Filtros de promociones (Fase 1 aprobada 15-oct-2026, docs/bi/metricas.md seccion 7). Pinta tres columnas para usar
+dentro de un .row de filtros. JS: cargarFiltrosPromocion() y paramsPromocion() en dashboard.js.
+  promocion: "" (todos, default) | con | sin
+  nivel:     "" (todos) | campania | producto y bancaria desactivados (pendiente de carga)
+  campania:  slugs canonicos (lista multiple)
+{% endcomment %}
+<div class="col-md-2">
+  <label class="form-label" for="fPromocion">Promoción</label>
+  <select id="fPromocion" class="form-select" title="Con alguna: el registro tiene al menos una promoción del nivel elegido">
+    <option value="" selected>Todos</option>
+    <option value="con">Con alguna</option>
+    <option value="sin">Sin promoción</option>
+  </select>
+</div>
+<div class="col-md-2">
+  <label class="form-label" for="fNivel">Nivel</label>
+  <select id="fNivel" class="form-select" title="Producto y Bancaria: pendiente de carga (el pipeline aún no liga esas promociones al producto)">
+    <option value="" selected>Todos los niveles</option>
+    <option value="campania">Campaña del folleto</option>
+    <option value="producto" disabled>Producto (pendiente de carga)</option>
+    <option value="bancaria" disabled>Bancaria (pendiente de carga)</option>
+  </select>
+</div>
+<div class="col-md-2">
+  <label class="form-label">Campaña</label>
+  <select id="fCampania" multiple hidden></select>
+</div>

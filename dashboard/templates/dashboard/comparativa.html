@@ -28,7 +28,11 @@
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
     </div>
   </div>
+  <div class="row g-2 align-items-end mt-2">
+    {% include "dashboard/_filtro_promocion.html" %}
+  </div>
   <div class="form-text">Con folleto: productos que aparecen en ese folleto, comparados contra todas las tiendas y fechas.
+    Con promoción: productos con al menos un registro en un folleto con esa promoción.
     El detalle por tienda muestra todos los registros y resalta los del folleto.</div>
 </div>
 
@@ -57,6 +61,7 @@ async function cargarFiltros() {
   const categorias = await fetchJSON("/api/filtros/categorias");
   crearFiltroLista("fCategoria", categorias, "Todas");
   enlazarConCategoria("fConCategoria", "fCategoria");
+  await cargarFiltrosPromocion();
 }
 
 // Filtro con/sin categoria con el que se cargo la tabla: el detalle por tienda usa el mismo (14-oct-2026).
@@ -81,6 +86,7 @@ async function cargarGraficoProducto(producto) {
     { data: "tienda", title: "Tienda", render: (d) => escaparHtml(d) },
     { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
     { data: null, title: "Vigencia", render: (d, t, f) => escaparHtml(formatoVigencia(f.vigencia_desde, f.vigencia_hasta)) },
+    { data: "promos", title: "Promociones", orderable: false, render: (d) => renderPromos(d) },
     { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
   ], {
     order: [[1, "asc"]],
@@ -100,6 +106,7 @@ async function cargarTabla() {
     q: document.getElementById("fBusqueda").value,
     min_tiendas: document.getElementById("fMinTiendas").value,
     folleto: valorFolleto("fFolleto"),
+    ...paramsPromocion(),
   };
   conCategoriaTabla = params.con_categoria;
   folletoTabla = params.folleto;

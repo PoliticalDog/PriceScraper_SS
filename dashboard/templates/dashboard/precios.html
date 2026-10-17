@@ -34,6 +34,7 @@
     <div class="col-md-2">
       {% include "dashboard/_filtro_folleto.html" with fid="fFolleto" %}
     </div>
+    {% include "dashboard/_filtro_promocion.html" %}
     <div class="col-auto form-check ms-1 mb-2">
       <input class="form-check-input" type="checkbox" id="fSoloDescuento">
       <label class="form-check-label" for="fSoloDescuento">Solo con descuento</label>
@@ -56,6 +57,10 @@ async function cargarFiltros() {
   crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
   crearFiltroLista("fCategoria", categorias, "Todas");
   enlazarConCategoria("fConCategoria", "fCategoria");
+  await cargarFiltrosPromocion();
+  // 15-oct-2026: /precios?folleto=<id> (enlace desde Promociones) llega con el filtro de folleto puesto
+  const folletoUrl = new URLSearchParams(window.location.search).get("folleto");
+  if (folletoUrl) document.getElementById("fFolleto").value = folletoUrl.trim();
 }
 
 async function cargarTabla() {
@@ -67,6 +72,7 @@ async function cargarTabla() {
     q: document.getElementById("fBusqueda").value,
     solo_descuento: document.getElementById("fSoloDescuento").checked,
     folleto: valorFolleto("fFolleto"),
+    ...paramsPromocion(),
   };
   avisoFolleto(params.folleto, "avisoFolleto");
   const datos = await fetchJSON(`/api/precios${qs(params)}`);
@@ -80,6 +86,8 @@ async function cargarTabla() {
     { data: "descuento_pct", title: "Descuento", render: (d) => formatoPct(d) },
     { data: "vigencia_desde", title: "Desde" },
     { data: "vigencia_hasta", title: "Hasta" },
+    // Promociones (15-oct-2026): hoy solo la campania del folleto
+    { data: "promos", title: "Promociones", orderable: false, render: (d) => renderPromos(d) },
     // Procedencia (13-oct-2026): la vigencia ya tiene columnas propias
     { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
   ], { order: [[5, "desc"]] });

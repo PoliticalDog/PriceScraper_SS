@@ -6,9 +6,10 @@ from django.db import connection
 from django.db.models import CharField, Count, Exists, F, Max, OuterRef, Q, Value
 from django.db.models.functions import Coalesce, Trim
 
-from dashboard import confiabilidad, origen
+from dashboard import confiabilidad, origen, promociones
 from dashboard.models import (
     ErrorCarga,
+    EventoPromo,
     Extraccion,
     Folleto,
     Pagina,
@@ -16,7 +17,6 @@ from dashboard.models import (
     Tienda,
     VCalidadPipeline,
     VComparativaPrecios,
-    VEventosActivos,
     VFolletosVigencia,
     VHistoricoPrecios,
     VPreciosActuales,
@@ -231,9 +231,13 @@ def precios_actuales(
     solo_descuento: bool = False,
     con_categoria: Optional[str] = None,
     folleto: Optional[str] = None,
+    promocion: Optional[str] = None,
+    nivel: Optional[str] = None,
+    campanias: Optional[list[str]] = None,
     limite: int = 500,
 ) -> list[dict]:
     qs = filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria), folleto)
+    qs = filtrar_promocion(qs, promocion, nivel, campanias, "vista")
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -256,7 +260,7 @@ def precios_actuales(
     ))
     for f in filas:
         f["descuento_pct"] = _num(f["descuento_pct"])
-    return agregar_procedencia(filas)
+    return agregar_promos(agregar_procedencia(filas))
 
 
 # -- Comparativa entre tiendas --------------------------------------------------
@@ -267,6 +271,9 @@ def comparativa_precios(
     min_tiendas: int = 1,
     con_categoria: Optional[str] = None,
     folleto: Optional[str] = None,
+    promocion: Optional[str] = None,
+    nivel: Optional[str] = None,
+    campanias: Optional[list[str]] = None,
     limite: int = 300,
 ) -> list[dict]:
     # La vista agrupa por (texto_norm, categoria_nlp): cada fila tiene una sola categoria y el filtro la clasifica
@@ -278,6 +285,8 @@ def comparativa_precios(
     folleto = normalizar_folleto(folleto)
     if folleto is not None:
         qs = qs.filter(_en_folleto(folleto))
+    # Promocion (15-oct-2026): "con" = el producto tiene al menos un registro en un folleto con promocion
+    qs = filtrar_promocion(qs, promocion, nivel, campanias, "comparativa")
 
     if categorias:
         qs = qs.filter(categoria__in=categorias)
@@ -299,11 +308,16 @@ def _en_folleto(folleto: str) -> Exists:
     """EXISTS: el grupo (producto, categoria) de v_comparativa_precios tiene un registro del dashboard en el folleto.
     Misma base que la vista (PRECIO, valor y texto_norm no nulos); la categoria se compara con COALESCE(..., '')
     porque la vista agrupa NULL como su propio grupo."""
+    return Exists(_registros_del_grupo().filter(folleto__folleto_id_fuente=folleto))
+
+
+def _registros_del_grupo():
+    """Registros del dashboard del grupo (producto, categoria) de la fila externa de v_comparativa_precios
+    (OuterRef). Base de los EXISTS de Comparativa: nunca se une a la vista, no duplica grupos."""
     vacia = Value("", output_field=CharField())
-    return Exists(
+    return (
         Extraccion.objects
-        .filter(tipo="PRECIO", valor__isnull=False, texto_norm=OuterRef("producto"),
-                folleto__folleto_id_fuente=folleto)
+        .filter(tipo="PRECIO", valor__isnull=False, texto_norm=OuterRef("producto"))
         .alias(_cat=Coalesce("categoria_nlp", vacia))
         .filter(_cat=Coalesce(OuterRef("categoria"), vacia, output_field=CharField()))
     )
@@ -330,14 +344,14 @@ def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None) -
         )
         .order_by("valor", "id")
     )
-    return [{
+    return agregar_promos([{
         "id": f["id"],
         "tienda": f["tienda__nombre"],
         "precio": f["valor"],
         "vigencia_desde": f["folleto__fecha_inicio"],
         "vigencia_hasta": f["folleto__fecha_fin"],
         **_procedencia_de_valores(f),
-    } for f in qs]
+    } for f in qs])
 
 
 # -- Historico de precios --------------------------------------------------------
@@ -349,10 +363,14 @@ def historico_precios(
     hasta: Optional[str] = None,
     con_categoria: Optional[str] = None,
     folleto: Optional[str] = None,
+    promocion: Optional[str] = None,
+    nivel: Optional[str] = None,
+    campanias: Optional[list[str]] = None,
 ) -> list[dict]:
     qs = filtrar_folleto(
         filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto=producto), con_categoria), folleto,
     )
+    qs = filtrar_promocion(qs, promocion, nivel, campanias, "vista")
 
     if tiendas:
         qs = qs.filter(tienda__in=tiendas)
@@ -363,7 +381,7 @@ def historico_precios(
 
     qs = qs.order_by("fecha", "id")
     filas = list(qs.values("id", "tienda", "producto", "categoria", "fecha", "precio", "precio_anterior"))
-    return agregar_procedencia(filas)
+    return agregar_promos(agregar_procedencia(filas))
 
 
 def sugerir_productos(q: str, limite: int = 20) -> list[str]:
@@ -687,7 +705,7 @@ def listar_folletos(tienda_id: Optional[str] = None, folleto: Optional[str] = No
     for f in filas:
         f["url_origen"] = origen.url_origen_segura(f["url_origen"])
         f["primera_pagina_id"] = primeras.get(f["id"])
-    return filas
+    return agregar_promos(filas, campo="id")
 
 
 def _primeras_paginas(folleto_ids: list[int]) -> dict:
@@ -729,33 +747,200 @@ def listar_extracciones(
         qs = qs.filter(tipo=tipo)
 
     qs = qs.order_by("-created_at")[:limite]
-    return list(qs.values(
+    return agregar_promos(list(qs.values(
         "id", "tienda__nombre", "folleto_id", "tipo", "texto_raw", "texto_norm",
         "categoria_nlp", "valor", "valor_anterior", "texto_promo", "confianza_ocr",
         "producto_canonico__nombre_canonico", "created_at", "pagina_id", "pagina__numero_pagina",
-    ))
+    )))
 
 
 # -- Promociones y eventos ---------------------------------------------------------
 
-def eventos_promo(
+# Fase 1 aprobada por la persona 15-oct-2026 (docs/bi/metricas.md seccion 7). Sin vistas: eventos_promo se lee
+# directo y se clasifica en Python (dashboard/promociones.py). Ya no se usa v_eventos_activos: no tiene fechas (todas
+# NULL -> todos "vigentes"), junta folletos y su num_precios_asociados cuenta cada precio una vez por evento.
+
+def campanias_de_folletos(folleto_ids) -> dict:
+    """{folleto_id: [etiqueta de campania, ...]} para los folletos dados. Una consulta por PK de folleto
+    (indice uq_evento_folleto); el agrupado es en Python, asi que nunca multiplica las filas de quien la usa."""
+    ids = sorted({i for i in folleto_ids if i is not None})
+    if not ids:
+        return {}
+    return promociones.campanias_por_folleto(
+        EventoPromo.objects.filter(folleto_id__in=ids).values("folleto_id", "nombre_evento")
+    )
+
+
+def agregar_promos(filas: list[dict], campo: str = "folleto_id") -> list[dict]:
+    """Agrega fila["promos"] = {campania, producto, bancaria}; mismas filas, mismo orden."""
+    return promociones.combinar_promos(filas, campanias_de_folletos(f.get(campo) for f in filas), campo)
+
+
+def _ids_eventos_promocion(nivel: Optional[str], campanias: list[str]) -> list[int]:
+    """ids de eventos_promo que cuentan como promocion para el nivel y las campanias pedidas.
+    Producto y bancaria aun no tienen datos (pendiente de carga): lista vacia."""
+    if nivel is not None and nivel not in promociones.NIVELES_CON_DATOS:
+        return []
+    ids = []
+    for ev in EventoPromo.objects.values("id", "nombre_evento"):  # 92 filas al 15-oct-2026
+        clase, slug = promociones.clasificar_evento(ev["nombre_evento"])
+        if clase == promociones.CLASE_CAMPANIA and (not campanias or slug in campanias):
+            ids.append(ev["id"])
+    return ids
+
+
+def filtrar_promocion(qs, promocion=None, nivel=None, campanias=None, modo: str = "vista"):
+    """Filtros "Promocion" (con/sin), "Nivel" y "Campania" con EXISTS sobre eventos_promo (no une, no duplica).
+    - Campania sin "Promocion" equivale a "con" esas campanias; "sin" + campanias = registros fuera de ellas.
+    - Nivel solo (con Promocion = todos) no filtra.
+    modo: "vista" (v_precios_actuales / v_historico_precios: folleto por (fuente, folleto_id_fuente)),
+          "extraccion" (extracciones.folleto_id), "comparativa" (grupo de v_comparativa_precios con al menos un
+          registro en un folleto con promocion)."""
+    promocion = promociones.normalizar_promocion(promocion)
+    nivel = promociones.normalizar_nivel(nivel)
+    campanias = promociones.normalizar_campanias(campanias)
+    if promocion is None and campanias:
+        promocion = "con"
+    if promocion is None:
+        return qs
+    ids = _ids_eventos_promocion(nivel, campanias)
+    if not ids:
+        return qs.none() if promocion == "con" else qs
+    if modo == "vista":
+        cond = Exists(EventoPromo.objects.filter(
+            id__in=ids, folleto__fuente=OuterRef("fuente"), folleto__folleto_id_fuente=OuterRef("folleto_id_fuente"),
+        ))
+    elif modo == "extraccion":
+        cond = Exists(EventoPromo.objects.filter(id__in=ids, folleto_id=OuterRef("folleto_id")))
+    elif modo == "comparativa":
+        cond = Exists(_registros_del_grupo().filter(
+            Exists(EventoPromo.objects.filter(id__in=ids, folleto_id=OuterRef("folleto_id")))
+        ))
+    else:
+        raise ValueError(f"modo desconocido: {modo}")
+    return qs.filter(cond) if promocion == "con" else qs.filter(~cond)
+
+
+def promos_de_folleto(folleto_id: Optional[int]) -> dict:
+    promos = promociones.promos_vacias()
+    promos["campania"] = campanias_de_folletos([folleto_id]).get(folleto_id, [])
+    return promos
+
+
+# -- Pagina Promociones: grano (folleto, campania) ------------------------------------------------------------
+VIGENCIAS = ("vigente", "vigente_dudoso", "proximo", "fuera")
+NOMBRES_VIGENCIA = {
+    "vigente": "Vigente hoy",
+    "vigente_dudoso": "Vigente (fecha dudosa)",
+    "proximo": "Próximo",
+    "fuera": "Fuera de vigencia",
+}
+
+
+def _estado_vigencia(v: dict) -> str:
+    """Una sola categoria por folleto, desde v_folletos_vigencia (unica definicion de vigencia del dashboard)."""
+    if v.get("vigente"):
+        return "vigente"
+    if v.get("vigente_dudoso"):
+        return "vigente_dudoso"
+    if v.get("proximo"):
+        return "proximo"
+    return "fuera"
+
+
+def promociones_por_folleto(
     tiendas: Optional[list[str]] = None,
-    desde: Optional[str] = None,
-    hasta: Optional[str] = None,
-    limite: int = 300,
-) -> list[dict]:
-    qs = VEventosActivos.objects.all()
+    folleto: Optional[str] = None,
+    campanias: Optional[list[str]] = None,
+    vigencia: Optional[str] = None,
+    clase: Optional[str] = None,
+    categorias: Optional[list[str]] = None,
+) -> dict:
+    """Filas (folleto, campania) para la pagina Promociones.
+    clase: 'campania' por defecto; 'lema' | 'legal' | 'producto' | 'otro' para revisar lo que no es campania;
+    'todas' para todo. En las clases que no son campania el grano es (folleto, nombre_evento).
+    "Precios en el folleto" = registros del dashboard del folleto (nivel folleto, no producto); con categorias, solo
+    los de esas categorias y se ocultan los folletos que quedan en 0. Los KPIs suman cada folleto una sola vez."""
+    clase = clase if clase in promociones.CLASES or clase == "todas" else promociones.CLASE_CAMPANIA
+    campanias = promociones.normalizar_campanias(campanias)
+    vigencia = vigencia if vigencia in VIGENCIAS else None
 
-    if tiendas:
-        qs = qs.filter(tienda__in=tiendas)
-    if desde:
-        qs = qs.filter(fecha_inicio__gte=desde)
-    if hasta:
-        qs = qs.filter(Q(fecha_fin__isnull=True) | Q(fecha_fin__lte=hasta))
+    eventos = filtrar_folleto(EventoPromo.objects.all(), folleto, "folleto__folleto_id_fuente")
+    grupos: dict = {}
+    for ev in eventos.values("id", "folleto_id", "nombre_evento", "texto_raw"):
+        cl, slug = promociones.clasificar_evento(ev["nombre_evento"])
+        if clase != "todas" and cl != clase:
+            continue
+        if campanias and slug not in campanias:
+            continue
+        clave = (ev["folleto_id"], cl, slug or ev["nombre_evento"])
+        g = grupos.setdefault(clave, {"textos": set(), "eventos": 0})
+        g["textos"].add((ev["texto_raw"] or ev["nombre_evento"]).strip())
+        g["eventos"] += 1
 
-    qs = qs.order_by("-fecha_inicio")[:limite]
+    fids = sorted({k[0] for k in grupos})
+    fol = {
+        v["id"]: v for v in VFolletosVigencia.objects.filter(id__in=fids).values(
+            "id", "tienda", "fuente", "folleto_id_fuente", "titulo", "fecha_inicio", "fecha_fin",
+            "anomalia_fecha", "vigente", "vigente_dudoso", "proximo",
+        )
+    }
+    precios_qs = Extraccion.objects.filter(
+        tipo="PRECIO", valor__isnull=False, texto_norm__isnull=False, folleto_id__in=fids,
+    )
+    if categorias:
+        precios_qs = precios_qs.filter(categoria_nlp__in=categorias)
+    precios = dict(precios_qs.values_list("folleto_id").annotate(n=Count("id")))
+    primeras = _primeras_paginas(fids)
 
-    return list(qs.values("nombre_evento", "tienda", "fecha_inicio", "fecha_fin", "num_precios_asociados"))
+    filas = []
+    for (fid, cl, clave), g in grupos.items():
+        v = fol.get(fid)
+        if v is None:
+            continue
+        if tiendas and v["tienda"] not in tiendas:
+            continue
+        estado = _estado_vigencia(v)
+        if vigencia and estado != vigencia:
+            continue
+        n = precios.get(fid, 0)
+        if categorias and n == 0:
+            continue
+        es_campania = cl == promociones.CLASE_CAMPANIA
+        filas.append({
+            "folleto_id": fid,
+            "tienda": v["tienda"],
+            "fuente": v["fuente"],
+            "folleto_id_fuente": v["folleto_id_fuente"],
+            "folleto_titulo": v["titulo"],
+            "vigencia_desde": v["fecha_inicio"],
+            "vigencia_hasta": v["fecha_fin"],
+            "anomalia_fecha": v["anomalia_fecha"],
+            "vigencia": estado,
+            "vigencia_nombre": NOMBRES_VIGENCIA[estado],
+            "clase": cl,
+            "clase_nombre": promociones.NOMBRES_CLASE[cl],
+            "campania": clave if es_campania else None,
+            "nombre": promociones.CAMPANIAS[clave] if es_campania else clave,
+            "textos_detectados": sorted(g["textos"]),
+            "eventos": g["eventos"],
+            "precios_en_folleto": n,
+            "primera_pagina_id": primeras.get(fid),
+        })
+    filas.sort(key=lambda f: (f["vigencia"] != "vigente", f["tienda"], f["folleto_id_fuente"], f["nombre"]))
+
+    por_folleto = {f["folleto_id"]: f["precios_en_folleto"] for f in filas}
+    return {
+        "kpis": {
+            "filas": len(filas),
+            "folletos": len(por_folleto),
+            "campanias": len({f["campania"] for f in filas if f["campania"]}),
+            "tiendas": len({f["tienda"] for f in filas}),
+            "precios_en_folletos": sum(por_folleto.values()),  # cada folleto una vez
+            "vigentes": len({f["folleto_id"] for f in filas if f["vigencia"] == "vigente"}),
+        },
+        "filas": filas,
+    }
 
 
 # -- Errores de carga (tabla errores_carga) ---------------------------------------
@@ -898,6 +1083,7 @@ def contexto_pagina(pagina_id: int) -> Optional[dict]:
         "pagina": pag,
         "vecinas": {"anterior": ant["id"] if ant else None, "siguiente": sig["id"] if sig else None},
         "bloques": bloques,
+        "promos": promos_de_folleto(pag["folleto_id"]),  # campania del folleto (15-oct-2026)
     }
 
 

@@ -351,3 +351,46 @@ Consulta: `docs/bi/consultas/avisos_folleto.sql`. Validacion: `docs/bi/consultas
 | (vacio) | sin aviso de folleto | - | 13 | sin aviso (desde 15-oct-2026 solo se avisa con folleto escrito) |
 
 Folletos sin precios: 76 de 694 (ambos caminos).
+
+---
+
+## 7. Promociones por niveles (Fase 1: campaña del folleto)
+
+| Campo | Valor |
+|---|---|
+| Estado | **aprobada** (Fase 1 aprobada por la persona 15-oct-2026; construida sin commit, pendiente de revision en el navegador) |
+| Pregunta | Que promociones tiene cada precio: (A) campaña del folleto, (B) promocion del producto, (C) bancaria. Conviven |
+| Estructura | Cada registro trae `promos = {campania: [{slug, nombre}], producto: [], bancaria: []}`. Hoy solo A tiene datos; B y C "pendiente de carga" (load debe ligar las PROMO al producto) |
+| Fuente | `eventos_promo` (ligada solo a folleto) leida directo desde `queries.py`, sin vistas (patron de Procedencia, opcion A). **Ya no se usa `v_eventos_activos`**: fechas NULL en todos los eventos (todos "vigentes"), mezcla folletos y su `num_precios_asociados` cuenta cada precio una vez por evento del folleto |
+| Mapa de campañas | `dashboard/promociones.py` (provisional): convierte las variantes actuales de `nombre_evento` a los slugs acordados con el pipeline (`julio_regalado, hot_sale, buen_fin, regreso_a_clases, navidad, halloween_dia_de_muertos, liquidacion, aniversario, ofertones, fiestas_patrias`; fiestas_patrias agregada 16-oct-2026) y acepta los slugs ya canonicos (cuando se recargue con el pipeline nuevo sigue igual). Clases: campaña / lema / texto legal / nombre de producto / otro; solo "campaña" se muestra como etiqueta. Espejo SQL: `docs/bi/consultas/promociones_campanias.sql` (una prueba vigila que las reglas coincidan) |
+| Sin duplicados | Etiquetas: segunda consulta por `folleto_id__in` agrupada en Python (`agregar_promos`), mismas filas y orden. Filtros: `EXISTS` (vistas por llave natural `(fuente, folleto_id_fuente)`; extracciones por `folleto_id`; Comparativa con EXISTS anidado sobre los registros del grupo). Un join directo registro-evento inflaria 12.5% (15 folletos tienen varios eventos) |
+| Donde | Columna "Promociones" en Precios, detalle por tienda de Comparativa, Historico (tabla + tooltip); columna "Campania" en el Explorador (folletos y extracciones); cabecera del visor de origen. Filtros "Promocion" (Todos/Con alguna/Sin promocion), "Nivel" (Producto y Bancaria desactivados: pendiente de carga) y "Campaña" en Precios, Comparativa e Historico |
+| Semantica de filtros | Registro con promocion = su folleto tiene al menos un evento de clase campaña (del nivel/campañas elegidas). Campaña sin "Promocion" = "con" esas campañas. Nivel solo no filtra. Comparativa: grupo con al menos un registro en un folleto con promocion. AND con los demas filtros |
+| Pagina Promociones | Grano (folleto, campaña); vigencia desde `v_folletos_vigencia` (vigente / vigente con fecha dudosa / proximo / fuera); "Precios en el folleto" = registros del dashboard del folleto (nivel folleto, no producto; con Categoria solo esas y se ocultan los ceros), enlace a `/precios?folleto=<id>` (Precios lee `?folleto=` de la URL). KPIs suman cada folleto una vez. Filtros: tienda, folleto, campaña, vigencia, categoria, tipo de texto (por defecto solo campañas; lemas/legal/producto para revisar) |
+| Consulta / validacion | `docs/bi/consultas/promociones_validacion.sql` (camino A = predicado del ORM; camino B = tabla base con IN/NOT IN y BOOL_OR) -> cuadra |
+| Pruebas | `tests/test_dashboard_promociones.py` (sin BD) |
+| Fecha / autor | 15-oct-2026, especialista BI |
+
+**Verificacion 15-oct-2026** (BD recargada con el scrapeo del 14/15-oct: 32,074 registros, 786 folletos, 92 eventos en
+70 folletos, 13 de 20 tiendas con algun evento):
+
+| Medida | Todos | Con promocion | Sin promocion |
+|---|---|---|---|
+| Registros (vista, EXISTS del ORM) | 32,074 | 1,731 (5.4%) | 30,343 |
+| Registros (tabla base, IN / NOT IN) | 32,074 | 1,731 | 30,343 |
+| Registros con etiqueta (agregado por folleto antes de unir) | 32,074 | - | - |
+| Comparativa, grupos en 2+ tiendas (EXISTS anidado / BOOL_OR) | 901 | 206 | 695 |
+
+Pagina Promociones (clase campaña): 36 filas (folleto, campaña), 35 folletos, 5 campañas, 7 tiendas, 1,731 precios en
+esos folletos, 3 folletos vigentes hoy. Eventos por clase (92): campaña 37, lema 38, texto legal 11, nombre de producto 6, otro 0.
+
+| Campaña | Folletos | Registros en esos folletos | Tiendas | Vigentes hoy |
+|---|---|---|---|---|
+| Julio Regalado | 13 | 925 | soriana_hiper, soriana_mercado | 0 |
+| Regreso a clases | 13 | 656 | bodega_aurrera, chedraui, soriana_mercado, walmart, waldos | 0 |
+| Hot Sale | 1 | 409 | soriana_hiper (mismo folleto que un Julio Regalado) | 0 |
+| Liquidacion | 1 | 140 | casa_ley | 0 |
+| Navidad | 8 | 10 | waldos | 3 |
+
+Por campaña suman 2,140 > 1,731 porque un folleto lleva dos campañas: por eso los KPIs cuentan cada folleto una vez.
+Sin datos todavia: Buen Fin, Halloween/Dia de Muertos, Aniversario, Ofertones (los detectara el pipeline nuevo).

@@ -61,7 +61,7 @@
 <table border="1" cellpadding="4" cellspacing="0">
 <tr>
   <th>ID</th><th>Tienda</th><th>Fuente</th><th>ID fuente</th><th>Titulo</th>
-  <th>Inicio</th><th>Fin</th><th>Paginas</th><th>Estado</th><th>Scrapeado</th><th>Datos</th><th>Origen</th>
+  <th>Inicio</th><th>Fin</th><th>Paginas</th><th>Estado</th><th>Scrapeado</th><th>Campania</th><th>Datos</th><th>Origen</th>
 </tr>
 {% for f in folletos %}
 <tr>
@@ -75,6 +75,7 @@
   <td>{{ f.total_paginas }}</td>
   <td>{{ f.estado }}</td>
   <td>{{ f.scrapeado_at|default:"-" }}</td>
+  <td>{% for c in f.promos.campania %}{{ c.nombre }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</td>
   <td><a href="?tienda_id={{ tienda_id|default:'' }}&amp;folleto_id={{ f.id }}&amp;tipo={{ tipo|default:'' }}&amp;con_categoria={{ con_categoria|default:'' }}&amp;folleto={{ folleto_fuente|default:''|urlencode }}">ver</a></td>
   <td>
     {% if f.primera_pagina_id %}<a href="/origen/pagina/{{ f.primera_pagina_id }}" target="_blank" rel="noopener">[pág. 1]</a>{% endif %}
@@ -119,7 +120,7 @@
 <tr>
   <th>ID</th><th>Tienda</th><th>Folleto</th><th>Pág.</th><th>Origen</th><th>Tipo</th><th>Texto raw</th><th>Texto norm</th>
   <th>Categoria NLP</th><th>Valor</th><th>Valor ant.</th><th>Promo</th><th>Confianza OCR</th>
-  <th>Producto canonico</th><th>Creado</th>
+  <th>Producto canonico</th><th>Campania del folleto</th><th>Creado</th>
 </tr>
 {% for e in extracciones %}
 <tr>
@@ -137,6 +138,7 @@
   <td>{{ e.texto_promo|default:"-" }}</td>
   <td>{{ e.confianza_ocr|default:"-" }}</td>
   <td>{{ e.producto_canonico__nombre_canonico|default:"-" }}</td>
+  <td>{% for c in e.promos.campania %}{{ c.nombre }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</td>
   <td>{{ e.created_at }}</td>
 </tr>
 {% endfor %}

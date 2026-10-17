@@ -31,6 +31,7 @@
       <label class="form-label">Hasta</label>
       <input type="date" id="fHasta" class="form-control">
     </div>
+    {% include "dashboard/_filtro_promocion.html" %}
     <div class="col-md-1">
       <button class="btn btn-primary w-100" id="btnAplicar">Ver</button>
     </div>
@@ -55,6 +56,7 @@ const coloresPaleta = ["#4A3AA7", "#2A78D6", "#EB6834", "#1BAF7A", "#EDA100", "#
 async function cargarFiltros() {
   const tiendas = await fetchJSON("/api/filtros/tiendas");
   crearFiltroLista("fTienda", tiendas.map((t) => t.nombre), "Todas");
+  await cargarFiltrosPromocion();
 }
 
 let debounceId;
@@ -77,6 +79,7 @@ async function cargar() {
     tienda: valoresSeleccionados(document.getElementById("fTienda")),
     con_categoria: paramsCategoria("fConCategoria").con_categoria,
     folleto: valorFolleto("fFolleto"),
+    ...paramsPromocion(),
     desde: document.getElementById("fDesde").value,
     hasta: document.getElementById("fHasta").value,
   };
@@ -87,6 +90,7 @@ async function cargar() {
     { data: "fecha", title: "Fecha" },
     { data: "precio", title: "Precio", render: (d) => formatoMoneda(d) },
     { data: "precio_anterior", title: "Precio anterior", render: (d) => formatoMoneda(d) },
+    { data: "promos", title: "Promociones", orderable: false, render: (d) => renderPromos(d) },
     // Procedencia (13-oct-2026): "fecha" es el inicio de vigencia del folleto
     { data: null, title: "Origen", orderable: false, render: (d, t, fila) => renderOrigen(fila, { conVigencia: false }) },
   ], { order: [[1, "asc"]] });
@@ -118,9 +122,10 @@ async function cargar() {
             // Chart.js pinta el tooltip en canvas (texto plano): no requiere escape
             afterLabel: (ctx) => {
               const f = ctx.raw.fila;
-              return f && f.folleto_id_fuente
-                ? `folleto ${f.folleto_id_fuente} · pág. ${f.numero_pagina ?? "?"} (clic para ver)`
-                : "";
+              if (!f || !f.folleto_id_fuente) return "";
+              const promos = textoPromos(f.promos);
+              return `folleto ${f.folleto_id_fuente} · pág. ${f.numero_pagina ?? "?"} (clic para ver)` +
+                (promos ? ` · ${promos}` : "");
             },
           },
         },

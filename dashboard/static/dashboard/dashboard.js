@@ -36,10 +36,15 @@ function valoresSeleccionados(selectEl) {
 // casilla por valor. El <select multiple> original queda oculto como fuente de verdad,
 // asi valoresSeleccionados() sigue igual: "Todas" = nada seleccionado = sin filtro.
 // Se arma con createElement (no innerHTML) porque los valores vienen de la BD.
+// 15-oct-2026: `valores` acepta cadenas (valor = texto, como hasta ahora) u objetos {valor, texto} (p. ej. campanias:
+// se envia el slug y se muestra el nombre legible).
 function crearFiltroLista(selectId, valores, etiquetaTodas = "Todas") {
   const select = document.getElementById(selectId);
   select.hidden = true;
-  select.replaceChildren(...valores.map((v) => new Option(v, v)));
+  const opciones = valores.map((v) => (v !== null && typeof v === "object"
+    ? { valor: String(v.valor), texto: String(v.texto) } : { valor: v, texto: v }));
+  const textoDe = new Map(opciones.map((o) => [o.valor, o.texto]));
+  select.replaceChildren(...opciones.map((o) => new Option(o.texto, o.valor)));
 
   select.parentElement.querySelector(".filtro-lista")?.remove();
   const cont = document.createElement("div");
@@ -68,7 +73,7 @@ function crearFiltroLista(selectId, valores, etiquetaTodas = "Todas") {
   };
 
   // Con muchas opciones, un buscador arriba de la lista
-  if (valores.length > 10) {
+  if (opciones.length > 10) {
     const buscador = document.createElement("input");
     buscador.type = "search";
     buscador.className = "form-control form-control-sm filtro-lista-buscar";
@@ -87,21 +92,22 @@ function crearFiltroLista(selectId, valores, etiquetaTodas = "Todas") {
   const sep = document.createElement("hr");
   sep.className = "dropdown-divider";
   menu.append(sep);
-  const casillas = valores.map((v) => {
-    const input = casilla(v, v);
-    input.parentElement.dataset.valor = v;
+  const casillas = opciones.map((o) => {
+    const input = casilla(o.texto, o.valor);
+    input.parentElement.dataset.valor = o.texto;  // el buscador filtra por el texto visible
     return input;
   });
 
   const sincronizar = () => {
     const elegidos = casillas.filter((c) => c.checked).map((c) => c.value);
+    const textos = elegidos.map((v) => textoDe.get(v) ?? v);
     Array.from(select.options).forEach((o) => { o.selected = elegidos.includes(o.value); });
     todas.checked = elegidos.length === 0;
     boton.textContent =
       elegidos.length === 0 ? etiquetaTodas :
-      elegidos.length === 1 ? elegidos[0] :
+      elegidos.length === 1 ? textos[0] :
       `${elegidos.length} seleccionadas`;
-    boton.title = elegidos.join(", ");
+    boton.title = textos.join(", ");
     select.dispatchEvent(new Event("change"));
   };
 
@@ -199,6 +205,50 @@ async function avisoFolleto(folleto, contenedorId, modo = "precios") {
     cont.hidden = false;
   }
   return estado;
+}
+
+// -- Promociones por niveles (Fase 1, 15-oct-2026, docs/bi/metricas.md seccion 7) --------------------------
+// Cada registro trae promos = {campania: [{slug, nombre}], producto: [], bancaria: []}. Hoy solo hay datos de
+// campania (del folleto); producto y bancaria quedan "pendiente de carga". Los controles los pinta
+// templates/dashboard/_filtro_promocion.html. Parametros: promocion=con|sin, nivel=..., campania=<slug> (repetible).
+async function cargarFiltrosPromocion() {
+  const f = await fetchJSON("/api/filtros/promociones");
+  crearFiltroLista("fCampania", (f.campanias || []).map((c) => ({ valor: c.slug, texto: c.nombre })), "Todas");
+}
+
+function paramsPromocion() {
+  return {
+    promocion: document.getElementById("fPromocion").value,
+    nivel: document.getElementById("fNivel").value,
+    campania: valoresSeleccionados(document.getElementById("fCampania")),
+  };
+}
+
+const NIVELES_PROMO = {
+  campania: { texto: "Campaña", icono: "ti-speakerphone", clase: "text-bg-warning",
+              titulo: "Campaña del folleto (eventos_promo): aplica a todo el folleto, no a este producto en particular" },
+  producto: { texto: "Producto", icono: "ti-tag", clase: "text-bg-info", titulo: "Promoción del producto" },
+  bancaria: { texto: "Banco", icono: "ti-credit-card", clase: "text-bg-secondary", titulo: "Promoción bancaria" },
+};
+
+// Etiquetas de promociones como HTML para celdas DataTables: todo texto pasa por escaparHtml y el color siempre va
+// con icono + texto (regla dataviz). Sin promociones -> "—".
+function renderPromos(promos) {
+  if (!promos) return "—";
+  const partes = [];
+  for (const [nivel, cfg] of Object.entries(NIVELES_PROMO)) {
+    (promos[nivel] || []).forEach((p) => {
+      partes.push(`<span class="badge ${cfg.clase} me-1" title="${escaparHtml(cfg.titulo)}">` +
+        `<i class="ti ${cfg.icono}"></i> ${escaparHtml(p.nombre ?? p.slug ?? p)}</span>`);
+    });
+  }
+  return partes.length ? partes.join("") : "—";
+}
+
+// Texto plano (tooltips de Chart.js, que pintan en canvas)
+function textoPromos(promos) {
+  if (!promos) return "";
+  return (promos.campania || []).map((p) => `Campaña: ${p.nombre}`).join(" · ");
 }
 
 // Texto corto del filtro activo, para notas de KPIs y avisos ("" si es todos).
