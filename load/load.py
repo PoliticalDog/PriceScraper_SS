@@ -11,6 +11,7 @@ from vision.preprocessor import obtener_preprocesador
 from vision.region_detector import detectar_regiones, calificar_regiones, asociar_producto_por_region
 
 from nlp.normalizador import Normalizador
+from nlp.regex_extractor import slug_evento
 
 from .db_builder import get_connection, get_cursor
 
@@ -957,10 +958,14 @@ class Loader:
             ))
             contadores["extracciones"] += 1
 
-        # Eventos promo
+        # Eventos promo: solo campañas con slug canonico (slug_evento). Un nlp_resultado.json generado
+        # antes del 15-oct-2026 trae lemas y letra chica como evento ("precios bajos todos los días...",
+        # "(excepto códigos de liquidación)"): no se insertan, igual que un DESCARTE.
         for evento in eventos_promo:
             texto_evento = evento.get("texto", "")
             nombre_norm  = self._normalizar_nombre_evento(texto_evento)
+            if nombre_norm is None:
+                continue
             bbox         = evento.get("bbox", {})
 
             cur.execute("""
@@ -1164,12 +1169,16 @@ class Loader:
 
     def _upsert_evento_promo(self, cur, folleto_id: int, tienda_id: int,
                              nombre_evento: str, texto_raw: str) -> bool:
+        # Fechas = vigencia del folleto (folletos.fecha_inicio/fecha_fin, ya con el COALESCE de
+        # _upsert_folleto): antes quedaban NULL en los 88 eventos y v_eventos_activos los daba todos
+        # por vigentes. Si el folleto no tiene vigencia, siguen NULL.
         cur.execute("""
-            INSERT INTO eventos_promo (folleto_id, tienda_id, nombre_evento, texto_raw)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO eventos_promo (folleto_id, tienda_id, nombre_evento, texto_raw, fecha_inicio, fecha_fin)
+            SELECT %s, %s, %s, %s, f.fecha_inicio, f.fecha_fin
+            FROM folletos f WHERE f.id = %s
             ON CONFLICT (folleto_id, nombre_evento) DO NOTHING
             RETURNING id
-        """, (folleto_id, tienda_id, nombre_evento, texto_raw))
+        """, (folleto_id, tienda_id, nombre_evento, (texto_raw or "")[:200], folleto_id))
         return cur.fetchone() is not None
 
     # ----------------- Utilidades -----------------
@@ -1181,12 +1190,10 @@ class Loader:
             return slug_correcto, nombre
         return slug_raw, slug_raw.replace("_", " ").title()
 
-    def _normalizar_nombre_evento(self, texto: str) -> str:
-        texto = texto.lower().strip()
-        texto = re.sub(r"\s*\d{4}$", "", texto)
-        texto = re.sub(r"[^a-z\s]", "", texto)
-        texto = re.sub(r"\s+", "_", texto.strip())
-        return texto[:100]
+    def _normalizar_nombre_evento(self, texto: str) -> Optional[str]:
+        """Slug canonico de la campaña (julio_regalado, hot_sale, ...) o None si el bloque no es una
+        campaña. Antes era el texto completo en minusculas: 45 slugs para 77 eventos."""
+        return slug_evento(texto)
 
     def _parsear_fecha(self, fecha_str: str | None) -> Optional[date]:
         if not fecha_str:

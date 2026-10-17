@@ -11,10 +11,10 @@ from .catalogo_productos import buscar_categoria
 """
     Flujo de clasificación (orden de prioridad):
       1. Limpiar texto OCR
+     1b. ¿Es campaña?           --> EVENTO_PROMO (slug_evento)
       2. ¿Es descarte?          --> DESCARTE
       3. ¿Es precio anterior?   --> PRECIO_ANTERIOR
       4. ¿Es ahorro?            --> AHORRO
-      5. ¿Es evento promo?      --> EVENTO_PROMO
       6. ¿Es precio?            --> PRECIO
       7. ¿Es promoción?         --> PROMO
       8. ¿En catálogo?          --> PRODUCTO o ATRIBUTO
@@ -59,9 +59,12 @@ from .catalogo_productos import buscar_categoria
 - Fuerte (no requiere que haya un precio real en la página): mecánicas tipo "NxM" (3x2), "$X por cada $Y", "mitad de precio", "compra uno y llévate", paquetes repetidos "1x$Y 3x$Z"
 - Débil (sólo cuenta si la página ya tiene un precio real, para no capturar banners sueltos): "%", "off/descuento", "te regalamos/lleva/paga/gratis", "hasta X%"
 
-5. EVENTO_PROMO (metadata de campaña, no mecánica de precio)
-- Campañas mexicanas conocidas: Julio Regalado, Hot Sale, Buen Fin, Cyber Monday, Black Friday, Navidad, Día de las Madres/Niño/Reyes, Regreso a Clases, Semana Santa, Día de Muertos
-- Etiquetas de oferta genéricas: "precio bajo/especial", "oferta especial/de temporada", "liquidación", "descuento exclusivo"
+5. EVENTO_PROMO (metadata de campaña, no mecánica de precio) -- se evalúa ANTES del descarte (paso 0)
+- slug_evento(): el bloque ES la campaña (casi sin texto extra) y se mapea a un slug canónico:
+  julio_regalado, hot_sale, buen_fin, regreso_a_clases, aniversario, ofertones, liquidacion,
+  navidad y halloween_dia_de_muertos (estas dos sin ninguna palabra extra: son adjetivos de producto)
+- Los lemas de tienda ("precios bajos todos los días", "la supercampeona") y la letra chica
+  ("excepto códigos de liquidación") son DESCARTE
 
 6. PRECIO (con símbolo $)
 - "$" + número (miles/decimales), con prefijos "desde"/"a sólo" y sufijos "c/u"/"MXN"/"pesos"
@@ -91,6 +94,72 @@ from .catalogo_productos import buscar_categoria
 """
 # configuración de logging
 logger = logging.getLogger(__name__)
+
+
+# --------------- Campañas del folleto (EVENTO_PROMO) ---------------
+# 15-oct-2026 (nivel A de promociones). Antes PATRONES_EVENTO_PROMO aceptaba cualquier bloque que
+# CONTUVIERA la campaña o un lema de tienda, y load guardaba el texto completo como slug: 45 slugs para
+# 77 eventos (julioregalado / julio_regalado / julioregaladoe / julioregaladods), la letra chica de HEB
+# "nuestros Precios Bajos Todos los Días, nos reservamos el derecho..." como campaña, "(excepto códigos
+# de liquidación)" como liquidación y nombres de producto ("BAÑO NAVIDAD", "Vela aromática Navidad
+# Santa") como Navidad. Y faltaban casa_ley "72ANIVERSARIO" (60 DESCARTE + 10 PRODUCTO), chedraui/s-mart
+# "ofertones"/"OFERTONONON" (57 PRODUCTO) y bodega "hotsale com mx" (PRODUCTO).
+# Ahora el bloque es evento solo si es la campaña (con su slug canónico, el mismo que usa el dashboard)
+# y casi nada más: el texto que sobra quitando la campaña puede tener conectores ("en", "el", "este"),
+# ruido OCR de 1-2 caracteres y como mucho UNA palabra más ("El regreso a clases empieza con el",
+# "Este Hot Sale obtén con", "LIQUIDACION DERoPA"). Navidad y Halloween/Día de muertos son también
+# adjetivos de producto ("Plato desechable Halloween", "Calcetas navideñas", 150+ bloques en el scrapeo
+# de oct-2026): ahí no se admite ninguna palabra extra, y "navideño/a" no cuenta.
+# Orden: la primera campaña que aparece en la lista gana (no hay bloques con dos campañas en el corpus).
+CAMPANAS_EVENTO = [
+    ("julio_regalado", re.compile(r"julio\s*regalad[a-z]{0,3}", re.IGNORECASE), False),
+    ("hot_sale", re.compile(r"hot\s*-?\s*sale", re.IGNORECASE), False),
+    ("buen_fin", re.compile(r"(?:el\s+)?buen\s*fin\b", re.IGNORECASE), False),
+    ("regreso_a_clases", re.compile(
+        r"regreso\s*a\s*clases|back\s*to\s*school|temporada\s+escolar", re.IGNORECASE), False),
+    ("aniversario", re.compile(r"aniversari[oa]", re.IGNORECASE), False),
+    ("ofertones", re.compile(r"ofert[oó0]n[a-zóÓ0]*", re.IGNORECASE), False),
+    ("liquidacion", re.compile(r"liquidaci[oó]n(?:es)?", re.IGNORECASE), False),
+    ("navidad", re.compile(r"navidad\b|temporada\s+navide[ñn]a", re.IGNORECASE), True),
+    ("halloween_dia_de_muertos", re.compile(r"halloween|d[ií1]a\s+de\s+(?:los\s+)?muertos", re.IGNORECASE), True),
+    # 16-oct-2026 (aprobado por la persona): chedraui "fiestas patrias", merco "PARA LAS FIESTAS PATRIAS".
+    # Estricta: "patrias 3 pzas", "Mod. patrio", "Bufanda Viva México" son productos; "Viva México" no cuenta.
+    ("fiestas_patrias", re.compile(r"fiestas?\s*patrias", re.IGNORECASE), True),
+]
+# Palabras que no cuentan como "texto extra" junto a la campaña
+_CONECTORES_EVENTO = {
+    "en", "el", "la", "los", "las", "de", "del", "para", "este", "esta", "estos", "tu", "y", "con",
+    "a", "al", "por", "su", "sus", "ya", "gran", "feliz", "nuestro", "nuestra",
+    # URL de la campaña: "hotsale com mx" (bodega_aurrera)
+    "com", "mx", "commx",
+}
+# Letra chica, bancos y montos: el bloque no es la campaña sino una condicion o una promo de pago
+# ("(excepto códigos de liquidación)", "Consulta términos ... www.banamex.com/hotsale",
+# "en https://www.santander.com.mx/hot-sale"). Lo bancario de toda la tienda va en otra fase.
+_EXCLUSION_EVENTO = re.compile(
+    r"\$|\d[.,]\d|excepto|c[oó]digos?|participantes|reservamos|t[eé]rminos|condiciones|consulta|"
+    r"aplica|v[aá]lid|vigencia|banamex|bbva|santander|banorte|hsbc|invex|https?|www|msi|meses|intereses",
+    re.IGNORECASE,
+)
+
+
+def slug_evento(texto: str) -> Optional[str]:
+    """Slug canónico de la campaña si el bloque ES la campaña (ver CAMPANAS_EVENTO); si no, None."""
+    if not texto or _EXCLUSION_EVENTO.search(texto):
+        return None
+    for slug, patron, estricto in CAMPANAS_EVENTO:
+        m = patron.search(texto)
+        if not m:
+            continue
+        resto = (texto[:m.start()] + " " + texto[m.end():]).lower()
+        # Tokens de 1-2 caracteres son ruido OCR o el numero del aniversario ("72ANIVERSARIO");
+        # el año ("2026") no cuenta; otro numero si ("Back to School 100 hojas" es un cuaderno).
+        # En las estrictas cuenta desde 2 caracteres: "Halloween; 12 cm" (soriana_hiper) es un producto.
+        minimo = 2 if estricto else 3
+        extra = [t for t in re.findall(r"[a-z0-9áéíóúñü]+", resto)
+                 if len(t) >= minimo and t not in _CONECTORES_EVENTO and not re.fullmatch(r"20\d\d", t)]
+        return slug if len(extra) <= (0 if estricto else 1) else None
+    return None
 
 # --------------- Modelos de datos ---------------
 
@@ -383,30 +452,10 @@ class RegexExtractor:
     PATRONES_PROMO = PATRONES_PROMO_FUERTE + PATRONES_PROMO_DEBIL
 
     # -------------------------- EVENTOS PROMOCIONALES --------------------------
-    # Campañas, eventos comerciales y etiquetas de oferta que NO son mecánica de precio.
-    # Se guardan como metadata de campaña — útiles para análisis temporal en BI.
-    PATRONES_EVENTO_PROMO = re.compile(
-        r"""
-        \b(?:
-            # Campañas mexicanas conocidas
-            julio\s+regalado | hot\s+sale | buen\s+fin | el\s+buen\s+fin |
-            cyber\s+monday | black\s+friday | navidad | temporada\s+navide[ñn]a |
-            dia\s+de\s+las\s+madres | dia\s+del\s+ni[ñn]o | dia\s+de\s+reyes |
-            regreso\s+a\s+clases | back\s+to\s+school | temporada\s+escolar |
-            semana\s+santa | dia\s+de\s+muertos |
-
-            # Etiquetas de oferta de tienda (sueltas, no como parte de frase larga)
-            precio\s+bajo | precios?\s+bajos | precio\s+especial |
-            oferta\s+especial | super\s+oferta | mega\s+oferta |
-            oferta\s+de\s+temporada | liquidaci[oó]n |
-            descuento\s+exclusivo | descuentos?\s+exclusivos |
-
-            # Fusiones OCR de campañas
-            julioregalado | julioregaladoe | julio\s*regalado[a-z]{0,3}
-        )\b
-        """,
-        re.VERBOSE | re.IGNORECASE
-    )
+    # Desde el 15-oct-2026 la campaña se reconoce con slug_evento() (arriba, a nivel de modulo, con
+    # su slug canonico) y se evalua ANTES del descarte en _clasificar. Los lemas y etiquetas de tienda
+    # que aceptaba el patron anterior ("precios bajos", "precio especial", "super oferta") no son
+    # campañas: van a DESCARTE (ver "Lemas de tienda" en PATRONES_DESCARTE).
 
 # -------------------------- DESCARTE --------------------------
     PATRONES_DESCARTE = [
@@ -778,6 +827,25 @@ class RegexExtractor:
             re.IGNORECASE
         ),
 
+        # -- Lemas de tienda y letra chica que el patron de eventos tomaba como campaña -------
+        # 15-oct-2026 (nivel A de promociones, produccion sin holdout): HEB "nuestros Precios Bajos
+        # Todos los Días, nos reservamos el derecho de limitar la compra..." (71 bloques EVENTO),
+        # la_comer "de los Precios Bajos" / "delos Precios Bajos", bodega_aurrera "La supercampeona
+        # de los precios bajos" / "Lnsupercampeona delos precios bujos" (este como PRODUCTO),
+        # soriana "(excepto códigos de liquidación)". "precios bajos" solo en plural: el singular
+        # suelto ("Precio bajo") ya es rotulo de casilla arriba. Las etiquetas sueltas "PRECIO
+        # ESPECIAL", "SuPeR OFERTA", "Descuentos exclusivos" van solas, ancladas al bloque.
+        re.compile(
+            # "cádigos": la "ó" leida "á" por el OCR (soriana_mercado 432440)
+            r"precios\s*b[aeu]jos|supercamp|nos\s+res[a-z]{3,7}\s+el\s*derecho|excepto\s+c\w?d\w?gos",
+            re.IGNORECASE
+        ),
+        re.compile(
+            r"^\W*(?:precio\s+especial(?:\s+de)?|s[uú]per\s+ofertas?|mega\s+ofertas?|"
+            r"ofertas?\s+especial(?:es)?|ofertas?\s+de\s+temporada|descuentos?\s+exclusivos?)\W*$",
+            re.IGNORECASE
+        ),
+
         # -- Mensualidad "N MSI | $X" (bloque que es SOLO el rotulo y su monto) -----------
         # Agregado 12-oct-2026 (evaluador dev, base 20261012_093114_1838425): en la etiqueta
         # de la casilla de Chedraui, bajo el precio grande, van "9 MSI | $777.22" y
@@ -933,6 +1001,13 @@ class RegexExtractor:
     def _clasificar(self, texto, texto_raw, confianza, bbox, bloques_pagina=None,
                     hay_precio_en_pagina: bool = True, factor_escala: float = 1.0) -> EntidadExtraida:
 
+        # 0. Campaña del folleto (slug_evento): antes del descarte, porque casa_ley "72ANIVERSARIO]" y
+        # bodega "hotsale-commx" caian en descartes genericos (simbolos, URL). slug_evento ya excluye
+        # letra chica, bancos y montos.
+        if slug_evento(texto):
+            return EntidadExtraida("EVENTO_PROMO", texto_raw, texto,
+                                   confianza=confianza, bbox=bbox)
+
         # 1. Descarte rápido
         if self._es_descarte(texto):
             return EntidadExtraida("DESCARTE", texto_raw, texto,
@@ -972,11 +1047,6 @@ class RegexExtractor:
         if valor_ahorro is not None:
             return EntidadExtraida("AHORRO", texto_raw, texto,
                                    valor=valor_ahorro, confianza=confianza, bbox=bbox)
-
-        # 4. Evento promocional (Julio Regalado, Hot Sale…)
-        if self.PATRONES_EVENTO_PROMO.search(texto):
-            return EntidadExtraida("EVENTO_PROMO", texto_raw, texto,
-                                   confianza=confianza, bbox=bbox)
 
         # 4b. Precio grande con el "$" leido 8/5/S que cuadra con la mensualidad o el anticipo
         # de su casilla (ver PATRON_PRECIO_ESPURIO_CUOTAS). Va antes del paso 5 porque
