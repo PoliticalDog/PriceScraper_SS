@@ -39,6 +39,11 @@ CATALOGO = {
             "tv", "multifuncional", "teclado", "barra de sonido", "subwoofer",
             "roku", "streaming", "eco tank", "ecotank", "tinta continua",
             "pilas", "pilas recargables", "pila alcalina", "pila aa", "pila aaa", "energizer", "duracell",  # sin "pila" suelto (chocaria con "pilates")
+            # revisión manual de keywords (23-oct-2026)
+            "bafle", "smartwatch",
+        ],
+        "marcas": [
+            "samsung", "hisense", "lenovo", "sharp",
         ]
     },
 
@@ -133,6 +138,14 @@ CATALOGO = {
             "concentrado de tomate", "grano de elote", "elote dorado", "rajas", "chipotle",
             "jalapeno", "jalapeño", "chile en polvo", "papa congelada", "en tiras",
             "almibar", "almíbar", "postre", "mousse", "tortitas",
+            # revisión manual de keywords (23-oct-2026)
+            "requeson", "requesón", "mozzarella", "panela", "milanesa", "chuck", "cangrejo",
+            "baguette", "malvaviscos", "gomitas", "corn flakes", "papilla", "leche en polvo",
+        ],
+        # marcas: solo deciden si el texto no trae ningún tipo de producto (ver buscar_categoria)
+        "marcas": [
+            "carranco", "los pastores", "campo menonita", "excelsior", "mi capricho", "zwan",
+            "bafar", "philadelphia", "coffee mate", "nesquik", "nido", "jumex", "gerber", "sabalito",
         ]
     },
 
@@ -149,6 +162,8 @@ CATALOGO = {
             "acelga", "espinaca", "calabacita", "calabaza", "chayote", "cilantro",
             "champinones", "champiñones", "tomatillo", "cebollita", "aguacatito",
             "manojo", "fruta", "verdura",
+            # revisión manual de keywords (23-oct-2026)
+            "apio", "hass", "pimiento", "morron", "morrón", "poblano", "chilaca",
         ]
     },
 
@@ -169,6 +184,11 @@ CATALOGO = {
             "platos desechables", "vasos desechables", "charolas desechables", "reyma", "unicel",
             "lavatrastes", "acido muriatico", "ácido muriático", "aceite de pino",
             "para trastes", "jabon para trastos",
+            # revisión manual de keywords (23-oct-2026)
+            "limpiador", "servilleta", "servitoalla",
+        ],
+        "marcas": [
+            "foca", "ensueño", "ensueno", "suavitel", "pétalo", "petalo", "regio", "kleenex",
         ]
     },
 
@@ -186,6 +206,12 @@ CATALOGO = {
             "perfume", "colonia",
             "crema dental", "crema corporal", "crema de manos", "desodorante",
             "jabon liquido corporal", "jabón líquido corporal", "jabon", "jabón",
+            # revisión manual de keywords (23-oct-2026)
+            "protector solar", "toalla femenina", "toallas femeninas",
+            "toallitas humedas", "toallitas húmedas",
+        ],
+        "marcas": [
+            "colgate", "kotex", "huggies", "kleenbebé", "kleenbebe",
         ]
     },
 
@@ -203,6 +229,8 @@ CATALOGO = {
             "ventilador de techo", "abanico",
             "vasos", "tazon", "tazón",
             "encendedor", "carbon de encino", "carbon vegetal", "carbón", "mantel", "desayunador",
+            # revisión manual de keywords (23-oct-2026)
+            "hielera", "vela", "melamina", "plato", "vaso", "taza", "trinche", "esferas",
         ]
     },
 
@@ -229,6 +257,8 @@ CATALOGO = {
             "pelota", "bicicleta", "patineta", "triciclo",
             "pañal", "biberón", "biberon", "mamila", "carriola",
             "silla de bebe", "asiento bebe",
+            # revisión manual de keywords (23-oct-2026)
+            "peluche", "disfraz",
         ]
     },
 
@@ -240,6 +270,8 @@ CATALOGO = {
             "mancuerna", "colchoneta", "mat yoga", "pelota ejercicio",
             "bolsa deportiva", "termo",  # (mochila --> papelería y útiles escolares)
             "jersey", "uniforme deportivo",
+            # revisión manual de keywords (23-oct-2026)
+            "balon", "balón",
         ]
     },
 
@@ -289,6 +321,7 @@ CATALOGO = {
             "hojas de maquina", "hojas blancas", "plastilina", "temperas", "acuarelas",
             "calculadora", "estuche escolar", "cinta adhesiva", "cinta de empaque",
             "mochila", "lonchera",
+            "sharpie",  # antes que la marca "sharp" (electrónica)
         ]
     },
 
@@ -363,20 +396,35 @@ CATALOGO = {
 #    pegó ("DEPOLLO") o a una letra basura al inicio del token ("IQUESO")
 #  - si coinciden varias categorías gana la keyword MÁS LARGA (más específica), no la primera
 #    del catálogo: "camaron" > "cama", "frijol" > "refri", "crema dental" > "crema"
+#  - primero el TIPO de producto ("keywords"); la "marcas" solo decide si no apareció ningún
+#    tipo (pedido de la persona, 23-oct-2026): "Vaso Colgate" --> Muebles y Hogar, no Cuidado
+#    Personal. Entre marcas rigen las mismas reglas de borde y de longitud
+#  - las de _PALABRA_COMPLETA tampoco pueden terminar a mitad de palabra ("regio" no atrapa "REGIONAL")
 _LETRA = "a-záéíóúñü"
-_PATRONES = []
-for _clave, _datos in CATALOGO.items():
-    for _kw in _datos["keywords"]:
-        _k = _kw.lower()
-        if len(_k) <= 3:
-            _pat = re.compile(r"\b" + re.escape(_k) + r"\b")
-        else:
-            _pat = re.compile(
-                rf"(?:(?<![{_LETRA}])|(?<=de)|(?<=^[{_LETRA}])|(?<=[^{_LETRA}][{_LETRA}]))" + re.escape(_k)
-            )
-        _PATRONES.append((len(_k), _clave, _datos["nombre"], _pat))
-# más largas primero; en empate se respeta el orden del catálogo (sort estable)
-_PATRONES.sort(key=lambda x: -x[0])
+_PALABRA_COMPLETA = {"regio"}
+
+
+# Patrones de una lista del catálogo ("keywords" o "marcas"), más largas primero
+def _compilar_patrones(campo: str) -> list:
+    patrones = []
+    for clave, datos in CATALOGO.items():
+        for kw in datos.get(campo, []):
+            k = kw.lower()
+            if len(k) <= 3:
+                pat = re.compile(r"\b" + re.escape(k) + r"\b")
+            else:
+                pat = re.compile(
+                    rf"(?:(?<![{_LETRA}])|(?<=de)|(?<=^[{_LETRA}])|(?<=[^{_LETRA}][{_LETRA}]))" + re.escape(k)
+                    + (rf"(?![{_LETRA}])" if k in _PALABRA_COMPLETA else "")
+                )
+            patrones.append((len(k), clave, datos["nombre"], pat))
+    # más largas primero; en empate se respeta el orden del catálogo (sort estable)
+    patrones.sort(key=lambda x: -x[0])
+    return patrones
+
+
+_PATRONES = _compilar_patrones("keywords")
+_PATRONES_MARCA = _compilar_patrones("marcas")
 
 
 # Busca similitud de texto con catalogo de categorías y keywords
@@ -386,4 +434,8 @@ def buscar_categoria(texto: str) -> tuple[bool, str, bool]: # # Retorna (encontr
     for _, clave, nombre, patron in _PATRONES:
         if patron.search(texto_lower):
             return True, nombre, clave == "atributos_tecnicos"
+    # sin tipo de producto: la marca da la categoría (una marca nunca es atributo)
+    for _, _, nombre, patron in _PATRONES_MARCA:
+        if patron.search(texto_lower):
+            return True, nombre, False
     return False, "", False
