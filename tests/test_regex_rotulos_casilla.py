@@ -76,7 +76,9 @@ def test_nombre_con_palabra_del_rotulo_sigue_siendo_producto():
 
 
 def test_rotulo_no_bloquea_precio_sin_simbolo_con_producto_cerca():
-    # Regla B-4 usa los bloques crudos: "a solo:" sigue contando como contexto fuerte
-    res = _pagina([_bloque("a sólo:", 100, 60), _bloque("4990", 100, 100), _bloque("Jabón de tocador", 100, 160)])
+    # Regla B-4 usa los bloques crudos: "a solo:" sigue contando como contexto fuerte.
+    # El precio sin "$" mide mas que el texto (ver ALTO_MIN_PRECIO_SIN_SIMBOLO).
+    res = _pagina([_bloque("a sólo:", 100, 60), _bloque("4990", 100, 100, alto=80),
+                   _bloque("Jabón de tocador", 100, 200)])
     assert [e.valor for e in res.precios] == [49.9]
     assert [p.texto_raw for p in res.productos] == ["Jabón de tocador"]

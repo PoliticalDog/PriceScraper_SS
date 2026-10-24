@@ -365,6 +365,35 @@ class RegexExtractor:
     # sources/nlp/04_cobertura_bare_digits_2_5.md.
     PATRON_BARE_DIGITOS_5 = re.compile(r"^(\d{3})(\d{2})$")
 
+    # Alto minimo de un precio de digitos puros sin "$" (B-2..B-5 y Regla A sin sufijo), en
+    # multiplos de la mediana del alto de los bloques con letras de la pagina. El precio de una
+    # casilla se imprime mas grande que el nombre; un numero con letra del tamano del texto es
+    # parte del nombre o un atributo: los pesos de caja "560 g" -> "5609" (bodega_aurrera 417118
+    # p1), "|72h" -> "1724" (423005 p1), "70% Cacao", tallas, modelos, plazos. Cuando el nombre
+    # mismo es grande ("iPhone" / "14") lo resuelve _continua_nombre.
+    # Medido 23-oct-2026 en dev (base 20261023_205411): los 70 registros correctos de B-2..B-5
+    # miden >= 1.49x (B-2 mediana 1.81x, B-4 >= 1.81x); bajo 1.3x hay 232 registros, todos
+    # con error (167 precio_huerfano). No cubre a proposito los precios con "$" ni con digito
+    # espurio + sufijo: ya traen su propia senal de precio.
+    ALTO_MIN_PRECIO_SIN_SIMBOLO = 1.3
+    PATRON_DIGITOS_PUROS = re.compile(r"^\d{2,5}$")
+    PATRON_BLOQUE_CON_LETRAS = re.compile(r"[^\W\d_]{3}")
+    # Alto del numero / alto del texto vecino para considerarlo continuacion del nombre (B-2)
+    RANGO_ALTO_CONTINUA_NOMBRE = (0.67, 1.5)
+    # Rotulo de precio de casilla, bloque completo: "PRECIO BODEGA" (bodega_aurrera, el OCR lo
+    # parte y deforma: "PREçIQ", "PREçQ", "PREçO", "PREFIO", "DEGA", "DE@A", "BGDEGA"), "SÚPER" /
+    # "PRECIAZO" (merco: "[PRECIAZO", "PPRECIAZO", "PRECIAZQ]", "PRECIAZ0", "PRECINZO", "PEECIAZa",
+    # "PREGIAZ0", "PPECIZo")
+    # y "PRECISSIMO" / "Precíssimo". Variantes contadas el 24-oct-2026 en los OCR de produccion.
+    # Anclado al bloque completo: "Super Value", "Precios", "Presentación", "Precocida" o
+    # "Bodega Aurrera" no entran. Solo lo usan _continua_nombre (no es un nombre) y
+    # _bajo_rotulo_precio (confirma el precio); la clasificacion no cambia.
+    PATRON_ROTULO_PRECIO = re.compile(
+        r"^[\W_]*(?:pr[eé][cçsf][iíl1]?[oq0]|p?p[reé]{1,2}[cg][iíl1]?[a-z]?[zn][oq0a]|prec[iíl1]ss?[iíl1]m[oq0@]|"
+        r"b?[oöq0g]?d[eé](?:g[a@]|@a)|s[uú]per|precio\s*b[oöq0]?d[eé]g[a@])[\W_]*$",
+        re.IGNORECASE
+    )
+
     # Evita interpretar un año de vigencia ("2026") como precio
     PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
 
@@ -904,6 +933,8 @@ class RegexExtractor:
 
     def __init__(self, confianza_minima: float = None):
         self.confianza_minima = confianza_minima or self.CONFIANZA_MINIMA
+        # (bloques de la pagina, mediana del alto de sus bloques con letras): ver _alto_como_texto
+        self._cache_alto_texto: Optional[tuple[list, Optional[float]]] = None
 
 # -------------------------------------- Método principal --------------------------------------
 
@@ -1254,6 +1285,14 @@ class RegexExtractor:
         if m:
             return self._parsear_numero(m.group(1))
 
+        # Digitos puros con letra del tamano del texto: parte del nombre o un atributo, no un
+        # precio (ver ALTO_MIN_PRECIO_SIN_SIMBOLO). Cubre B-2..B-5 y la Regla A sin sufijo, por
+        # eso va antes de ellas; las reglas de arriba traen su propia senal de precio. Excepto
+        # bajo un rotulo de precio de su casilla (ver PATRON_ROTULO_PRECIO).
+        if (self.PATRON_DIGITOS_PUROS.match(texto) and self._alto_como_texto(bbox, bloques_pagina)
+                and not self._bajo_rotulo_precio(bbox, bloques_pagina)):
+            return None
+
         # Regla B-4 vs Regla A: ambigueedad real y documentada para texto de 4
         # digitos puros SIN sufijo -- "6990" puede ser un precio real con
         # centavos (69.90, Regla B-4, validada con 92/93 casos del dataset
@@ -1334,6 +1373,8 @@ class RegexExtractor:
         # el corpus (encontrado 19-ago-2026 al revisar valores extremos).
         m = self.PATRON_BARE_DIGITOS_2.match(texto)
         if m and m.group(1) != "00":
+            if self._continua_nombre(bbox, bloques_pagina, factor_escala):
+                return None
             if not (
                 self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
                 or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
@@ -1342,6 +1383,95 @@ class RegexExtractor:
             return self._parsear_numero(m.group(1))
 
         return None
+
+    def _alto_como_texto(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+        """
+        True si el bloque mide menos de ALTO_MIN_PRECIO_SIN_SIMBOLO x la mediana del alto de
+        los bloques con letras de la pagina (False si la pagina no tiene bloques con letras).
+        La mediana se calcula una vez por pagina.
+        """
+        cache = self._cache_alto_texto
+        if cache is None or cache[0] is not bloques_pagina:
+            altos = sorted(b["bbox"]["alto"] for b in bloques_pagina
+                           if b.get("bbox") and self.PATRON_BLOQUE_CON_LETRAS.search(b.get("texto", "")))
+            mediana = None
+            if altos:
+                mitad = len(altos) // 2
+                mediana = altos[mitad] if len(altos) % 2 else (altos[mitad - 1] + altos[mitad]) / 2
+            cache = self._cache_alto_texto = (bloques_pagina, mediana)
+        mediana = cache[1]
+        return bool(mediana) and bbox.get("alto", 0) < self.ALTO_MIN_PRECIO_SIN_SIMBOLO * mediana
+
+    def _bajo_rotulo_precio(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+        """
+        True si justo encima del bloque, con traslape horizontal, hay un rotulo de precio
+        (PATRON_ROTULO_PRECIO) que no es mas alto que el numero. Es la etiqueta de su casilla
+        ("PRECIO BODEGA" sobre "12" / "kilo" en las paginas de portada de bodega_aurrera 417679
+        p4, donde los titulares suben la mediana del texto y el precio queda en 1.05-1.21x): el
+        numero es el precio aunque _alto_como_texto lo vea chico. Si el rotulo es mas alto que el
+        numero, el numero son los centavos en superindice ("99" de 40 px bajo "PRECIAZO" de
+        60-75 px en merco 423338/423341), y no cuenta.
+        """
+        alto = bbox.get("alto", 0)
+        for otro in bloques_pagina:
+            ob = otro.get("bbox")
+            if not ob or ob is bbox or ob["alto"] > alto:
+                continue
+            if min(bbox["x"] + bbox["ancho"], ob["x"] + ob["ancho"]) <= max(bbox["x"], ob["x"]):
+                continue
+            if not (-ob["alto"] <= bbox["y"] - (ob["y"] + ob["alto"]) <= 1.5 * ob["alto"]):
+                continue
+            if self.PATRON_ROTULO_PRECIO.match(self._limpiar_texto(otro.get("texto", ""))):
+                return True
+        return False
+
+    def _continua_nombre(self, bbox: dict, bloques_pagina: list[dict], factor_escala: float = 1.0) -> bool:
+        """
+        True si el bloque continua un texto con letras con alto parecido
+        (RANGO_ALTO_CONTINUA_NOMBRE): en la misma linea a su izquierda, o justo encima, alineado
+        a su izquierda y con el centro del numero dentro del ancho del texto. Es un numero del
+        nombre ("iPhone" / "14" en la pantalla del telefono, bodega_aurrera 412322 p2: 67 y 72 px,
+        mientras el precio real $14,997 va aparte y mucho mas grande), no un precio. Solo para la Regla B-2: con
+        3-5 digitos el precio con centavos si llega a ir pegado al nombre con letra parecida
+        (casa_ley "Jabon" / "50634").
+        No cuentan como nombre (24-oct-2026, QA sobre produccion): un rotulo de precio
+        (PATRON_ROTULO_PRECIO: "PREçIQ"/"DEGA" encima de los precios de bodega_aurrera 423005,
+        417943...) ni un bloque que el clasificador descarta, que nunca llega a ser PRODUCTO.
+        Un rotulo de precio MAS ALTO que el numero si lo rechaza: el numero son los centavos
+        ("99" de 52 px bajo "PRECIAZO" de 74 px y junto a "f14" en merco 432380 p5 = $14.99).
+        El centro dentro del ancho evita tomar texto de empaque desplazado ("ATE" de 190 px
+        arriba a la izquierda del "52" en 417943 p3); sin la alineacion a la izquierda, un
+        titular ancho encima del precio de portada contaria como nombre (soriana_hiper "¡ELIGE!"
+        sobre "75", waldos "Aromatizantes" sobre "99").
+        """
+        alto = bbox.get("alto", 0)
+        cx, cy = bbox["x"] + bbox["ancho"] / 2, bbox["y"] + alto / 2
+        bajo, alto_max = self.RANGO_ALTO_CONTINUA_NOMBRE
+        holgura_izq, holgura_arriba = 10 * factor_escala, 5 * factor_escala
+        for otro in bloques_pagina:
+            ob = otro.get("bbox")
+            if not ob or ob is bbox or not self.PATRON_BLOQUE_CON_LETRAS.search(otro.get("texto", "")):
+                continue
+            if not (bajo * ob["alto"] <= alto <= alto_max * ob["alto"]):
+                continue
+            hueco_izq = bbox["x"] - (ob["x"] + ob["ancho"])
+            a_la_izquierda = (abs(cy - (ob["y"] + ob["alto"] / 2)) < max(alto, ob["alto"]) / 2
+                              and -holgura_izq <= hueco_izq <= 1.5 * ob["alto"])
+            hueco_arriba = bbox["y"] - (ob["y"] + ob["alto"])
+            encima = (-holgura_arriba <= hueco_arriba <= ob["alto"]
+                      and abs(bbox["x"] - ob["x"]) <= 1.5 * ob["alto"]
+                      and ob["x"] <= cx <= ob["x"] + ob["ancho"])
+            if not (a_la_izquierda or encima):
+                continue
+            texto_otro = self._limpiar_texto(otro.get("texto", ""))
+            if self.PATRON_ROTULO_PRECIO.match(texto_otro):
+                if ob["alto"] > alto:
+                    return True  # centavos en superindice bajo el rotulo (ver _bajo_rotulo_precio)
+                continue
+            if self._es_descarte(texto_otro):
+                continue
+            return True
+        return False
 
     def _hay_contexto_precio(
         self, bbox: dict, bloques_pagina: list[dict], requerir_fuerte: bool,
