@@ -443,6 +443,22 @@ class RegexExtractor:
     # los umbrales al ancho real de cada pagina. No cambiar sin recalibrar.
     ANCHO_REFERENCIA_UMBRALES = 1500
 
+    # Entero de _detectar_precios_fusionados con el "$" diminuto del diseno "$79⁹⁹" pegado al
+    # bloque, ademas de los 1-2 digitos de la regla original, solo en las formas sin ambiguedad:
+    # "$19" (literal, arteli 135652 p1 "$19"+"90"), "s18"/"S9" (el "$" leido s/S, merco y heb) y
+    # "074"/"019" (el "$" leido 0: ningun precio empieza con 0). 24-oct-2026.
+    # NO cubre a proposito 3 digitos que empiezan con 1-9, aunque el "$" se lea 5/6/8/4/9: el
+    # mismo texto es "$" + 2 digitos en merco ("879"+"99" = $79⁹⁹, "448"+"99" = $48⁹⁹) y un
+    # entero de 3 digitos en casa_ley mayoreo ("544"+"90" = $544⁹⁰, 427141 p1; en dev 424410 p1
+    # "549"+"90" es $549.90) o en alsuper ("239"+"90"). El bloque solo no los distingue (ni el
+    # ancho/alto ni la confianza); hace falta otra senal de la pagina.
+    # El "$" literal tampoco acepta 3 digitos: en produccion "$545"+"99" es $54.99 (merco, heb),
+    # con el 5 sobrante del "$" mal leido, no $545.99 (QA 24-oct-2026).
+    PATRON_ENTERO_FUSION = re.compile(r"^(?:\$\s?(\d{1,2})|[sS](\d{1,2})|0(\d{2}))$")
+    # Solo para esas formas: el superindice mide hasta 3/4 del entero (pares del GT en dev:
+    # 0.39-0.63; los dos pares falsos con "s" + entero, 0.84 y 0.86)
+    ALTO_MAX_CENTAVOS_VS_ENTERO = 0.75
+
     # --------------- PROMOCIONES ---------------
     # Separadas en "fuerte" (mecanica de promo especifica e inequivoca -- casi nunca
     # aparece si no hay una promocion real detras, ej. "4x3") vs "debil" (ambigua,
@@ -1914,9 +1930,11 @@ class RegexExtractor:
         entrada por longitud (<=2 caracteres), igual que al bloque de centavos.
 
         Restringido a enteros de 1-2 digitos a proposito: un entero de 3 digitos
-        ya tiene su propio camino via Regla B-3/B-4 en el loop normal -- no se
-        toca ese camino para no arriesgar una fusion incorrecta con un bloque
-        vecino no relacionado.
+        ya tiene su propio camino via Regla B-3/B-4 en el loop normal, y "879" puede
+        ser "$" + 79 o 879 (ver PATRON_ENTERO_FUSION). Desde el 24-oct-2026 acepta
+        tambien el entero con el "$" diminuto pegado en las formas sin ambiguedad
+        ("$19", "s19", "019"), con un superindice claramente mas chico
+        (ALTO_MAX_CENTAVOS_VS_ENTERO).
 
         Solo fusiona cuando hay EXACTAMENTE UN candidato a centavos valido para
         un entero dado -- ambiguedad (mas de un candidato) no se fusiona, para no
@@ -1928,17 +1946,26 @@ class RegexExtractor:
         GAP_HORIZONTAL_MIN = -30 * factor_escala
         GAP_HORIZONTAL_MAX = 60 * factor_escala
 
-        candidatos_enteros = [
-            b for b in bloques_pagina
-            if b.get("bbox") and re.match(r"^\d{1,2}$", b.get("texto", ""))
-        ]
+        # (bloque, digitos del entero, forma_nueva): 1-2 digitos (regla original) o, desde el
+        # 24-oct-2026, el entero con el "$" diminuto pegado (PATRON_ENTERO_FUSION)
+        candidatos_enteros = []
+        for b in bloques_pagina:
+            texto = b.get("texto", "")
+            if not b.get("bbox"):
+                continue
+            if re.match(r"^\d{1,2}$", texto):
+                candidatos_enteros.append((b, texto, False))
+                continue
+            m = self.PATRON_ENTERO_FUSION.match(texto)
+            if m:
+                candidatos_enteros.append((b, next(g for g in m.groups() if g), True))
         candidatos_centavos = [
             b for b in bloques_pagina
             if b.get("bbox") and re.match(r"^\d{2}$", b.get("texto", ""))
         ]
 
         fusionados = []
-        for entero in candidatos_enteros:
+        for entero, digitos_entero, forma_nueva in candidatos_enteros:
             bbox_e = entero["bbox"]
             emparejados = []
             for centavos in candidatos_centavos:
@@ -1950,14 +1977,25 @@ class RegexExtractor:
                     continue
                 if bbox_c["alto"] >= bbox_e["alto"]:
                     continue  # el centavo debe ser visualmente mas chico (superindice)
+                if forma_nueva and bbox_c["alto"] > bbox_e["alto"] * self.ALTO_MAX_CENTAVOS_VS_ENTERO:
+                    continue
                 if bbox_c["y"] > bbox_e["y"] + bbox_e["alto"] * 0.5:
                     continue  # alineado hacia la mitad superior del entero
+                # ...y tampoco mas de medio entero por ENCIMA de su borde superior: el superindice
+                # va alineado arriba con el entero (en dev, los pares del GT miden
+                # (y_c - y_e) / alto_e entre -0.12 y 0.14). Sin este tope contaban los centavos
+                # de otra fila de la misma columna, cientos de px mas arriba: fusiones falsas
+                # (merco 426175 p1 "51" + el "99" de "78⁹⁹" -> 51.99; calimax 135706 p1
+                # "90" + "90" -> 90.9) y pares reales ambiguos que no se fusionaban (calimax
+                # "34"+"90" de $34⁹⁰, alsuper 416306 p2 "99"+"90" de $99⁹⁰). Medido 24-oct-2026.
+                if bbox_c["y"] < bbox_e["y"] - bbox_e["alto"] * 0.5:
+                    continue
                 emparejados.append(centavos)
 
             if len(emparejados) == 1:
                 centavos = emparejados[0]
-                valor = self._parsear_numero(f"{entero['texto']}.{centavos['texto']}")
-                if valor is not None:
+                valor = self._parsear_numero(f"{digitos_entero}.{centavos['texto']}")
+                if valor is not None and (valor > 0 or not forma_nueva):
                     fusionados.append((entero, centavos, valor))
 
         return fusionados
