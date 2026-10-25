@@ -4,7 +4,7 @@
 -- queries.py hay que actualizar este archivo.
 WITH base AS (
     SELECT e.id, e.tienda_id, e.folleto_id, e.pagina_id, e.texto_norm, e.valor, e.confianza_ocr,
-           e.categoria_nlp, p.metodo_norm
+           e.categoria_nlp, COALESCE(e.metodo_norm, p.metodo_norm) AS metodo_norm
     FROM extracciones e
     JOIN extracciones p ON p.id = e.producto_extraccion_id
     JOIN folletos f ON f.id = e.folleto_id

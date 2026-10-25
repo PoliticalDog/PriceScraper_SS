@@ -278,3 +278,20 @@ def test_precio_se_liga_al_canonico_del_nombre_unido():
     texto_norm, canonico_id = params[5], params[-1]
     assert cur.canonico(canonico_id) == texto_norm
     assert texto_norm.lower() == "margarina iberia con sal gramos"
+
+
+def test_precio_guarda_el_metodo_del_nombre_unido():
+    # KPI "% catalogo" (25-oct-2026): el PRECIO guarda el metodo_norm de su nombre, no el de la fila PRODUCTO
+    from load.load import Loader
+    loader = Loader.__new__(Loader)
+    loader._normalizador = NORM
+    productos = [_b("MARGARINA", 802, 1106, 118, 24), _b("IBERIA CON SAL", 800, 1124, 146, 24),
+                 _b("GRAMOS", 850, 1142, 90, 24)]
+    pag = {"pagina": "pagina_003.webp", "productos": productos, "precios_anteriores": [],
+           "precios": [{"texto": "$36.90", "valor": 36.9, "confianza": 0.9,
+                        "bbox": {"x": 807, "y": 1163, "ancho": 120, "alto": 50}}]}
+    cur = _CursorFalso()
+    loader._procesar_pagina(cur, tienda_id=1, folleto_id=1, pag_data=pag)
+    sql, params = next(s for s in cur.sentencias if "INSERT INTO extracciones" in s[0] and "PRECIO" in s[1])
+    assert "metodo_norm" in sql
+    assert params[-2] == NORM.normalizar("MARGARINA IBERIA CON SAL GRAMOS").metodo

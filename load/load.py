@@ -691,6 +691,18 @@ def productos_aceptados(productos: list[dict], normalizador: Normalizador,
     return aceptados
 
 
+def metodo_nombre(producto: Optional[dict]) -> Optional[str]:
+    """metodo_norm del nombre que lleva el PRECIO (su texto_norm = producto["_nombre_norm"]). Con nombre unido
+    (unidad suelta o pila) es el de la union, no el de la fila PRODUCTO: "Pechuga de pollo" (exacto) unida a
+    "Filete de ... Kg" queda heuristica. Union descartada por el normalizador = texto tal cual = heuristico."""
+    if producto is None:
+        return None
+    if "_resultado_unido" in producto:
+        unido = producto["_resultado_unido"]
+        return unido.metodo if unido is not None else "heuristico"
+    return producto["_resultado"].metodo
+
+
 def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] | None,
                                normalizador: Normalizador) -> dict:
     """
@@ -1033,8 +1045,8 @@ class Loader:
                     tipo, texto_raw, texto_norm, categoria_nlp,
                     valor, valor_anterior, confianza_ocr,
                     bbox_x, bbox_y, bbox_ancho, bbox_alto,
-                    producto_extraccion_id, producto_canonico_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    producto_extraccion_id, metodo_norm, producto_canonico_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 pagina_id, folleto_id, tienda_id,
                 "PRECIO",
@@ -1043,7 +1055,10 @@ class Loader:
                 producto_match.get("categoria") if producto_match else None,
                 precio.get("valor"), precio_ant_val, precio.get("confianza"),
                 bbox.get("x"), bbox.get("y"), bbox.get("ancho"), bbox.get("alto"),
-                prod_id, prod_canonico_id,
+                prod_id,
+                # metodo del nombre que muestra el PRECIO (KPI "% catalogo"); antes siempre NULL
+                metodo_nombre(producto_match),
+                prod_canonico_id,
             ))
             contadores["extracciones"] += 1
             if not producto_match:

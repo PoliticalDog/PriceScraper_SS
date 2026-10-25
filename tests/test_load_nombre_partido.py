@@ -1,8 +1,11 @@
 """Nombre partido en varias lineas: el registro muestra la pila de lineas contiguas del bloque elegido
 (load.nombre_en_pila / construir_registros_pagina). Cajas reales de dev salvo donde se indica."""
+from types import SimpleNamespace
+
 import pytest
 
-from load.load import _inicia_renglon_lista, _tipo_corte_pila, construir_registros_pagina, nombre_en_pila
+from load.load import (_inicia_renglon_lista, _tipo_corte_pila, construir_registros_pagina, metodo_nombre,
+                       nombre_en_pila)
 from nlp.normalizador import Normalizador
 
 NORM = Normalizador()
@@ -159,3 +162,35 @@ def test_inicio_de_renglon_de_lista():
     for texto in ("Bocina", "Mod. Charge Essential 2", "2 Leche entera", "3.78 lt", "12 rollos", "Baja en Calorías 4 kg",
                   "6 menús automáticos", "Edulcorante de Mesa"):
         assert not _inicia_renglon_lista({"texto": texto}), texto
+
+
+# -- metodo_norm del PRECIO (KPI "% catalogo", 25-oct-2026) -----------------------------------------------------
+
+def _res(metodo):
+    return SimpleNamespace(metodo=metodo)
+
+
+def test_metodo_nombre_sin_union_es_el_de_la_fila_producto():
+    assert metodo_nombre({"_resultado": _res("exacto")}) == "exacto"
+
+
+def test_metodo_nombre_con_union_es_el_del_nombre_unido():
+    # "Pechuga de pollo" (exacto) unida a su pila queda texto del folleto: el PRECIO ya no es de catalogo
+    prod = {"_resultado": _res("exacto"), "_resultado_unido": _res("heuristico")}
+    assert metodo_nombre(prod) == "heuristico"
+
+
+def test_metodo_nombre_union_descartada_es_heuristico():
+    # nombre_con_unidad devuelve la union aunque el normalizador la descarte: el PRECIO lleva el texto tal cual
+    assert metodo_nombre({"_resultado": _res("exacto"), "_resultado_unido": None}) == "heuristico"
+
+
+def test_metodo_nombre_sin_producto_es_none():
+    assert metodo_nombre(None) is None
+
+
+def test_metodo_nombre_de_registro_real_con_pila():
+    productos = [_b("Metco BC", 289, 606, 319, 78), _b("Edulcorantede Mesa", 218, 686, 462, 56),
+                 _b("Baja en Calorías 4 kg", 219, 747, 456, 68)]
+    prod = _registros(productos, [_precio("$199", 199.0, 299, 795, 293, 132)])[0]["producto"]
+    assert metodo_nombre(prod) == prod["_resultado_unido"].metodo

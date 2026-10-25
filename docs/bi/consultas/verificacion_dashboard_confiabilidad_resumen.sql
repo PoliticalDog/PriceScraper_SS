@@ -10,7 +10,7 @@
 -- Recarga 13-oct (01c2420): 27,760 registros, 4,153 catalogo (15.0%), 17,147 sin categoria (61.8%); 672 folletos/27 semanas;
 -- resumen 27,760 / 52 / 16.
 WITH base AS (
-    SELECT e.tienda_id, p.metodo_norm, e.categoria_nlp
+    SELECT e.tienda_id, COALESCE(e.metodo_norm, p.metodo_norm) AS metodo_norm, e.categoria_nlp
     FROM extracciones e
     JOIN extracciones p ON p.id = e.producto_extraccion_id
     JOIN folletos f ON f.id = e.folleto_id

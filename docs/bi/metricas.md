@@ -9,9 +9,11 @@ Convenciones comunes:
 
 - **Registro del dashboard**: fila de `extracciones` con `tipo='PRECIO' AND valor IS NOT NULL AND texto_norm IS NOT NULL`
   (= `v_precios_actuales`). 28,634 al 12-oct-2026.
-- **Producto de catalogo**: `metodo_norm IN ('exacto','fuzzy','fuzzy_bajo')` en la fila PRODUCTO a la que apunta el
-  PRECIO (`producto_extraccion_id`). `heuristico` = texto del folleto tal cual. En la fila PRECIO `metodo_norm` siempre
-  es NULL.
+- **Producto de catalogo**: `metodo_norm IN ('exacto','fuzzy','fuzzy_bajo')` del nombre que muestra el PRECIO:
+  `COALESCE(e.metodo_norm, p.metodo_norm)`. Desde el 25-oct-2026 load guarda `metodo_norm` en la fila PRECIO, porque con
+  nombre unido (unidad suelta o lineas contiguas) el nombre del PRECIO ya no es el de su fila PRODUCTO
+  (`producto_extraccion_id`): "Pechuga de pollo" (exacto) unida queda "Filete de Pechuga de Pollo" (heuristico). En
+  cargas anteriores la fila PRECIO lo tiene NULL y se usa el de la fila PRODUCTO. `heuristico` = texto del folleto tal cual.
 - **Categoria vacia** (= "sin categoria"): `COALESCE(BTRIM(categoria_nlp), '') = ''` sobre la fila PRECIO, es decir
   `''`, NULL o solo espacios (hoy todas las vacias son `''`: 17,102 de 27,760 al 14-oct-2026). Ver seccion 5.
 - **Corrida del evaluador vigente**: el JSON mas reciente de `data/processed/_eval/runs/*_dev.json` con
@@ -42,8 +44,8 @@ KPIs (por tienda):
 | KPI | Formula | Fuente |
 |---|---|---|
 | Registros | `COUNT(*)` registros del dashboard | BD |
-| % catalogo | registros con PRODUCTO `metodo_norm IN (exacto,fuzzy,fuzzy_bajo)` / registros | BD |
-| % heuristico | registros con PRODUCTO `metodo_norm='heuristico'` / registros (= 100 - % catalogo; hoy no hay otro valor) | BD |
+| % catalogo | registros con `COALESCE(PRECIO, PRODUCTO).metodo_norm IN (exacto,fuzzy,fuzzy_bajo)` / registros | BD |
+| % heuristico | registros con `COALESCE(PRECIO, PRODUCTO).metodo_norm='heuristico'` / registros (= 100 - % catalogo; hoy no hay otro valor) | BD |
 | % sin categoria | registros con `COALESCE(categoria_nlp,'')=''` / registros | BD |
 | Confianza OCR | media y mediana de `extracciones.confianza_ocr` de los registros (se muestra la mediana; la media en tooltip) | BD |
 | Precision (evaluador) | `metricas.tiendas.<slug>.precision` = completos_ok / registros_dashboard (precio y producto correctos), con `precision_ic95` | JSON |

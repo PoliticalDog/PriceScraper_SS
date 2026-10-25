@@ -4,7 +4,8 @@
 -- Base: registros del dashboard = extracciones tipo PRECIO con valor y texto_norm (= v_precios_actuales, 28,634 al 12-oct-2026).
 -- Join PRECIO -> PRODUCTO por producto_extraccion_id: N:1 sobre la fila PRODUCTO, no duplica filas de PRECIO
 --   (verificado: 28,634 antes y despues del join; 0 precios sin fila PRODUCTO).
--- metodo_norm se lee de la fila PRODUCTO (en la fila PRECIO siempre es NULL).
+-- metodo_norm es el del nombre que muestra el PRECIO: load lo guarda en la fila PRECIO desde 25-oct-2026 (con nombre
+--   unido difiere del de la fila PRODUCTO); en cargas anteriores es NULL y se cae al de la fila PRODUCTO.
 -- Categoria vacia: categoria_nlp = '' o NULL (en la fila PRECIO; hoy todas son '' y coinciden con el canonico vacio).
 -- Sin exclusiones: describe el dato tal como lo ve el dashboard. Duplicados exactos y atipicos se reportan como columnas
 --   auxiliares, no se restan.
@@ -12,7 +13,7 @@
 -- La precision/recall del evaluador NO esta en la BD: se une en Django desde el JSON de la corrida (ver docs/bi/metricas.md).
 WITH base AS (
     SELECT e.id, e.tienda_id, e.folleto_id, e.pagina_id, e.texto_norm, e.valor, e.confianza_ocr,
-           e.categoria_nlp, p.metodo_norm
+           e.categoria_nlp, COALESCE(e.metodo_norm, p.metodo_norm) AS metodo_norm
     FROM extracciones e
     JOIN extracciones p ON p.id = e.producto_extraccion_id
     JOIN folletos f ON f.id = e.folleto_id

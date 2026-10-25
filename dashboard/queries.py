@@ -431,12 +431,14 @@ def calidad_pipeline(
 
 # -- Confiabilidad del dato por tienda (Panel 1, docs/bi/metricas.md seccion 1) ----------
 # Parte BD = docs/bi/consultas/confiabilidad_por_tienda.sql con filtros. Grano: tienda (todas, aunque no tengan
-# registros). PRECIO -> PRODUCTO (producto_extraccion_id) es N:1: no duplica filas de PRECIO. metodo_norm vive en
-# la fila PRODUCTO. Sin exclusiones: describe el dato tal como lo ve el dashboard.
+# registros). PRECIO -> PRODUCTO (producto_extraccion_id) es N:1: no duplica filas de PRECIO. metodo_norm es el del
+# nombre que muestra el PRECIO (load lo guarda desde 25-oct-2026: con nombre unido difiere del de la fila PRODUCTO);
+# cargas anteriores lo tienen NULL y caen al de la fila PRODUCTO. Sin exclusiones: describe el dato tal como lo ve el
+# dashboard.
 _SQL_CONFIABILIDAD = """
 WITH base AS (
     SELECT e.id, e.tienda_id, e.folleto_id, e.pagina_id, e.texto_norm, e.valor, e.confianza_ocr,
-           e.categoria_nlp, p.metodo_norm
+           e.categoria_nlp, COALESCE(e.metodo_norm, p.metodo_norm) AS metodo_norm
     FROM extracciones e
     JOIN extracciones p ON p.id = e.producto_extraccion_id
     JOIN folletos f ON f.id = e.folleto_id
