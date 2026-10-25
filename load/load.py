@@ -495,6 +495,11 @@ def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -
     if len(lineas) == 1:
         return prod
     lineas.reverse()
+    return _unir_lineas(prod, lineas, normalizador)
+
+
+def _unir_lineas(prod: dict, lineas: list, normalizador: Normalizador) -> dict:
+    """Copia de `prod` cuyo nombre es el de `lineas` (de arriba abajo) unidas; ver nombre_con_unidad."""
     texto = " ".join(l.get("texto", "").strip() for l in lineas)
     resultado = normalizador.normalizar(texto)
     bbs = [l.get("bbox", {}) for l in lineas]
@@ -509,6 +514,122 @@ def nombre_con_unidad(prod: dict, productos: list, normalizador: Normalizador) -
         "categoria": resultado.categoria or prod.get("categoria", ""),
         "_resultado_unido": None if resultado.descartado else resultado,
     }
+
+
+# -- Nombre partido en varias lineas -------------------------------------------------
+# Dev 24-oct-2026 (base 20261024_161858_43e4040-sucio): de 418 registros con el precio bien leido y el
+# producto equivocado, en ~150 el bloque elegido es UNA linea de un nombre que el OCR parte en varias
+# y el resto del nombre esta en las lineas contiguas de la misma columna. Arriba: sam's "Metco BC" /
+# "Edulcorante de Mesa" / "Baja en Calorias 4 kg" (se mostraba "Baja en Calorias 4 Kg"), heb "Harina de
+# trigo" / "extra fina" / "Selecta 1 kg", soriana "FILETE DE PECHUGA" / "CHAROLA". Abajo (nombre
+# debajo del precio): chedraui "Bocina" / "Mod. Encore Essential 2", walmart "Figura" / "Limit Breaker
+# series", bodega "Choco MIlko" / "Alimento en polvo sabor chocolate". Igual que con la unidad suelta,
+# el nombre del registro es la pila de lineas contiguas (misma regla de _linea_encima y _alto_tope,
+# sin hueco), ahora para cualquier bloque y en las dos direcciones. La pila se corta:
+# - en una linea que es el nombre elegido por OTRO precio de la pagina (no se roba el nombre de otra casilla);
+# - en una banda de seccion (_es_banda, solo hacia arriba, como en la unidad);
+# - en un inicio de renglon de lista (PATRON_INICIO_RENGLON_LISTA): las vinetas de caracteristicas bajo el
+#   nombre de chedraui ("'tecnologia Inverter", "~wireless Subwoofer": el OCR lee la vineta como ' o ~) y
+#   la lista numerada de bodega ("2- Limpiador multiusos Fabuloso" ... "8- Shampoo Savile") son otra cosa.
+#   Hacia arriba se para si la linea actual ya inicia renglon; hacia abajo, si la siguiente lo inicia.
+# Las unidades sueltas siguen con nombre_con_unidad (guarda de columna y hueco de linea perdida).
+PATRON_INICIO_RENGLON_LISTA = re.compile(r"^\s*(?:[•·●▪*~'\"‘’“”»\-–—]|\d{1,2}\s*[-.)]\s*[^\d\s])")
+
+
+def _inicia_renglon_lista(prod: dict) -> bool:
+    return bool(PATRON_INICIO_RENGLON_LISTA.match(prod.get("texto", "") or ""))
+
+
+# Corte por promocion, vigencia o precio anterior (QA 25-oct-2026, sobre la medicion en produccion de la
+# version anterior): el OCR clasifica como PRODUCTO renglones de letra chica pegados al nombre y la pila los
+# unia: merco "Todos los Helados Mi marca y Yummy 3.9 L" + "Yoghurt", "Todas las Cerraduras Marca Dexter y
+# Todas las Sandalias..." + "Playera"; s-mart "De oferta" (34 registros); calimax "Salchichas de Pavo Fud /
+# 500 G." + "del Viernes 24 al Jueves 30 de Julio de 2026"; "Crema de cacahuate" + "03 al 16 de Agosto";
+# "Jitomate" + "Solo Hoy 13 de Octubre". Una linea de la pila (nunca la elegida por el precio) que cumple
+# alguno de estos patrones no se une y corta la pila en esa direccion. Quedan fuera a proposito: "Todas las
+# variedades/sabores/presentaciones/colores/tallas/modelos" (es parte del nombre), los porcentajes de un
+# digito y los de composicion ("70% cacao", "0% grasa"), "2x75ml" y "4x4" (el NxM de promocion lleva un
+# solo digito a cada lado y N > M: 2x1, 3x2, 4x3), "Tallas del 2 al 8" (un rango sin mes ni dia de la
+# semana no es vigencia) y "Ejemplo:" (el renglon "Ejemplo: Queso Chihuahua..." de s-mart/soriana lleva el
+# nombre). Produccion (821 folletos): 127 nombres cambian (promocion 72, oferta 41, vigencia 14).
+_MESES = r"(?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|sept?iembre|setiembre|octubre|noviembre|diciembre)"
+_MESES_CORTOS = r"(?:ene|feb|mar|abr|may|jun|jul|ago|sept?|oct|nov|dic)"
+_DIAS = r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+PATRONES_CORTE_PILA = {
+    "promocion": re.compile(
+        r"\btod[ao]s?\s+l[ao]s?\s+(?!(?:variedades|sabores|presentaciones|colores|tallas|modelos)\b)\w"
+        r"|\ben\s+tod[ao]s?\s+(?:la|el|los|las)\b"
+        r"|\b(?:[1-9]\d|100)\s*%(?!\s*(?:de\s+)?(?:cacao|alc|grasa|algod|natural|jugo|fruta|leche|puro|pura))"
+        r"|\bMSI\b|\bmeses\s+sin\b|\bprecio\s+especial\b|\bll[eé]v[ae]te\b"
+        r"|\b(?:2\s*x\s*1|3\s*x\s*[12]|4\s*x\s*[1-3]|5\s*x\s*[1-4]|6\s*x\s*[1-5]|7\s*x\s*[1-6]|8\s*x\s*[1-7]"
+        r"|9\s*x\s*[1-8])\b(?!\s*(?:\d|cm|mm|m\b|ml|l\b|lt|g\b|gr|kg|oz|pulg|\"))",
+        re.IGNORECASE),
+    "vigencia": re.compile(
+        rf"\b(?:del|al|hasta\s+el)\s+{_DIAS}\b|\b\d{{1,2}}\s+de\s+{_MESES}\b"
+        rf"|\b\d{{1,2}}\s*(?:-|al|a)\s*\d{{1,2}}\s+(?:de\s+)?(?:{_MESES}|{_MESES_CORTOS})\b"
+        r"|\bvigencia\b|\bv[aá]lid[oa]s?\b|\bhasta\s+agotar\b|\bs[oó]lo\s+hoy\b",
+        re.IGNORECASE),
+    "oferta": re.compile(r"\b(?:de|en)\s+oferta\b", re.IGNORECASE),
+}
+
+
+def _tipo_corte_pila(prod: dict) -> str | None:
+    """Tipo de texto que corta la pila ("promocion", "vigencia", "oferta") o None."""
+    texto = prod.get("texto", "") or ""
+    return next((tipo for tipo, patron in PATRONES_CORTE_PILA.items() if patron.search(texto)), None)
+
+
+def _pila_lineas(prod: dict, productos: list, ajenos: list) -> list:
+    """Lineas de la pila de `prod`, de arriba abajo (incluye `prod`); ver nombre_en_pila."""
+    fuera = lambda o, lineas: all(o is not l for l in lineas)  # noqa: E731
+    lineas, actual = [prod], prod
+    while len(lineas) <= MAX_LINEAS_DESCRIPCION and not _inicia_renglon_lista(actual):
+        tope = _alto_tope(lineas)
+        encima = [o for o in productos if fuera(o, lineas) and _linea_encima(o, actual, tope)]
+        if not encima:
+            break
+        siguiente = max(encima, key=lambda o: o.get("bbox", {}).get("y", 0) + o.get("bbox", {}).get("alto", 0))
+        if (_es_banda(siguiente, lineas, productos) or not fuera(siguiente, ajenos)
+                or _tipo_corte_pila(siguiente)):
+            break
+        actual = siguiente
+        lineas.append(actual)
+    lineas.reverse()
+    actual = prod
+    while len(lineas) <= MAX_LINEAS_DESCRIPCION:
+        alto = actual.get("bbox", {}).get("alto", 0)
+        debajo = [o for o in productos if fuera(o, lineas)
+                  and _linea_encima(actual, o, min(alto, o.get("bbox", {}).get("alto", 0)))]
+        if not debajo:
+            break
+        siguiente = min(debajo, key=lambda o: o.get("bbox", {}).get("y", 0))
+        if _inicia_renglon_lista(siguiente) or not fuera(siguiente, ajenos) or _tipo_corte_pila(siguiente):
+            break
+        actual = siguiente
+        lineas.append(actual)
+    return lineas
+
+
+# Probado y descartado (25-oct-2026, pedido de QA): que una linea compartida por las pilas de dos precios sea
+# solo de la pila cuyo precio esta claramente mas cerca (corregia chedraui 424417 p12, donde $39 "Sandwichera"
+# se lleva "PAW PATROL / 3 recipientes" de $134). Dev neutro (0/0), pero en produccion empeoraba ~55 de 138
+# nombres y mejoraba ~12: es comun que VARIOS precios sean del mismo producto (casa_ley pieza y carton, precio y
+# "antes" mal leido, precio de contado y otro) y repartir el nombre entre ellos lo parte ("Suavizante Ensueno
+# Color Primaveral" -> "Color Primaveral"; heb "Pollo entero con Visceras" -> "Visceras").
+def nombre_en_pila(prod: dict, productos: list, normalizador: Normalizador, ajenos: list | None = None) -> dict:
+    """Si `prod` tiene lineas producto contiguas encima o debajo (misma columna), devuelve una copia cuyo
+    nombre es la pila completa (ver _unir_lineas); si no, `prod` tal cual. `ajenos`: bloques elegidos por
+    otros precios de la pagina, que cortan la pila."""
+    return _unir_pila(prod, _pila_lineas(prod, productos, ajenos or []), normalizador)
+
+
+def _unir_pila(prod: dict, lineas: list, normalizador: Normalizador) -> dict:
+    if len(lineas) == 1:
+        return prod
+    unido = _unir_lineas(prod, lineas, normalizador)
+    # Texto que el normalizador descarta (mas de 150 caracteres = letra chica, o basura): no se une. Ademas
+    # extracciones.texto_norm es VARCHAR(300) y un texto mas largo tumbaria la pagina al insertar.
+    return unido if unido["_resultado_unido"] is not None else prod
 
 
 # -- Filtro de legibilidad del nombre -----------------------------------------------
@@ -591,8 +712,8 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
     conteo = conteo_vecinos_alineados(precios, productos)
     nombre_debajo, reticula = _es_nombre_debajo(conteo), _es_reticula(conteo)
 
-    registros_precio = []
-    for precio, valor_anterior in zip(precios, anteriores):
+    elegidos = []
+    for precio in precios:
         producto = None
         if regiones_confiables:
             producto = asociar_producto_por_region(precio, candidatos, regiones_confiables)
@@ -601,8 +722,16 @@ def construir_registros_pagina(pag_data: dict, regiones_confiables: list[dict] |
         if producto is None:
             producto = asociar_por_cercania(precio, productos, admitir_debajo=True, precios=precios,
                                             alinear_debajo=nombre_debajo, reticula=reticula)
-        if producto is not None and unidad_en_columna_del_precio(producto, precio):
-            producto = nombre_con_unidad(producto, productos, normalizador)
+        elegidos.append(producto)
+
+    registros_precio = []
+    for precio, producto, valor_anterior in zip(precios, elegidos, anteriores):
+        if producto is not None and es_unidad_suelta(producto.get("texto", "")):
+            if unidad_en_columna_del_precio(producto, precio):
+                producto = nombre_con_unidad(producto, productos, normalizador)
+        elif producto is not None:
+            ajenos = [e for e in elegidos if e is not None and e is not producto]
+            producto = nombre_en_pila(producto, productos, normalizador, ajenos)
         registros_precio.append({"precio": precio, "producto": producto, "valor_anterior": valor_anterior})
 
     registros_atributo = [
