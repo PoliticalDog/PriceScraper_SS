@@ -46,7 +46,7 @@ DATA_PROCESSED = Path("data/processed")
 # -- Menú ----------------------------------------------------------------------
 
 def menu_principal() -> int:
-    print("\n" + "=" * 55)
+    print("\n" + "-" * 55)
     print("   PriceScraper — Módulo Load (NLP --> PostgreSQL)")
     print("-" * 55)
     print("   1 --> Cargar folleto específico")
@@ -187,7 +187,7 @@ def _imprimir_categorias(por_categoria: dict):
 # -- Main ----------------------------------------------------------------------
 
 def main():
-    print("\n" + "=" * 55)
+    print("\n" + "-" * 55)
     print("   PriceScraper — Módulo Load")
     print("-" * 55)
 

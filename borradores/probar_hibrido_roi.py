@@ -161,7 +161,7 @@ def main():
 
     print("\n" + "-" * 90)
     print("RESUMEN GLOBAL")
-    print("=" * 90)
+    print("-" * 90)
     total = len(filas)
     via_roi = sum(1 for r in filas if r["metodo_usado_hibrido"] == "roi")
     sin_prod_dist = sum(1 for r in filas if r["sin_producto_distancia"])
@@ -180,7 +180,7 @@ def main():
 
     print("\n" + "-" * 90)
     print("POR TIENDA")
-    print("=" * 90)
+    print("-" * 90)
     print(f"{'Tienda':<16} {'Precios':>8} {'ViaROI':>8} {'SinProd_dist':>13} {'SinProd_hib':>12} {'Mejora':>8} {'Regresion':>10}")
     print("-" * 90)
     for tienda in args.tiendas:

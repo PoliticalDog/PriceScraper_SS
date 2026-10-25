@@ -118,15 +118,15 @@ def main():
         if not torch.cuda.is_available():
             raise SystemExit("ERROR: --gpu pedido pero torch.cuda.is_available() es False.")
 
-    logger.info("=" * 55)
+    logger.info("-" * 55)
     logger.info(f"Catch-up OCR+NLP — fuentes: {', '.join(fuentes)}  |  GPU: {a.gpu}")
-    logger.info("=" * 55)
+    logger.info("-" * 55)
     for fuente in fuentes:
         catchup_vision(fuente, usar_gpu=a.gpu)
         catchup_nlp(fuente)
-    logger.info("=" * 55)
+    logger.info("-" * 55)
     logger.info("Catch-up terminado.")
-    logger.info("=" * 55)
+    logger.info("-" * 55)
 
 
 if __name__ == "__main__":

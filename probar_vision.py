@@ -91,7 +91,7 @@ def menu_perfil(tienda: str = "") -> str | None:
     print("   4. Blanco y Negro - suave")
     print("   5. Blanco y Negro - normal")
     print("   6. Blanco y Negro - fuerte")
-    print("   Enter --> el de cada tienda (PERFIL_POR_TIENDA, Color normal si no aparece)")
+    print("   Enter u otra opción --> el de cada tienda (PERFIL_POR_TIENDA, Color normal si no aparece)")
     print("-" * 55)
     try:
         raw = input("   Perfil (Enter = por tienda): ").strip()
@@ -100,9 +100,11 @@ def menu_perfil(tienda: str = "") -> str | None:
         opc = int(raw)
         # fuera de rango (0, negativos) --> por tienda; sin esto 0 daria el indice -1 (bn_fuerte)
         if not 1 <= opc <= len(_OPCIONES_PERFIL):
+            print("   Opción fuera de rango --> perfil por tienda")
             return None
         return _OPCIONES_PERFIL[opc - 1]
     except ValueError:
+        print("   Opción no válida --> perfil por tienda")
         return None
 
 # Menú resolución px
@@ -113,7 +115,7 @@ def menu_resolucion() -> int | None:
     print("   2. 1350px   ")
     print("   3. 1500px  --> (mejor para imágenes pequeñas)")
     print("   4. 1800px --> mejor resultado promedio (default global)")
-    print("   Enter --> la mejor de cada tienda (RESOLUCION_POR_TIENDA)")
+    print("   Enter u otra opción --> la mejor de cada tienda (RESOLUCION_POR_TIENDA)")
     print("-" * 55)
     opciones = [1200, 1350, 1500, 1800]
     try:
@@ -123,9 +125,11 @@ def menu_resolucion() -> int | None:
         opc = int(raw)
         # fuera de rango (0, negativos) --> por tienda; sin esto 0 daria el indice -1 (1800px forzado)
         if not 1 <= opc <= len(opciones):
+            print("   Opción fuera de rango --> resolución por tienda")
             return None
         return opciones[opc - 1]
     except ValueError:
+        print("   Opción no válida --> resolución por tienda")
         return None
 
 # Recopilación de carpetas
@@ -365,12 +369,12 @@ def modo_batch(ocr: OCREngine):
             logger.error(f"[Vision] Error: {e}")
             errores += 1
 
-    logger.info("\n" + "=" * 55)
+    logger.info("\n" + "-" * 55)
     logger.info(
         f"✅ Batch completado — {procesados} folletos, "
         f"{total_bloques} bloques, {errores} errores"
     )
-    logger.info("=" * 55)
+    logger.info("-" * 55)
 
 # procesameinto unitario (carpeta)
 def modo_prueba(ocr: OCREngine):
@@ -432,9 +436,9 @@ def modo_prueba(ocr: OCREngine):
 
 # ----------------------- Main -----------------------
 def main():
-    logger.info("=" * 55)
+    logger.info("-" * 55)
     logger.info("PriceScraper — Módulo de Visión")
-    logger.info("=" * 55)
+    logger.info("-" * 55)
 
     # OCREngine se instancia una sola vez — carga EasyOCR en memoria la primera vez
     ocr = OCREngine(idiomas=["es", "en"], usar_gpu=False)

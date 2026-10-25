@@ -36,7 +36,7 @@ DATA_PROCESSED = Path("data/processed")
 
 # Menú principal
 def menu_principal() -> int:
-    print("\n" + "=" * 55)
+    print("\n" + "-" * 55)
     print("   PriceScraper — Módulo NLP (Regex)")
     print("-" * 55)
     print("   1 --> Procesar carpeta específica  (modo prueba)")
@@ -200,7 +200,7 @@ def modo_batch(extractor: RegexExtractor):
             logger.error(f"[NLP] Error en {carpeta}: {e}")
             errores += 1
 
-    logger.info("\n" + "=" * 55)
+    logger.info("\n" + "-" * 55)
     logger.info(f"✅ Batch NLP completado")
     logger.info(f"   Folletos procesados: {procesados}")
     logger.info(f"   Errores:             {errores}")
@@ -210,7 +210,7 @@ def modo_batch(extractor: RegexExtractor):
     logger.info(f"   Total financiero:         {total_financiero}")
     logger.info(f"   Total promociones:        {total_promo}")
     logger.info(f"   Próximo paso: ETL --> asociar producto+precio por bbox --> PostgreSQL")
-    logger.info("=" * 55)
+    logger.info("-" * 55)
 
 # diferencia es que muestra detalle de cada página
 def modo_prueba(extractor: RegexExtractor):
@@ -251,9 +251,9 @@ def modo_prueba(extractor: RegexExtractor):
 
 #  ------------------------- Main -------------------------
 def main():
-    logger.info("=" * 55)
+    logger.info("-" * 55)
     logger.info("PriceScraper — Módulo NLP (Regex)")
-    logger.info("=" * 55)
+    logger.info("-" * 55)
 
     # Extractor se inicializa una vez para toda la sesión
     extractor = RegexExtractor(confianza_minima=0.15)

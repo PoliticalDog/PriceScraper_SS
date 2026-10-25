@@ -152,7 +152,7 @@ def main():
 
     print("\n" + "-" * 80)
     print("RESUMEN")
-    print("=" * 80)
+    print("-" * 80)
     print(f"{'Tienda':<16} {'Folleto':<9} {'Pagina':<18} {'Candidatas':>10} {'ConPrecio':>10} {'Cobertura':>10}")
     print("-" * 80)
     for tienda, folleto_id, archivo, n_cand, n_conf, cob, _ in resumen:
@@ -170,7 +170,7 @@ def main():
             acc["cobertura"] += cob
         print("\n" + "-" * 80)
         print("AGREGADO POR TIENDA")
-        print("=" * 80)
+        print("-" * 80)
         print(f"{'Tienda':<16} {'Paginas':>8} {'Candidatas':>10} {'ConPrecio':>10} {'CobPromedio':>12}")
         print("-" * 80)
         for tienda, acc in sorted(por_tienda.items()):
