@@ -347,7 +347,20 @@ def api_origen_pagina(request, pagina_id: int):
             "dimensiones_proc": list(dims) if dims else None,
         },
         "bloques": [_cajas(b, dims) for b in ctx["bloques"]],
+        # Pestana "Precios" (17-oct-2026): cajas en % del precio y de su producto (si esta en otra pagina, sin caja)
+        "precios": [_precio_con_cajas(p, pag["id"], dims) for p in ctx.get("precios", [])],
+        "precios_sin_producto": ctx.get("precios_sin_producto", 0),
     })
+
+
+def _precio_con_cajas(precio: dict, pagina_id: int, dims) -> dict:
+    producto = precio["producto"]
+    otra = producto["pagina_id"] != pagina_id
+    return {
+        **_cajas(precio, dims),
+        "producto": {**producto, "otra_pagina": otra, "caja_pct": None} if otra else
+                    {**_cajas(producto, dims), "otra_pagina": False},
+    }
 
 
 @require_GET

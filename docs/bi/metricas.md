@@ -29,7 +29,7 @@ Convenciones comunes:
 |---|---|
 | Estado | **aprobada** (propuesta y aprobada 12-oct-2026; construida, pendiente de que la persona la vea para "publicada") |
 | Pregunta | Para cada tienda, que tan confiable es lo que el dashboard muestra como "precio de un producto"? |
-| Donde | Pagina Calidad (`/calidad`), seccion superior; API `/api/confiabilidad` |
+| Donde | Pagina Calidad (`/calidad`), seccion superior; API `/api/confiabilidad`. **Nota 19-oct-2026:** la pestana Calidad esta oculta de la barra de navegacion a pedido de la persona (comentario de plantilla en `dashboard/templates/dashboard/base.html`); la pagina `/calidad` y sus APIs siguen funcionando por URL directa |
 | Implementacion | `dashboard/confiabilidad.py` (lector del JSON, umbrales como constantes, etiqueta), `dashboard/queries.py` (`confiabilidad_por_tienda`, `_SQL_CONFIABILIDAD`), `dashboard/templates/dashboard/calidad.html` |
 | Verificacion del construido | `docs/bi/consultas/verificacion_dashboard_confiabilidad.sql` (SQL exacta de queries.py con parametros por defecto): 20 filas identicas a la consulta de la metrica |
 | Grano | Tienda (20 filas; las tiendas sin medicion aparecen como "Sin medir") |
@@ -157,10 +157,33 @@ tambien la cadencia de scrapeo (semanas sin scrapeo se ven como caidas, p. ej. s
 |---|---|---|---|
 | Precios detectados (`registros_dashboard`) | `productos_con_precio` = PRECIO con valor (28,867; incluia 233 sin `texto_norm` que ningun panel muestra) | 28,634 | `COUNT(*) FROM v_precios_actuales` (registros del dashboard, todas las fechas) |
 | Folletos vigentes hoy (`folletos_vigentes`) | `folleto_mas_reciente` = `MAX(folletos.fecha_inicio)` (mostraba 2026-12-25 por fechas anomalas de Waldos) | 52 (+16 con fecha dudosa, enlace a /cobertura) | `COUNT(*) FROM v_folletos_vigencia WHERE vigente`; nota `WHERE vigente_dudoso` |
+| Categorias (`categorias`, `pct_con_categoria`) — nuevo 17-oct-2026 | (no existia) | 18 · 39.0% de los precios con categoria (12,495 / 32,073) | `COUNT(DISTINCT TRIM(categoria)) FROM v_precios_actuales WHERE COALESCE(TRIM(categoria),'') <> ''`; subtitulo = registros con categoria / registros base x 100 |
+
+**KPI "Categorias"** (aprobado por la persona 17-oct-2026; autor: especialista BI):
+
+- Pregunta: cuantas categorias distintas tienen los precios que muestra el dashboard. Grano: total (o folleto filtrado).
+- Fuente: `v_precios_actuales.categoria` (= `extracciones.categoria_nlp` de la fila PRECIO), la misma que la grafica
+  "Top 10 categorias" y el filtro con/sin categoria. No se usa `productos_canonicos.categoria`.
+- Limpieza: TRIM; vacia (`''`) y NULL no cuentan como categoria (misma regla que `filtrar_con_categoria`). No hay variantes
+  de escritura: 18 crudas = 18 con `lower(btrim())`.
+- Filtros: respeta "Folleto". Con "Con categoria" la cifra es la misma; con "Sin categoria" no aplica (valor "—", nota
+  `no aplica con filtro "sin categoría"`). Denominador del % = registros del folleto/filtro **sin** el filtro con/sin
+  categoria.
+- Confiabilidad: solo el 39.0% de los precios tiene categoria (19,578 vacias); el subtitulo lo muestra siempre.
+  "Frutas y Verduras" no es categoria propia: `nlp/normalizador.py:28` la funde en `alimentos` (de las 4 categorias foco
+  solo existen 3 en la BD).
+- Codigo: `queries.resumen_kpis`, `queries.qs_categorias_distintas`, `queries.kpi_categorias`; tarjeta en
+  `templates/dashboard/resumen.html`. Pruebas: `tests/test_dashboard_kpi_categorias.py` (sin BD).
+- Validacion (17-oct-2026, consulta.py): el SQL que genera el ORM da 18; desde la tabla base
+  (`extracciones` PRECIO con `valor` y `texto_norm`, `COUNT(DISTINCT BTRIM(categoria_nlp))`) da 18 / 12,495 / 32,073 ->
+  cuadra. Folleto `416117`: vista 12 / 104 / 409 (25.4%) = base `extracciones` + `folletos` 12 / 104 / 409 -> cuadra.
 
 Sin cambios: "Tiendas activas" (`tiendas.activa`) y "Folletos cargados" (`COUNT(*) FROM folletos`).
-Grano: total. Filtros: ninguno. Confiabilidad: conteos exactos; la vigencia depende de las fechas declaradas por la
-fuente (ver seccion 2).
+Grano: total. Filtros (desde 14-oct-2026; corregido aqui 17-oct-2026): "Con / sin categoria" (seccion 5) y "Folleto"
+(seccion 6). Aplican solo a los KPIs de registros: "Precios detectados" (nota "de N en total") y "Categorias" (con
+"sin categoria" no aplica), y a la grafica "Top 10 categorias". "Tiendas activas", "Folletos cargados", "Folletos
+vigentes hoy" y la grafica "Folletos cargados por tienda" no dependen de los filtros. Confiabilidad: conteos exactos;
+la vigencia depende de las fechas declaradas por la fuente (ver seccion 2).
 
 ---
 
@@ -184,23 +207,51 @@ tiene columna), titulo del folleto en tooltip, `[pag]` abre el visor y `[folleto
 y es http/https). El titulo no identifica el folleto (172 distintos en 694; Ofertomat siempre "Vista previa..."):
 por eso el identificador visible es `folleto_id_fuente`.
 
-**Cobertura sobre los registros del dashboard** (BD recargada, codigo 01c2420, 13-oct-2026):
+**Cobertura sobre los registros del dashboard** (actualizada 17-oct-2026 con la BD recargada el 17-oct; consulta
+`procedencia_cobertura.sql` y su validacion -> cuadran. Cifras del 13-oct entre parentesis):
 
 | Dato | Registros | % |
 |---|---|---|
-| Registros (= `v_precios_actuales`) | 27,760 | 100 |
-| Con pagina (existe y es del mismo folleto) | 27,760 | 100 |
-| Con `archivo_imagen` (archivo en disco, raw y processed: 4,783/4,783 paginas de la BD) | 27,760 | 100 |
-| Con bbox de precio / de producto asociado en la misma pagina | 27,760 / 27,760 | 100 |
-| Con vigencia | 27,760 | 100 |
-| Con `titulo` | 27,748 | 99.96 |
-| Con `url_origen` | 16,343 | 58.9 |
+| Registros (= `v_precios_actuales`) | 32,073 (27,760) | 100 |
+| Con pagina (existe y es del mismo folleto) | 32,073 | 100 |
+| Con `archivo_imagen` (en la BD; el archivo en disco se verifico el 13-oct en 4,783/4,783 paginas y no se reverifico) | 32,073 | 100 |
+| Con bbox de precio / de producto asociado en la misma pagina | 32,073 / 32,073 | 100 |
+| Con vigencia | 32,073 | 100 |
+| Con `titulo` | 32,061 (27,748) | 99.96 |
+| Con `url_origen` | 20,656 (16,343) | 64.4 |
 
-618 folletos y 3,885 paginas con registros. `url_origen` falta en los folletos scrapeados antes del 4-ago-2026.
+706 folletos y 4,394 paginas con registros (618 y 3,885 el 13-oct); 5,357 paginas en la BD. `url_origen` falta en los
+folletos scrapeados antes del 4-ago-2026.
+
+**Pestana "Precios" del visor** (aprobada por la persona 17-oct-2026; autor: especialista BI). Junto a OCR/NLP, lista
+los pares precio-producto de la pagina y permite recorrerlos uno a uno (clic en el renglon, anterior/siguiente con
+"N / total", flechas ← / →). Al seleccionar (`seleccionar(id)` en `origen.html`): caja roja del precio y azul de su
+producto, tarjeta "Registro seleccionado", marcas OCR/NLP con `?e=<id>` (AbortController: una respuesta vieja no pisa
+la seleccion nueva) y `history.replaceState('/origen/extraccion/<id>')`. Entrando por `/origen/extraccion/<id>` abre
+con ese renglon activo; por `/origen/pagina/<id>`, sin seleccion.
+
+- Fuente y filtro: `extracciones` con `tipo='PRECIO'`, `valor`, `texto_norm` y `producto_extraccion_id` no nulos (= los
+  registros de `v_precios_actuales` de la pagina: la vista no trae `pagina_id` ni cajas). Hoy los 300 PRECIO sin
+  producto son los mismos 300 sin `texto_norm`, asi que la lista = los registros del dashboard de la pagina.
+- Grano: una fila por PRECIO; joins N:1 por PK a la fila PRODUCTO (INNER) y a `productos_canonicos` (LEFT): 32,073
+  filas = 32,073 ids. Orden `bbox_y, bbox_x, id`. API: claves `precios` y `precios_sin_producto` en
+  `/api/origen/pagina/<id>` (sin ruta nueva). Peso: maximo 82 precios por pagina.
+- Renglon: precio, precio anterior y % de descuento (mismo calculo que la vista), producto (`texto_norm` del PRECIO;
+  si difiere, tambien el de la fila PRODUCTO: 722 pares), catalogo (solo si `metodo_norm` es exacto/fuzzy/fuzzy_bajo),
+  categoria o "sin categoria", insignia catalogo/heuristico (84.6% heuristico) y "(repetido)" si otro precio de la
+  pagina tiene el mismo texto y valor (son cajas distintas, no filas duplicadas: 477 grupos).
+- Pagina sin pares: la pestana se ve con el aviso "N precios de esta pagina no tienen producto asociado y no se
+  listan" (ej. pagina 69371: 0 renglones, 6 sin producto).
+- Codigo: `queries.qs_precios_de_pagina`, `armar_precios_pagina`, `precios_de_pagina` (desde `contexto_pagina`),
+  `views._precio_con_cajas`; pruebas `tests/test_dashboard_origen_precios.py` (sin BD).
+- Validacion (17-oct-2026): el SQL que genera el ORM, corrido con consulta.py, da 64943 -> 17, 64928 -> 17,
+  66216 -> 7, 69371 -> 0 (6 PRECIO en la pagina); cuadra con `v_precios_actuales` unida por `id` (17 / 17 / 7 / 0).
+- No incluye (sin aprobar): cajas clicables sobre la imagen ni el color por tipo para registros que no son PRECIO
+  abiertos desde el Explorador (hoy se pintan en rojo como "precio").
 
 **Joins sin duplicar:** las filas de las vistas traen `id = extracciones.id`; la procedencia se resuelve con una
-segunda consulta por PK (`id__in`) y se combina en Python. `--contar`: `v_precios_actuales` 27,760 -> con
-extracciones+paginas+folletos 27,760; `v_historico_precios` 27,760 -> 27,760. Folletos con fecha dudosa: 23 -> 23 al
+segunda consulta por PK (`id__in`) y se combina en Python. `--contar` (13-oct): `v_precios_actuales` 27,760 -> con
+extracciones+paginas+folletos 27,760; `v_historico_precios` 27,760 -> 27,760 (17-oct: 32,073 = 32,073). Folletos con fecha dudosa: 23 -> 23 al
 unir `folletos` por PK; la primera pagina es subconsulta escalar.
 
 **Cajas:** `extracciones.bbox_*` esta en el espacio de la imagen PROCESADA (ancho 1800, 1500, 1350 o 1200 segun

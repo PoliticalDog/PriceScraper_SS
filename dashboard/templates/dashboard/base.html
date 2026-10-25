@@ -23,10 +23,24 @@
           <li class="nav-item"><a class="nav-link{% if activo == 'precios' %} active{% endif %}" href="/precios"><i class="ti ti-tag"></i> Precios actuales</a></li>
           <li class="nav-item"><a class="nav-link{% if activo == 'comparativa' %} active{% endif %}" href="/comparativa"><i class="ti ti-arrows-left-right"></i> Comparativa</a></li>
           <li class="nav-item"><a class="nav-link{% if activo == 'historico' %} active{% endif %}" href="/historico"><i class="ti ti-history"></i> Histórico</a></li>
+          {% comment %}
+            Pestaña Calidad OCULTA desde el 19-oct-2026 a pedido de la persona dueña del proyecto.
+            Solo se quitó de la barra: la ruta /calidad, la vista pagina_calidad, calidad.html,
+            /api/calidad, /api/confiabilidad y confiabilidad.py siguen intactos.
+            Para restaurarla: borra las etiquetas comment/endcomment de Django que envuelven este li
+            (y estas líneas de nota).
           <li class="nav-item"><a class="nav-link{% if activo == 'calidad' %} active{% endif %}" href="/calidad"><i class="ti ti-shield-check"></i> Calidad</a></li>
+          {% endcomment %}
           <li class="nav-item"><a class="nav-link{% if activo == 'cobertura' %} active{% endif %}" href="/cobertura"><i class="ti ti-calendar-stats"></i> Cobertura</a></li>
           <li class="nav-item"><a class="nav-link{% if activo == 'promociones' %} active{% endif %}" href="/promociones"><i class="ti ti-discount-2"></i> Promociones</a></li>
+          {% comment %}
+            Pestaña Errores de carga OCULTA desde el 21-oct-2026 a petición de la persona dueña del proyecto.
+            Solo se quitó de la barra: la ruta /errores, la vista pagina_errores, errores.html,
+            /api/errores y /api/filtros/errores siguen intactos (se puede entrar directo por URL).
+            Para restaurarla: borra las etiquetas comment/endcomment de Django que envuelven este li
+            (y estas líneas de nota).
           <li class="nav-item"><a class="nav-link{% if activo == 'errores' %} active{% endif %}" href="/errores"><i class="ti ti-file-alert"></i> Errores de carga</a></li>
+          {% endcomment %}
           <li class="nav-item"><a class="nav-link" href="/datos" target="_blank"><i class="ti ti-database"></i> Explorador de datos</a></li>
         </ul>
       </div>

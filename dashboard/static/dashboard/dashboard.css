@@ -232,3 +232,7 @@ table.dataTable thead {
 .visor-json { max-height: 70vh; overflow: auto; font-size: 0.8em; background: #fff; border: 1px solid #ddd; padding: 8px; }
 .visor-json .marca-precio { background: rgba(227, 73, 72, 0.18); display: block; }
 .visor-json .marca-producto { background: rgba(42, 120, 214, 0.18); display: block; }
+/* Pestana "Precios" del visor (17-oct-2026): lista de pares precio-producto, el renglon activo usa .table-active */
+.visor-precios { max-height: 70vh; overflow: auto; background: #fff; }
+.visor-precios thead th { position: sticky; top: 0; background: #fff; }
+.visor-precio-fila { cursor: pointer; }

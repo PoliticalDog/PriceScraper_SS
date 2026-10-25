@@ -99,7 +99,9 @@ async function cargar() {
   const porTienda = {};
   datos.forEach((d) => {
     if (!porTienda[d.tienda]) porTienda[d.tienda] = [];
-    porTienda[d.tienda].push({ x: d.fecha, y: d.precio, fila: d });
+    // parsing:false exige x en milisegundos: con el texto "AAAA-MM-DD" quedaba NaN y la grafica salia vacia.
+    // "T00:00:00" = medianoche local (sin la hora, Date lo toma como UTC y en Mazatlan se veria el dia anterior).
+    porTienda[d.tienda].push({ x: new Date(`${d.fecha}T00:00:00`).getTime(), y: d.precio, fila: d });
   });
 
   const datasets = Object.entries(porTienda).map(([tienda, puntos], i) => ({

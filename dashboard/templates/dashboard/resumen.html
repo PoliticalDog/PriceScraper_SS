@@ -16,7 +16,7 @@
       <button class="btn btn-primary w-100" id="btnAplicar">Aplicar</button>
     </div>
   </div>
-  <div class="form-text">Aplica a "Precios detectados" y a la gráfica de categorías; tiendas y folletos no dependen de productos.</div>
+  <div class="form-text">Aplica a "Precios detectados", "Categorías" y a la gráfica de categorías; tiendas y folletos no dependen de productos.</div>
 </div>
 <div id="avisoFolleto" hidden></div>
 
@@ -69,6 +69,13 @@ async function cargar() {
     .filter(Boolean).join(" · ");
   const notaPrecios = filtroCat
     ? `${filtroCat} · de ${(k.registros_dashboard_todos ?? 0).toLocaleString("es-MX")} en total` : "";
+  // KPI "Categorias" (17-oct-2026): respeta el folleto; con "sin categoria" no aplica (categorias = null).
+  // % sobre los registros del folleto/filtro sin el filtro con/sin categoria; null si no hay registros.
+  const notaCategorias = k.categorias === null || k.categorias === undefined
+    ? 'no aplica con filtro "sin categoría"'
+    : k.pct_con_categoria === null || k.pct_con_categoria === undefined
+      ? "sin precios en el filtro"
+      : `${k.pct_con_categoria.toLocaleString("es-MX", { minimumFractionDigits: 1 })}% de los precios con categoría`;
 
   document.getElementById("kpis").innerHTML = [
     tarjetaKpi("ti-building-store", k.tiendas_activas ?? "—", "Tiendas activas"),
@@ -78,6 +85,8 @@ async function cargar() {
     tarjetaKpi("ti-calendar-check", (k.folletos_vigentes ?? 0).toLocaleString("es-MX"), "Folletos vigentes hoy",
       dudosos ? `<a href="/cobertura">+${dudosos} con fecha dudosa</a>` : "",
       "Folletos con fecha confiable cuyo rango incluye hoy (v_folletos_vigencia)"),
+    tarjetaKpi("ti-tags", k.categorias ?? "—", "Categorías", notaCategorias,
+      'Categorías NLP distintas en los precios del dashboard (v_precios_actuales). "Frutas y Verduras" se cuenta dentro de alimentos.'),
   ].join("");
 
   const cats = datos.top_categorias || [];

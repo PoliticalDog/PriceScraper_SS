@@ -13,7 +13,6 @@ from dashboard.models import (
     Extraccion,
     Folleto,
     Pagina,
-    ProductoCanonico,
     Tienda,
     VCalidadPipeline,
     VComparativaPrecios,
@@ -175,6 +174,18 @@ def resumen_kpis(con_categoria: Optional[str] = None, folleto: Optional[str] = N
         registros_todos if con_categoria is None and folleto is None
         else filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), con_categoria), folleto).count()
     )
+    # KPI "Categorias" (17-oct-2026): denominador = registros del folleto/filtro sin el filtro con/sin categoria
+    registros_base = (
+        registros_todos if folleto is None
+        else filtrar_folleto(VPreciosActuales.objects.all(), folleto).count()
+    )
+    categorias = None
+    registros_con_categoria = None
+    if con_categoria != CON_CATEGORIA_NO:
+        categorias = qs_categorias_distintas(folleto).count()
+        registros_con_categoria = filtrar_folleto(
+            filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI), folleto
+        ).count()
     return {
         "tiendas_activas": Tienda.objects.filter(activa=True).count(),
         "total_folletos": Folleto.objects.count(),
@@ -184,6 +195,43 @@ def resumen_kpis(con_categoria: Optional[str] = None, folleto: Optional[str] = N
         "folleto": folleto,
         "folletos_vigentes": vigencia["vigentes"],
         "folletos_vigentes_dudosos": vigencia["dudosos"],
+        **kpi_categorias(categorias, registros_con_categoria, registros_base, con_categoria),
+    }
+
+
+# KPI "Categorias" del Resumen (aprobado por la persona 17-oct-2026; docs/bi/metricas.md "3. KPIs del Resumen").
+# Categorias distintas de v_precios_actuales.categoria (= categoria_nlp de la fila PRECIO) con TRIM y sin vacia/NULL:
+# misma regla que filtrar_con_categoria y la grafica Top 10. Respeta el filtro de folleto; con "sin categoria" no
+# aplica (None -> "—"). "Frutas y Verduras" no es categoria propia: nlp/normalizador.py la funde en alimentos.
+# Verificado 17-oct-2026: 18 categorias, 12,495 de 32,073 registros con categoria (39.0%).
+
+def qs_categorias_distintas(folleto: Optional[str] = None):
+    """Una fila por categoria distinta (TRIM) entre los registros del dashboard con categoria. Sin joins."""
+    return (
+        filtrar_folleto(filtrar_con_categoria(VPreciosActuales.objects.all(), CON_CATEGORIA_SI), folleto)
+        .annotate(_categoria=Trim("categoria"))
+        .order_by()
+        .values("_categoria")
+        .distinct()
+    )
+
+
+def kpi_categorias(
+    categorias: Optional[int], registros_con_categoria: Optional[int], registros_base: int,
+    con_categoria: Optional[str] = None,
+) -> dict:
+    """Arma el KPI: con el filtro "sin categoria" no aplica (todo None); % con 1 decimal, None si no hay registros."""
+    if normalizar_con_categoria(con_categoria) == CON_CATEGORIA_NO:
+        categorias = registros_con_categoria = None
+    pct = (
+        round(100.0 * registros_con_categoria / registros_base, 1)
+        if registros_con_categoria is not None and registros_base else None
+    )
+    return {
+        "categorias": categorias,
+        "registros_con_categoria": registros_con_categoria,
+        "registros_base": registros_base,
+        "pct_con_categoria": pct,
     }
 
 
@@ -367,8 +415,9 @@ def historico_precios(
     nivel: Optional[str] = None,
     campanias: Optional[list[str]] = None,
 ) -> list[dict]:
+    # iexact (19-oct-2026): escribir "leche entera" a mano tambien encuentra "Leche entera"
     qs = filtrar_folleto(
-        filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto=producto), con_categoria), folleto,
+        filtrar_con_categoria(VHistoricoPrecios.objects.filter(producto__iexact=producto), con_categoria), folleto,
     )
     qs = filtrar_promocion(qs, promocion, nivel, campanias, "vista")
 
@@ -385,14 +434,17 @@ def historico_precios(
 
 
 def sugerir_productos(q: str, limite: int = 20) -> list[str]:
+    """Sugerencias del Historico (19-oct-2026): solo productos que tienen historico, los de mas registros primero.
+    Antes salian de productos_canonicos en orden alfabetico (80k nombres, ~67k sin ningun precio en el historico)."""
     if not q:
         return []
     return list(
-        ProductoCanonico.objects
-        .filter(nombre_canonico__icontains=q)
-        .order_by("nombre_canonico")
-        .values_list("nombre_canonico", flat=True)
-        .distinct()[:limite]
+        VHistoricoPrecios.objects
+        .filter(producto__icontains=q)
+        .values("producto")
+        .annotate(n=Count("id"))
+        .order_by("-n", "producto")
+        .values_list("producto", flat=True)[:limite]
     )
 
 
@@ -1086,7 +1138,72 @@ def contexto_pagina(pagina_id: int) -> Optional[dict]:
         "vecinas": {"anterior": ant["id"] if ant else None, "siguiente": sig["id"] if sig else None},
         "bloques": bloques,
         "promos": promos_de_folleto(pag["folleto_id"]),  # campania del folleto (15-oct-2026)
+        **precios_de_pagina(pagina_id),  # pestana "Precios" del visor (17-oct-2026)
     }
+
+
+# Pestana "Precios" del visor (aprobada por la persona 17-oct-2026; docs/bi/metricas.md "4. Procedencia por registro").
+# Pares precio-producto de la pagina: registros del dashboard (mismo filtro que v_precios_actuales: PRECIO con valor y
+# texto_norm) que ademas tienen fila PRODUCTO (hoy coinciden: los 300 PRECIO sin producto tampoco tienen texto_norm).
+# Grano: una fila por PRECIO; los joins a la fila PRODUCTO y a productos_canonicos son N:1 por PK (verificado con
+# consulta.py: 32,073 filas = 32,073 ids). Orden de lectura: bbox_y, bbox_x, id.
+METODOS_CATALOGO = frozenset({"exacto", "fuzzy", "fuzzy_bajo"})
+
+_CAMPOS_PRECIO_PAGINA = (
+    "id", "valor", "valor_anterior", "texto_norm", "texto_raw", "categoria_nlp", "confianza_ocr",
+    "producto_canonico__nombre_canonico", "bbox_x", "bbox_y", "bbox_ancho", "bbox_alto", "producto_extraccion_id",
+)
+_CAMPOS_PRODUCTO_PAGINA = (
+    "pagina_id", "texto_raw", "texto_norm", "metodo_norm", "confianza_norm",
+    "bbox_x", "bbox_y", "bbox_ancho", "bbox_alto",
+)
+
+
+def _descuento_pct(valor, anterior) -> Optional[float]:
+    """Mismo calculo que v_precios_actuales.descuento_pct: solo si el precio anterior es mayor que el actual."""
+    if valor is None or anterior is None or anterior <= valor or anterior <= 0:
+        return None
+    return round((anterior - valor) / anterior * 100, 1)
+
+
+def armar_precios_pagina(filas: list[dict]) -> list[dict]:
+    """Filas planas de .values() -> un dict por precio con su "producto" anidado. No agrega ni quita filas.
+    repetido = hay otro precio en la pagina con el mismo texto y valor (son cajas distintas, no filas duplicadas)."""
+    claves = {}
+    for f in filas:
+        clave = (f["texto_norm"], f["valor"])
+        claves[clave] = claves.get(clave, 0) + 1
+    salida = []
+    for f in filas:
+        precio = {c: f[c] for c in _CAMPOS_PRECIO_PAGINA}
+        producto = {"id": f["producto_extraccion_id"],
+                    **{c: f[f"producto_extraccion__{c}"] for c in _CAMPOS_PRODUCTO_PAGINA}}
+        producto["es_catalogo"] = producto["metodo_norm"] in METODOS_CATALOGO
+        precio["descuento_pct"] = _descuento_pct(f["valor"], f["valor_anterior"])
+        precio["repetido"] = claves[(f["texto_norm"], f["valor"])] > 1
+        precio["producto"] = producto
+        salida.append(precio)
+    return salida
+
+
+def qs_precios_de_pagina(pagina_id: int):
+    """Pares precio-producto de la pagina, una fila por PRECIO, en orden de lectura."""
+    return (
+        Extraccion.objects.filter(
+            pagina_id=pagina_id, tipo="PRECIO",
+            valor__isnull=False, texto_norm__isnull=False, producto_extraccion__isnull=False,
+        )
+        .order_by("bbox_y", "bbox_x", "id")
+        .values(*_CAMPOS_PRECIO_PAGINA, *(f"producto_extraccion__{c}" for c in _CAMPOS_PRODUCTO_PAGINA))
+    )
+
+
+def precios_de_pagina(pagina_id: int) -> dict:
+    """{"precios": [...], "precios_sin_producto": N}. N = PRECIO de la pagina que no se listan (sin valor, sin
+    texto_norm o sin fila PRODUCTO), para el aviso de la pestana."""
+    filas = list(qs_precios_de_pagina(pagina_id))
+    total = Extraccion.objects.filter(pagina_id=pagina_id, tipo="PRECIO").count()
+    return {"precios": armar_precios_pagina(filas), "precios_sin_producto": total - len(filas)}
 
 
 def origen_extraccion(extraccion_id: int) -> Optional[dict]:

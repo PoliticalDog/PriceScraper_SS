@@ -43,6 +43,7 @@
     <ul class="nav nav-tabs" role="tablist">
       <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabOcr" type="button">OCR</button></li>
       <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabNlp" type="button">NLP</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPrecios" type="button">Precios <span class="badge text-bg-secondary" id="cuentaPrecios">…</span></button></li>
     </ul>
     <div class="tab-content border border-top-0 p-2 bg-white">
       <div class="tab-pane fade show active" id="tabOcr">
@@ -52,6 +53,22 @@
       <div class="tab-pane fade" id="tabNlp">
         <div class="small text-muted mb-1" id="estadoNlp">Cargando…</div>
         <pre class="visor-json" id="jsonNlp"></pre>
+      </div>
+      {# Pestana "Precios" (17-oct-2026, metricas.md seccion 4): pares precio-producto de la pagina, uno a uno #}
+      <div class="tab-pane fade" id="tabPrecios">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <button class="btn btn-sm btn-outline-secondary" id="btnPrecioAnterior" type="button">&laquo; anterior</button>
+          <span class="small" id="posicionPrecio">— / 0</span>
+          <button class="btn btn-sm btn-outline-secondary" id="btnPrecioSiguiente" type="button">siguiente &raquo;</button>
+          <span class="small text-muted ms-auto">teclas ← / →</span>
+        </div>
+        <div class="alert alert-warning py-1 small d-none" id="avisoPrecios"></div>
+        <div class="visor-precios">
+          <table class="table table-sm table-hover small mb-0">
+            <thead><tr><th>#</th><th>Precio</th><th>Antes</th><th>Producto</th><th>Categoría</th><th>Norm.</th></tr></thead>
+            <tbody id="tablaPrecios"></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -65,6 +82,9 @@
 const PAGINA_ID = JSON.parse(document.getElementById("datoPaginaId").textContent);
 const EXTRACCION_ID = JSON.parse(document.getElementById("datoExtraccionId").textContent);
 let datosPagina = null;
+// Seleccion actual (17-oct-2026): la cambia seleccionar(id) desde la pestana "Precios" sin recargar la pagina.
+let registroActual = null;
+let controlador = null;  // AbortController de la seleccion en curso: descarta respuestas de selecciones viejas
 
 const ESTADOS_JSON = {
   ausente: "No existe el archivo procesado de este folleto.",
@@ -134,20 +154,164 @@ function renderFragmento(pagina, marcas) {
   return lineas.join("\n");
 }
 
-async function cargarJson(tipo, estadoId, preId) {
-  const extra = EXTRACCION_ID ? `?e=${encodeURIComponent(EXTRACCION_ID)}` : "";
-  const resp = await fetch(`/api/origen/pagina/${PAGINA_ID}/${tipo}${extra}`);
+// id = extraccion seleccionada (null: sin marcas); signal: se aborta si cambia la seleccion
+async function cargarJson(tipo, estadoId, preId, id, signal) {
+  const extra = id ? `?e=${encodeURIComponent(id)}` : "";
   const estado = document.getElementById(estadoId);
   const pre = document.getElementById(preId);
-  if (!resp.ok) { estado.textContent = `Error ${resp.status} al consultar.`; return; }
-  const d = await resp.json();
+  let resp, d;
+  try {
+    resp = await fetch(`/api/origen/pagina/${PAGINA_ID}/${tipo}${extra}`, { signal });
+    if (!resp.ok) { estado.textContent = `Error ${resp.status} al consultar.`; return; }
+    d = await resp.json();
+  } catch (err) {
+    if (err.name === "AbortError") return;  // seleccion vieja: no pisa la nueva
+    throw err;
+  }
   if (d.estado !== "ok") { estado.textContent = `${d.archivo}: ${ESTADOS_JSON[d.estado] || d.estado}`; return; }
   const n = Object.values(d.marcas || {}).reduce(
     (acc, porCaja) => acc + Object.values(porCaja).reduce((a, idx) => a + idx.length, 0), 0);
   estado.textContent = `${d.archivo} · elemento "${d.pagina_archivo}"` +
-    (EXTRACCION_ID ? ` · ${n} elemento(s) resaltado(s) por coincidencia de caja` : "");
+    (id ? ` · ${n} elemento(s) resaltado(s) por coincidencia de caja` : "");
   pre.innerHTML = renderFragmento(d.pagina, d.marcas);
   pre.querySelector("[data-marca]")?.scrollIntoView({ block: "center" });
+}
+
+function pintarRegistro(registro) {
+  const e = registro.extraccion, pr = registro.producto;
+  const dl = document.getElementById("datosRegistro");
+  dl.replaceChildren();
+  filaDato(dl, "Tipo", e.tipo);
+  filaDato(dl, "Valor", e.valor !== null ? formatoMoneda(e.valor) : null);
+  filaDato(dl, "Texto OCR", e.texto_raw);
+  filaDato(dl, "Producto (texto)", e.texto_norm);
+  if (pr) {
+    filaDato(dl, "Fila PRODUCTO", pr.texto_raw);
+    filaDato(dl, "Normalización", pr.metodo_norm);
+    filaDato(dl, "Catálogo", pr.producto_canonico__nombre_canonico);
+    if (pr.otra_pagina) filaDato(dl, "Aviso", "El producto asociado está en otra página.");
+  }
+  filaDato(dl, "Confianza OCR", e.confianza_ocr !== null ? Number(e.confianza_ocr).toFixed(3) : null);
+  document.getElementById("tarjetaRegistro").classList.remove("d-none");
+}
+
+// Selecciona un registro: cajas (rojo precio, azul producto), tarjeta, marcas OCR/NLP y URL. Sirve igual para el
+// registro con el que se abre el visor (/origen/extraccion/<id>) y para los renglones de la pestana "Precios".
+// El dibujo no cambia: un registro que no es PRECIO (abierto desde el Explorador) se sigue pintando como hoy.
+async function seleccionar(id, { actualizarUrl = true } = {}) {
+  if (controlador) controlador.abort();
+  controlador = new AbortController();
+  const signal = controlador.signal;
+  let registro;
+  try {
+    const resp = await fetch(`/api/origen/extraccion/${encodeURIComponent(id)}`, { signal });
+    if (!resp.ok) { console.error("Error al consultar el registro", id, resp.status); return; }
+    registro = await resp.json();
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    throw err;
+  }
+  registroActual = registro;
+  pintarRegistro(registro);
+  dibujarCajas(registro);
+  marcarRenglon(id);
+  if (actualizarUrl) history.replaceState(null, "", `/origen/extraccion/${encodeURIComponent(id)}`);
+  document.getElementById("estadoOcr").textContent = "Cargando…";
+  document.getElementById("estadoNlp").textContent = "Cargando…";
+  cargarJson("ocr", "estadoOcr", "jsonOcr", id, signal);
+  cargarJson("nlp", "estadoNlp", "jsonNlp", id, signal);
+}
+
+// -- Pestana "Precios" (17-oct-2026) --------------------------------------------------------------------
+// Todo dato pasa por textContent. Un renglon por PRECIO de la pagina con producto asociado, en orden de lectura.
+function celda(tr, ...hijos) {
+  const td = document.createElement("td");
+  hijos.filter(Boolean).forEach((h) => td.append(h));
+  tr.append(td);
+  return td;
+}
+
+function linea(texto, clase = "") {
+  const div = document.createElement("div");
+  if (clase) div.className = clase;
+  div.textContent = texto;
+  return div;
+}
+
+function renderPrecios() {
+  const precios = datosPagina.precios || [];
+  const sinProducto = datosPagina.precios_sin_producto || 0;
+  document.getElementById("cuentaPrecios").textContent = precios.length;
+  const aviso = document.getElementById("avisoPrecios");
+  if (sinProducto) {
+    aviso.textContent = sinProducto === 1
+      ? "1 precio de esta página no tiene producto asociado y no se lista."
+      : `${sinProducto} precios de esta página no tienen producto asociado y no se listan.`;
+    aviso.classList.remove("d-none");
+  } else if (!precios.length) {
+    aviso.textContent = "Esta página no tiene precios cargados.";
+    aviso.classList.remove("d-none");
+  }
+  const tbody = document.getElementById("tablaPrecios");
+  tbody.replaceChildren();
+  precios.forEach((p, i) => {
+    const tr = document.createElement("tr");
+    tr.dataset.id = p.id;
+    tr.tabIndex = 0;
+    tr.className = "visor-precio-fila";
+    celda(tr, linea(String(i + 1)));
+    celda(tr, linea(formatoMoneda(p.valor)));
+    celda(tr,
+      linea(p.valor_anterior !== null ? formatoMoneda(p.valor_anterior) : "—"),
+      p.descuento_pct !== null ? linea(`-${p.descuento_pct}%`, "text-muted") : null);
+    const pr = p.producto;
+    const textoProducto = pr.texto_norm ?? pr.texto_raw;
+    celda(tr,
+      linea(p.texto_norm + (p.repetido ? " (repetido)" : "")),
+      textoProducto !== p.texto_norm ? linea(`fila PRODUCTO: ${textoProducto}`, "text-muted") : null,
+      pr.es_catalogo && p.producto_canonico__nombre_canonico
+        ? linea(`catálogo: ${p.producto_canonico__nombre_canonico}`, "text-muted") : null);
+    const categoria = (p.categoria_nlp || "").trim();
+    celda(tr, linea(categoria || "sin categoría", categoria ? "" : "text-muted"));
+    const insignia = document.createElement("span");
+    insignia.className = `badge ${pr.es_catalogo ? "text-bg-success" : "text-bg-secondary"}`;
+    insignia.textContent = pr.es_catalogo ? "catálogo" : "heurístico";
+    insignia.title = `metodo_norm: ${pr.metodo_norm ?? "—"}` +
+      (pr.confianza_norm !== null ? ` · confianza ${Number(pr.confianza_norm).toFixed(2)}` : "");
+    celda(tr, insignia);
+    tr.addEventListener("click", () => seleccionar(p.id));
+    tr.addEventListener("keydown", (ev) => { if (ev.key === "Enter") seleccionar(p.id); });
+    tbody.append(tr);
+  });
+  marcarRenglon(registroActual ? registroActual.extraccion.id : null);
+}
+
+function indicePrecioActual() {
+  const precios = (datosPagina && datosPagina.precios) || [];
+  const id = registroActual ? registroActual.extraccion.id : null;
+  return precios.findIndex((p) => p.id === id);
+}
+
+function marcarRenglon(id) {
+  const precios = (datosPagina && datosPagina.precios) || [];
+  document.querySelectorAll("#tablaPrecios tr").forEach((tr) => {
+    const activo = Number(tr.dataset.id) === id;
+    tr.classList.toggle("table-active", activo);
+    if (activo) tr.scrollIntoView({ block: "nearest" });
+  });
+  const i = precios.findIndex((p) => p.id === id);
+  document.getElementById("posicionPrecio").textContent = `${i >= 0 ? i + 1 : "—"} / ${precios.length}`;
+  document.getElementById("btnPrecioAnterior").disabled = !precios.length || i === 0;
+  document.getElementById("btnPrecioSiguiente").disabled = !precios.length || i === precios.length - 1;
+}
+
+// paso -1 / +1; sin renglon activo, "siguiente" va al primero y "anterior" al ultimo
+function moverPrecio(paso) {
+  const precios = (datosPagina && datosPagina.precios) || [];
+  if (!precios.length) return;
+  const i = indicePrecioActual();
+  const destino = i < 0 ? (paso > 0 ? 0 : precios.length - 1) : i + paso;
+  if (destino >= 0 && destino < precios.length) seleccionar(precios[destino].id);
 }
 
 async function cargar() {
@@ -179,26 +343,7 @@ async function cargar() {
   nav("btnAnterior", datosPagina.vecinas.anterior);
   nav("btnSiguiente", datosPagina.vecinas.siguiente);
 
-  let registro = null;
-  if (EXTRACCION_ID) {
-    registro = await fetchJSON(`/api/origen/extraccion/${EXTRACCION_ID}`);
-    const e = registro.extraccion, pr = registro.producto;
-    const dl = document.getElementById("datosRegistro");
-    filaDato(dl, "Tipo", e.tipo);
-    filaDato(dl, "Valor", e.valor !== null ? formatoMoneda(e.valor) : null);
-    filaDato(dl, "Texto OCR", e.texto_raw);
-    filaDato(dl, "Producto (texto)", e.texto_norm);
-    if (pr) {
-      filaDato(dl, "Fila PRODUCTO", pr.texto_raw);
-      filaDato(dl, "Normalización", pr.metodo_norm);
-      filaDato(dl, "Catálogo", pr.producto_canonico__nombre_canonico);
-      if (pr.otra_pagina) filaDato(dl, "Aviso", "El producto asociado está en otra página.");
-    }
-    filaDato(dl, "Confianza OCR", e.confianza_ocr !== null ? Number(e.confianza_ocr).toFixed(3) : null);
-    document.getElementById("tarjetaRegistro").classList.remove("d-none");
-  } else {
-    document.getElementById("chkTodos").checked = true;
-  }
+  if (!EXTRACCION_ID) document.getElementById("chkTodos").checked = true;
 
   const img = document.getElementById("imgPagina");
   const fijarImagen = () => {
@@ -217,15 +362,31 @@ async function cargar() {
     aviso.textContent = "Caja no disponible: no se encontró la imagen procesada de esta página.";
     aviso.classList.remove("d-none");
   }
-  dibujarCajas(registro);
-  document.getElementById("chkTodos").addEventListener("change", () => dibujarCajas(registro));
+  document.getElementById("chkTodos").addEventListener("change", () => dibujarCajas(registroActual));
   document.getElementById("chkOriginal").addEventListener("change", fijarImagen);
   document.querySelector('[data-bs-target="#tabNlp"]').addEventListener("shown.bs.tab", () => {
     document.querySelector("#jsonNlp [data-marca]")?.scrollIntoView({ block: "center" });
   });
 
-  cargarJson("ocr", "estadoOcr", "jsonOcr");
-  cargarJson("nlp", "estadoNlp", "jsonNlp");
+  // Pestana "Precios": anterior/siguiente y flechas del teclado (solo con la pestana visible y fuera de campos)
+  renderPrecios();
+  document.getElementById("btnPrecioAnterior").addEventListener("click", () => moverPrecio(-1));
+  document.getElementById("btnPrecioSiguiente").addEventListener("click", () => moverPrecio(1));
+  document.addEventListener("keydown", (ev) => {
+    if (!document.getElementById("tabPrecios").classList.contains("active")) return;
+    if (ev.target.closest?.("input, select, textarea")) return;
+    if (ev.key === "ArrowLeft") { ev.preventDefault(); moverPrecio(-1); }
+    if (ev.key === "ArrowRight") { ev.preventDefault(); moverPrecio(1); }
+  });
+
+  if (EXTRACCION_ID) {
+    // entrada por /origen/extraccion/<id>: ese registro queda seleccionado (activo en la pestana si es un par)
+    await seleccionar(EXTRACCION_ID, { actualizarUrl: false });
+  } else {
+    dibujarCajas(null);
+    cargarJson("ocr", "estadoOcr", "jsonOcr", null);
+    cargarJson("nlp", "estadoNlp", "jsonNlp", null);
+  }
 }
 
 cargar();
