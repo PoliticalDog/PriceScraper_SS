@@ -73,3 +73,6 @@ diagnostico_tarjetas.py
 
 # ------------------ Claude Code ------------------
 # .claude/skills/ se versiona desde el 11-oct-2026 (antes ignorado, decisión 07-ago-2026).
+# ------------------ Respaldos de la BD (solo locales) ------------------
+*.dump
+respaldo_*.tar.gz

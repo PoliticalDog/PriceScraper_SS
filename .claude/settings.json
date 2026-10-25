@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Read(**/*.pem)",
+      "Edit(**/*.pem)",
+      "Read(**/*.key)",
+      "Edit(**/*.key)",
+      "Read(**/secrets/**)",
+      "Edit(**/secrets/**)",
+      "Read(~/.ssh/**)",
+      "Edit(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/hosts.yml)",
+      "Bash(cat *.env*)",
+      "Bash(head *.env*)",
+      "Bash(tail *.env*)",
+      "Bash(less *.env*)",
+      "Bash(more *.env*)",
+      "Bash(type *.env*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf ~/)"
+    ]
+  }
+}
