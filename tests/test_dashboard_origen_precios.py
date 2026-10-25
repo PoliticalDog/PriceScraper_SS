@@ -42,10 +42,11 @@ def _espacios(texto: str) -> str:
 
 
 def _fila(eid=100, texto="Leche entera 1L", valor=39.9, anterior=None, prod=200, metodo="heuristico",
-          prod_texto=None, prod_pagina=7, x=180, y=100, w=360, h=50):
+          prod_texto=None, prod_pagina=7, x=180, y=100, w=360, h=50, metodo_precio=None):
     """Fila plana como la devuelve qs_precios_de_pagina().values()."""
     return {
         "id": eid, "valor": valor, "valor_anterior": anterior, "texto_norm": texto, "texto_raw": "$39.90",
+        "metodo_norm": metodo_precio,
         "categoria_nlp": "alimentos", "confianza_ocr": 0.9, "producto_canonico__nombre_canonico": texto,
         "bbox_x": x, "bbox_y": y, "bbox_ancho": w, "bbox_alto": h, "producto_extraccion_id": prod,
         "producto_extraccion__pagina_id": prod_pagina, "producto_extraccion__texto_raw": prod_texto or texto,
@@ -97,6 +98,17 @@ def test_armar_precios_anida_producto_y_no_cambia_el_numero_de_filas():
     assert p["producto"]["id"] == 13 and p["producto"]["texto_norm"] == "Rollos"
     assert p["producto"]["es_catalogo"] is True and salida[0]["producto"]["es_catalogo"] is False
     assert not any(k.startswith("producto_extraccion__") for k in p)
+
+
+def test_insignia_catalogo_usa_el_metodo_del_nombre_del_precio():
+    # 25-oct-2026: con nombre unido el PRECIO guarda su metodo ("Pechuga de pollo" exacto -> texto unido heuristico);
+    # cargas anteriores lo tienen NULL y se usa el de la fila PRODUCTO
+    unido, viejo = queries.armar_precios_pagina([
+        _fila(1, "Filete de Pechuga de Pollo", metodo="exacto", metodo_precio="heuristico"),
+        _fila(2, "Papel de cocina", metodo="fuzzy"),
+    ])
+    assert unido["producto"]["es_catalogo"] is False and unido["metodo_norm"] == "heuristico"
+    assert viejo["producto"]["es_catalogo"] is True
 
 
 @pytest.mark.parametrize("valor, anterior, esperado", [

@@ -237,7 +237,8 @@ con ese renglon activo; por `/origen/pagina/<id>`, sin seleccion.
   filas = 32,073 ids. Orden `bbox_y, bbox_x, id`. API: claves `precios` y `precios_sin_producto` en
   `/api/origen/pagina/<id>` (sin ruta nueva). Peso: maximo 82 precios por pagina.
 - Renglon: precio, precio anterior y % de descuento (mismo calculo que la vista), producto (`texto_norm` del PRECIO;
-  si difiere, tambien el de la fila PRODUCTO: 722 pares), catalogo (solo si `metodo_norm` es exacto/fuzzy/fuzzy_bajo),
+  si difiere, tambien el de la fila PRODUCTO: 722 pares), catalogo (solo si `metodo_norm` es exacto/fuzzy/fuzzy_bajo;
+  desde 25-oct-2026 el del PRECIO, con la misma regla COALESCE que "% catalogo"),
   categoria o "sin categoria", insignia catalogo/heuristico (84.6% heuristico) y "(repetido)" si otro precio de la
   pagina tiene el mismo texto y valor (son cajas distintas, no filas duplicadas: 477 grupos).
 - Pagina sin pares: la pestana se ve con el aviso "N precios de esta pagina no tienen producto asociado y no se

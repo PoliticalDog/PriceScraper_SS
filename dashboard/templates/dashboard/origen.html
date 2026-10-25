@@ -187,7 +187,7 @@ function pintarRegistro(registro) {
   filaDato(dl, "Producto (texto)", e.texto_norm);
   if (pr) {
     filaDato(dl, "Fila PRODUCTO", pr.texto_raw);
-    filaDato(dl, "Normalización", pr.metodo_norm);
+    filaDato(dl, "Normalización", e.metodo_norm ?? pr.metodo_norm);  // la del nombre del PRECIO si la tiene
     filaDato(dl, "Catálogo", pr.producto_canonico__nombre_canonico);
     if (pr.otra_pagina) filaDato(dl, "Aviso", "El producto asociado está en otra página.");
   }
@@ -276,7 +276,7 @@ function renderPrecios() {
     const insignia = document.createElement("span");
     insignia.className = `badge ${pr.es_catalogo ? "text-bg-success" : "text-bg-secondary"}`;
     insignia.textContent = pr.es_catalogo ? "catálogo" : "heurístico";
-    insignia.title = `metodo_norm: ${pr.metodo_norm ?? "—"}` +
+    insignia.title = `metodo_norm: ${p.metodo_norm ?? pr.metodo_norm ?? "—"}` +
       (pr.confianza_norm !== null ? ` · confianza ${Number(pr.confianza_norm).toFixed(2)}` : "");
     celda(tr, insignia);
     tr.addEventListener("click", () => seleccionar(p.id));

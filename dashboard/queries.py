@@ -1152,6 +1152,7 @@ METODOS_CATALOGO = frozenset({"exacto", "fuzzy", "fuzzy_bajo"})
 _CAMPOS_PRECIO_PAGINA = (
     "id", "valor", "valor_anterior", "texto_norm", "texto_raw", "categoria_nlp", "confianza_ocr",
     "producto_canonico__nombre_canonico", "bbox_x", "bbox_y", "bbox_ancho", "bbox_alto", "producto_extraccion_id",
+    "metodo_norm",
 )
 _CAMPOS_PRODUCTO_PAGINA = (
     "pagina_id", "texto_raw", "texto_norm", "metodo_norm", "confianza_norm",
@@ -1178,7 +1179,9 @@ def armar_precios_pagina(filas: list[dict]) -> list[dict]:
         precio = {c: f[c] for c in _CAMPOS_PRECIO_PAGINA}
         producto = {"id": f["producto_extraccion_id"],
                     **{c: f[f"producto_extraccion__{c}"] for c in _CAMPOS_PRODUCTO_PAGINA}}
-        producto["es_catalogo"] = producto["metodo_norm"] in METODOS_CATALOGO
+        # catalogo segun el nombre que muestra el PRECIO (= KPI "% catalogo"): metodo_norm del PRECIO desde
+        # 25-oct-2026 (con nombre unido difiere del de la fila PRODUCTO); NULL en cargas anteriores
+        producto["es_catalogo"] = (precio["metodo_norm"] or producto["metodo_norm"]) in METODOS_CATALOGO
         precio["descuento_pct"] = _descuento_pct(f["valor"], f["valor_anterior"])
         precio["repetido"] = claves[(f["texto_norm"], f["valor"])] > 1
         precio["producto"] = producto
