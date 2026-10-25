@@ -316,6 +316,19 @@ class RegexExtractor:
     #(ej. "58,999" -> $8,999, "53,999" -> $3,999 -- verificado contra la imagen real: el "5" inicial
     PATRON_DIGITO_ESPURIO_MILES = re.compile(r"^[568sS](\d{1,3},\d{3})[a-zA-Z]{0,4}$")
 
+    # Regla A2-miles: digito espurio + miles con coma + superindice pegado con algun digito
+    # ("52,49000" = $2,490⁰⁰, "88,49989" = $8,499⁰⁰ c/u, "59,490o0" = $9,490⁰⁰). Tres digitos tras
+    # la coma son siempre miles (ningun precio lleva 3 decimales), asi que el resto es el superindice
+    # y se lee el entero N,NNN; los centavos no se usan: casi siempre son "00" o el "c/u" mal leido
+    # (la_comer 425961 p14 "82,99929" = $2,999⁰⁰ c/u). Antes la Regla A2 leia $2.49 / $8.49.
+    # Solo toma bloques que la Regla A2 ya aceptaba (cambia el valor, no crea precios). 24-oct-2026.
+    # Confirmado en dev (la_comer 413216 p25-26: 9/9 con el monto del GT, "59,44840" = $9,448 sin
+    # centavos) y contra las imagenes de soriana_hiper 415920 p1 y chedraui 424416 p5. Produccion: 624
+    # valores cambian (soriana_hiper, soriana_mercado, la_comer, casa_ley, chedraui), 0 precios nuevos
+    # o perdidos. Costo conocido: centavos reales distintos de 00 ("$10,191⁵⁰", ~35 en soriana_hiper).
+    # NO cubre a proposito el punto ("51.06350" casa_ley, "52.699"): el punto es decimal en MX.
+    PATRON_DIGITO_ESPURIO_MILES_SUPERINDICE = re.compile(r"^[568sS](\d{1,3},\d{3})(?=[a-zA-Z]*\d)[a-zA-Z0-9]{1,3}$")
+
     # Regla C: numero suelto con coma de miles que NO empieza con un digito espurio
     # valido -- aqui no hay ambiguedad posible con un "$" corrompido, se lee completo.
     # El formato "N,NNN" ya es una senal fuerte por si solo (SKUs/codigos de barra que
@@ -1293,6 +1306,11 @@ class RegexExtractor:
             if any(abs(entero - r) < 0.01
                    for r in self._restas_antes_ahorro(bbox, bloques_pagina, factor_escala)):
                 return entero
+
+        # Regla A2-miles: va antes de A2, que leeria "52,49000" como $2.49 (ver constante)
+        m = self.PATRON_DIGITO_ESPURIO_MILES_SUPERINDICE.match(texto)
+        if m:
+            return self._parsear_numero(m.group(1))
 
         # Regla A2: digito espurio + numero que ya trae su propio punto decimal
         # (ej. "824.95k6" -> $24.95). El decimal explicito ya es una senal tan fuerte
