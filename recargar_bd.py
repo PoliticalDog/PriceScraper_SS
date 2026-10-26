@@ -4,7 +4,8 @@
 #   python recargar_bd.py respaldo               pg_dump de la BD + tar.gz de los nlp_resultado.json
 #   python recargar_bd.py nlp                    reprocesa el NLP de los folletos de produccion (forzar=True)
 #   python recargar_bd.py load                   recarga forzada: Loader().cargar_batch(forzar=True)
-#   python recargar_bd.py todo                   verificar antes -> respaldo -> nlp -> load -> verificar despues
+#   python recargar_bd.py limpiar                borra los productos_canonicos que ya no usa ninguna extraccion
+#   python recargar_bd.py todo                   verificar antes -> respaldo -> nlp -> load -> limpiar -> verificar despues
 #
 # El reproceso NLP hace falta cuando cambia nlp/: load lee nlp_resultado.json, no el codigo del NLP. Si solo cambia
 # load/, basta con el paso load. Los respaldos van a la carpeta padre del repo (--respaldos) y NUNCA a git.
@@ -128,9 +129,25 @@ def load():
     return totales.get("errores", 0)
 
 
+def limpiar():
+    """Borra los productos_canonicos que ya no usa ninguna extraccion. La recarga reemplaza las extracciones de cada
+    folleto, pero load solo hace upsert en productos_canonicos y los nombres que dejan de salir se quedan ahi (el
+    26-oct-2026 eran 16,973 de 91,224). Nada lee sus aliases de la BD: el normalizador usa el catalogo en codigo."""
+    from load.db_builder import get_connection
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""DELETE FROM productos_canonicos pc
+                           WHERE NOT EXISTS (SELECT 1 FROM extracciones e WHERE e.producto_canonico_id = pc.id)""")
+            borrados = cur.rowcount
+            cur.execute("SELECT count(*) AS n FROM productos_canonicos")
+            quedan = cur.fetchone()["n"]
+        conn.commit()
+    print(f"[recarga] limpiar: {borrados:,} productos_canonicos huerfanos borrados; quedan {quedan:,}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Recarga completa de la BD (ver el encabezado del archivo)")
-    ap.add_argument("paso", choices=["verificar", "respaldo", "nlp", "load", "todo"])
+    ap.add_argument("paso", choices=["verificar", "respaldo", "nlp", "load", "limpiar", "todo"])
     ap.add_argument("etiqueta", nargs="?", default="manual", help="para verificar: antes / despues / ...")
     ap.add_argument("--respaldos", default=str(REPO.parent), help="carpeta de los respaldos (fuera del repo)")
     ap.add_argument("--si", action="store_true", help="no pedir confirmacion en 'todo'")
@@ -145,6 +162,8 @@ def main():
         nlp()
     elif a.paso == "load":
         load()
+    elif a.paso == "limpiar":
+        limpiar()
     else:
         if not a.si and input("Se reprocesa el NLP y se REEMPLAZAN los datos de la BD. ¿Continuar? (s/n): ").strip().lower() != "s":
             return
@@ -153,6 +172,7 @@ def main():
         if nlp():
             sys.exit("[recarga] hubo errores en el NLP: revisa antes de cargar (la BD no se toco)")
         load()
+        limpiar()
         verificar("despues")
         print("[recarga] compara las dos verificaciones de data/recargas/ antes de dar la recarga por buena")
 

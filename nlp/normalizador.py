@@ -187,6 +187,23 @@ MARCAS_CONOCIDAS = {
     # Ropa
     "simply basico", "simply básico", "george", "op brand",
 }
+# Bordes de la marca (26-oct-2026; antes era subcadena: "ace" en "Aceite", "sol" en "solo", "lg" en "algodon", "roma"
+# en "aroma": 5,385 PRODUCTO de produccion con marca falsa). Mismo criterio que catalogo_productos:
+#  - marcas de <= 4 letras y palabras comunes: palabra completa (se permite un numero pegado: "LG55", "Lala1L")
+#  - las demas no empiezan a mitad de palabra salvo una letra basura del OCR ("CMaruchan") y pueden llevar algo
+#    pegado al final ("Pinols", "ARIEL1.8", "Colgateo" con el (R) leido "o")
+_LETRA_MARCA = "a-záéíóúñü"
+_MARCA_PALABRA_COMPLETA = {"modelo"}
+
+
+def _patron_marca(m: str) -> re.Pattern:
+    if len(m) <= 4 or m in _MARCA_PALABRA_COMPLETA:
+        return re.compile(rf"(?<![{_LETRA_MARCA}]){re.escape(m)}(?![{_LETRA_MARCA}])")
+    return re.compile(rf"(?:(?<![{_LETRA_MARCA}])|(?<=^[{_LETRA_MARCA}])|(?<=[^{_LETRA_MARCA}][{_LETRA_MARCA}])){re.escape(m)}")
+
+
+# Mas largas primero ("hamilton beach" antes que una marca contenida en ella)
+_PATRONES_MARCA_CONOCIDA = [(m, _patron_marca(m)) for m in sorted(MARCAS_CONOCIDAS, key=len, reverse=True)]
 
 
 
@@ -490,9 +507,10 @@ class Normalizador:
         return True
 
     def _extraer_marca(self, texto: str) -> Optional[str]:
+        # Con borde (ver _patron_marca): como subcadena, "ace" salia en "Aceite vegetal" y "sol" en "solo"
         texto_lower = texto.lower()
-        for marca in sorted(MARCAS_CONOCIDAS, key=len, reverse=True):
-            if marca in texto_lower:
+        for marca, patron in _PATRONES_MARCA_CONOCIDA:
+            if patron.search(texto_lower):
                 return marca.title()
         return None
     

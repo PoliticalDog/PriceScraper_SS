@@ -402,6 +402,11 @@ CATALOGO = {
 #  - las de _PALABRA_COMPLETA tampoco pueden terminar a mitad de palabra ("regio" no atrapa "REGIONAL")
 _LETRA = "a-záéíóúñü"
 _PALABRA_COMPLETA = {"regio"}
+# Palabras reales que contienen una keyword tras su primera letra y caian por la tolerancia de "letra basura al
+# inicio" ("Apollo" -> pollo, "operativo" -> pera, "toreo" -> oreo, "soledad" -> oled, "apapacho" -> papa).
+# Medido el 26-oct-2026 en produccion (tests/_herramienta_doc_letra_inicial.py): la tolerancia acierta en la
+# mayoria de sus 680 casos ("ycerdo", "cqueso", "osalchicha"), asi que se excluyen estas palabras y no la regla.
+_NO_SON_PRODUCTO = re.compile(r"\b(?:apollo|operativos?|operaciones|toreo|costeras?|soledad|apapachos?)\b")
 
 
 # Patrones de una lista del catálogo ("keywords" o "marcas"), más largas primero
@@ -430,7 +435,7 @@ _PATRONES_MARCA = _compilar_patrones("marcas")
 # Busca similitud de texto con catalogo de categorías y keywords
 # (True, nombre_categoria, es_atributo) si hay match (False, "", False) si no hay match
 def buscar_categoria(texto: str) -> tuple[bool, str, bool]: # # Retorna (encontrado, nombre_categoria, es_atributo)
-    texto_lower = texto.lower()
+    texto_lower = _NO_SON_PRODUCTO.sub(" ", texto.lower())
     for _, clave, nombre, patron in _PATRONES:
         if patron.search(texto_lower):
             return True, nombre, clave == "atributos_tecnicos"
