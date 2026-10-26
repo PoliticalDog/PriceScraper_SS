@@ -26,7 +26,7 @@ urlpatterns = [
     path("api/resumen", views.api_resumen),
     path("api/precios", views.api_precios),
     path("api/comparativa", views.api_comparativa),
-    path("api/comparativa/<str:producto>/por-tienda", views.api_comparativa_por_tienda),
+    path("api/comparativa/<path:producto>/por-tienda", views.api_comparativa_por_tienda),  # path: el nombre puede traer "/"
     path("api/historico", views.api_historico),
     path("api/productos/sugerencias", views.api_productos_sugerencias),
     path("api/calidad", views.api_calidad),

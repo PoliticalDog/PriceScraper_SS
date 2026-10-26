@@ -143,7 +143,8 @@ def api_comparativa(request):
 
 def api_comparativa_por_tienda(request, producto):
     return JsonResponse(
-        queries.comparativa_por_tienda(producto, con_categoria=_con_categoria(request)), safe=False
+        queries.comparativa_por_tienda(producto, con_categoria=_con_categoria(request),
+                                       categoria=request.GET.get("categoria")), safe=False
     )
 
 

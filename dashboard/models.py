@@ -140,21 +140,6 @@ class EventoPromo(models.Model):
         db_table = "eventos_promo"
 
 
-class Alerta(models.Model):
-    tienda = models.ForeignKey(
-        Tienda, on_delete=models.DO_NOTHING, db_column="tienda_id",
-        null=True, blank=True, related_name="alertas",
-    )
-    slug_producto = models.CharField(max_length=200)
-    umbral_precio = models.FloatField()
-    activa = models.BooleanField(default=True)
-    disparada_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField()
-
-    class Meta:
-        managed = False
-        db_table = "alertas"
-
 
 class ErrorCarga(models.Model):
     # Sin FK a folletos/tiendas a proposito (ver schema.sql): si falla el folleto
@@ -293,16 +278,3 @@ class VFolletosVigencia(models.Model):
         managed = False
         db_table = "v_folletos_vigencia"
 
-
-class VEventosActivos(models.Model):
-    id = models.IntegerField(primary_key=True)
-    nombre_evento = models.CharField(max_length=100)
-    tienda = models.CharField(max_length=100)
-    fecha_inicio = models.DateField(null=True)
-    fecha_fin = models.DateField(null=True)
-    texto_raw = models.CharField(max_length=200, null=True)
-    num_precios_asociados = models.IntegerField()
-
-    class Meta:
-        managed = False
-        db_table = "v_eventos_activos"

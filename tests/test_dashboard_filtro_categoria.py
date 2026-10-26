@@ -174,4 +174,26 @@ def test_api_resumen_y_detalle_comparativa(monkeypatch):
     views.api_comparativa_por_tienda(rf.get("/api/comparativa/leche/por-tienda?con_categoria=si"), "leche")
     assert recibido["kpis"] == {"con_categoria": "no", "folleto": None}
     assert recibido["top"] == {"con_categoria": "no", "folleto": None}
-    assert recibido["detalle"] == ("leche", {"con_categoria": "si"})
+    assert recibido["detalle"] == ("leche", {"con_categoria": "si", "categoria": None})
+
+
+# -- Detalle por tienda: categoria del grupo y nombres con "/" (26-oct-2026) ----------------------------------------
+
+def test_detalle_comparativa_filtra_por_la_categoria_del_grupo():
+    def where(**k):
+        return _espacios(str(queries.qs_precios_del_grupo("Leche", **k).query)).split(" WHERE ", 1)[1]
+    sin, con, vacia = where(), where(categoria="alimentos"), where(categoria="")
+    assert '"texto_norm" = Leche' in sin and "categoria_nlp" not in sin
+    assert '"categoria_nlp" = alimentos' in con
+    assert '"categoria_nlp" IS NULL' in vacia and "OR" in vacia
+
+
+def test_api_detalle_pasa_la_categoria_y_acepta_barra_en_el_nombre(monkeypatch):
+    from django.urls import resolve
+    recibido = {}
+    monkeypatch.setattr(queries, "comparativa_por_tienda",
+                        lambda producto, **k: recibido.setdefault("detalle", (producto, k)) and [])
+    coincidencia = resolve("/api/comparativa/Leche 1/2 L/por-tienda")
+    assert coincidencia.kwargs == {"producto": "Leche 1/2 L"}
+    views.api_comparativa_por_tienda(rf.get("/x?categoria="), "Leche 1/2 L")
+    assert recibido["detalle"] == ("Leche 1/2 L", {"con_categoria": None, "categoria": ""})

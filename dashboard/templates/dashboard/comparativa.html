@@ -69,10 +69,12 @@ let conCategoriaTabla = "";
 // Folleto con el que se cargo la tabla: el detalle NO se filtra por el (quedaria una sola tienda), solo resalta sus filas.
 let folletoTabla = "";
 
-async function cargarGraficoProducto(producto) {
+async function cargarGraficoProducto(producto, categoria) {
   document.getElementById("tituloGrafico").textContent = `Precio por tienda: ${producto}`;  // textContent: sin HTML
   const datos = await fetchJSON(
-    `/api/comparativa/${encodeURIComponent(producto)}/por-tienda${qs({ con_categoria: conCategoriaTabla })}`);
+    `/api/comparativa/${encodeURIComponent(producto)}/por-tienda${qs({ con_categoria: conCategoriaTabla })}`
+      // categoria del grupo (26-oct-2026); "" = grupo sin categoria. qs() omite vacios, por eso va aparte
+      + `${conCategoriaTabla ? "&" : "?"}categoria=${encodeURIComponent(categoria ?? "")}`);
   renderChart("chartPorTienda", {
     type: "bar",
     data: {
@@ -124,7 +126,7 @@ async function cargarTabla() {
 
   $("#tablaComparativa tbody").off("click").on("click", "tr", function () {
     const fila = tabla.row(this).data();
-    if (fila) cargarGraficoProducto(fila.producto);
+    if (fila) cargarGraficoProducto(fila.producto, fila.categoria);
   });
 }
 

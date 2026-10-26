@@ -371,7 +371,22 @@ def _registros_del_grupo():
     )
 
 
-def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None) -> list[dict]:
+def qs_precios_del_grupo(producto: str, con_categoria: Optional[str] = None, categoria: Optional[str] = None):
+    """PRECIO del grupo (texto_norm, categoria_nlp) de v_comparativa_precios. 26-oct-2026: sin la categoria el detalle
+    mezclaba dos grupos con el mismo nombre. categoria None = sin filtro (llamadas viejas); "" = el grupo sin categoria."""
+    qs = filtrar_con_categoria(
+        Extraccion.objects.filter(tipo="PRECIO", valor__isnull=False, texto_norm=producto),
+        con_categoria, "categoria_nlp",
+    )
+    if categoria is None:
+        return qs
+    if categoria == "":
+        return qs.filter(Q(categoria_nlp__isnull=True) | Q(categoria_nlp=""))
+    return qs.filter(categoria_nlp=categoria)
+
+
+def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None,
+                           categoria: Optional[str] = None) -> list[dict]:
     # Folleto (14-oct-2026): el detalle NO se filtra por folleto (quedaria una sola tienda y no habria que comparar);
     # la pagina marca las filas del folleto filtrado.
     # Mismo motivo que resumen_folletos_por_tienda(): "tienda" colisiona con
@@ -379,12 +394,8 @@ def comparativa_por_tienda(producto: str, con_categoria: Optional[str] = None) -
     # 13-oct-2026: + vigencia y procedencia (folleto/pagina) por registro para el detalle por tienda.
     # Mismo filtro que v_comparativa_precios (texto_norm no nulo queda implicito en texto_norm=producto).
     # 14-oct-2026: el detalle respeta el filtro con/sin categoria de la tabla (sin filtro, igual que antes).
-    qs = filtrar_con_categoria(
-        Extraccion.objects.filter(tipo="PRECIO", valor__isnull=False, texto_norm=producto),
-        con_categoria, "categoria_nlp",
-    )
     qs = (
-        qs
+        qs_precios_del_grupo(producto, con_categoria, categoria)
         .values(
             "id", "tienda__nombre", "valor", "folleto__fecha_inicio", "folleto__fecha_fin",
             "pagina_id", "pagina__numero_pagina", "folleto_id", "folleto__folleto_id_fuente",
