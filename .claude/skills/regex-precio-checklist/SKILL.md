@@ -9,7 +9,7 @@ Este archivo tiene un historial largo de reglas confirmadas empíricamente contr
 
 ## Antes de cambiar una regla
 
-1. Correr `venv/Scripts/python.exe evaluar_nlp.py` (ver skill `evaluar-calidad-nlp`) y guardar la tabla por tienda como baseline antes de tocar nada.
+1. Correr la base del evaluador de registros, `venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria`, y anotar la ruta de la corrida (skill `ciclo-experimento`). Si quieres además el recall por bloque, `venv/Scripts/python.exe probar_evaluar_nlp.py` (antes `evaluar_nlp.py`; skill `evaluar-calidad-nlp`).
 2. Leer los comentarios existentes alrededor de la regla que se va a tocar — casi siempre documentan CONTRA QUÉ imagen/tienda real se validó y POR QUÉ tiene la forma que tiene (ej. por qué la Regla B de `_extraer_precio_sin_simbolo` exige contexto fuerte cerca). No asumir que una restricción es arbitraria sin leer el comentario primero.
 
 ## Al cambiar
@@ -20,6 +20,6 @@ Este archivo tiene un historial largo de reglas confirmadas empíricamente contr
 
 ## Después de cambiar
 
-1. Volver a correr `venv/Scripts/python.exe evaluar_nlp.py`.
-2. Comparar contra el baseline: el recall de precio (o producto) debe subir SIN que baje el recall de las tiendas que ya estaban altas (ej. costco, chedraui, la_comer). Si alguna tienda que antes iba bien ahora baja, es señal de que la regla nueva está capturando falsos positivos en otro lado (ej. tratando un SKU o una cantidad como si fuera un precio).
+1. Volver a correr la misma corrida del evaluador y comparar: `venv/Scripts/python.exe -m evaluador comparar <base.json> <nueva.json> --casos`. Además, mide el efecto en producción (precios creados, perdidos y cambiados por tienda) con un script de solo lectura, y revisa una muestra contra la imagen.
+2. Comparar contra el baseline: precisión y recall deben subir (o la precisión subir sin que baje el recall) SIN regresiones en las tiendas que ya estaban altas (ej. costco, chedraui, la_comer). Si alguna tienda que antes iba bien ahora baja, es señal de que la regla nueva está capturando falsos positivos en otro lado (ej. tratando un SKU o una cantidad como si fuera un precio).
 3. Si hay dudas sobre un caso específico, revisar `data/processed/_evaluacion_nlp/reporte.json` → `fallos_precio` / `fallos_producto` para ver casos concretos con tienda/folleto/página y decidir si el ajuste realmente aplica ahí.

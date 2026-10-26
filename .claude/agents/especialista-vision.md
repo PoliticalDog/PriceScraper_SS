@@ -64,7 +64,9 @@ archivos de vision, asi que al editar region_detector.py la cache se invalida so
 
 ## Lo que ya se sabe
 
-- Base dev: precision de registros completos ~3.8%, recall ~3.5%. El error dominante es la asociacion de producto.
+- Base dev al 26-oct-2026 (corrida `20261026_115424_398c4e4_dev.json`): precision de registros completos 33.1%,
+  recall 24.7%, F1 28.3% (al 11-oct era ~3.8% / ~3.5%). Error de registro mas comun: `precio_mal_leido` (321),
+  seguido de `asociacion_producto` (287) y `precio_huerfano` (133). Corre siempre tu propia base.
 - La persona observo casillas con varios productos juntos (cuadros de frutas, cajas apiladas) donde el nombre de uno queda con
   el precio de otro, y ofertas solo con foto + precio sin nombre. Una casilla bien delimitada podria corregir la asociacion.
 - Hipotesis naturales: ampliar ROI a tiendas con cuadricula (medir por tienda: alsuper, s-mart y tiendas_3b tienen mucho

@@ -39,8 +39,11 @@ El evaluador corre todo esto en memoria con `--nlp memoria`, sin escribir nada.
 
 ## Lo que ya se sabe (validacion humana 11-oct-2026 y linea base)
 
-- Base dev: precision de registros completos ~3.8%, recall ~3.5%. Precios y "antes" se leen bien;
-  el cuello de botella es el producto (`asociacion_producto` es el error de registro mas comun junto con precios huerfanos).
+- Base dev al 26-oct-2026 (corrida `20261026_115424_398c4e4_dev.json`): precision de registros completos 33.1%,
+  recall 24.7%, F1 28.3% (al 11-oct era ~3.8% / ~3.5%). Error de registro mas comun: `precio_mal_leido` (321),
+  seguido de `asociacion_producto` (287) y `precio_huerfano` (133). Corre siempre tu propia base.
+- Al 11-oct el cuello de botella era el producto; desde entonces se agregaron el nombre en pila (caed57a) y las reglas
+  de precio de octubre (ver `md_modulos_leeme/03_nlp.md` y `05_load.md`).
 - Patrones observados por la persona:
   1. Se asocia una linea de ATRIBUTO en vez del nombre: "TALLA: 4-14", "6 menus automaticos", "Baja en calorias 4 Kg".
   2. El normalizador convierte eso en un producto inventado por fuzzy: talla->toallitas humedas, gises->acondicionador,

@@ -144,3 +144,23 @@ def test_ocr_experimental_solo_vision_y_qa():
     assert corre("producto", cmd)
     assert corre("vision", "venv/Scripts/python.exe -m evaluador correr --ocr-exp base_heb --tienda heb") is None
     assert corre("vision", "python probar_vision.py")
+
+
+# -- 26-oct-2026: recargar_bd.py y el modulo de tolerancias del juez ------------------------------------------------
+
+@pytest.mark.parametrize("rol", ["producto", "vision", "qa", "bi"])
+def test_recargar_bd_prohibido(rol):
+    for comando in ("venv/Scripts/python.exe recargar_bd.py todo --si", "python recargar_bd.py limpiar",
+                    'python -c "import recargar_bd; recargar_bd.load()"'):
+        assert corre(rol, comando)
+
+
+@pytest.mark.parametrize("rol", ["producto", "vision", "qa", "bi"])
+def test_evaluador_calidad_protegido(rol):
+    assert edita(rol, "nlp/evaluador_calidad.py")
+    assert corre(rol, "sed -i 's/0.01/0.5/' nlp/evaluador_calidad.py")
+
+
+def test_producto_sigue_editando_el_resto_de_nlp():
+    assert edita("producto", "nlp/regex_extractor.py") is None
+    assert corre("producto", 'venv/Scripts/python.exe -c "from nlp.evaluador_calidad import TOLERANCIA_PRECIO"') is None

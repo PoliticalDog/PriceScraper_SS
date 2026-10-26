@@ -80,8 +80,9 @@ Siguiente hipotesis sugerida: ...
    El commit y la recarga de la BD los decide la persona.
 5. Con RECHAZAR, se revierte el cambio y la siguiente hipotesis parte del reporte.
 
-Corrida base vigente (dev, nlp memoria, commit afccff2): `data/processed/_eval/runs/20261011_162211_afccff2_dev.json`
-(precision 3.8%, recall 3.5%, F1 3.6%).
+Corrida base de referencia (dev, nlp memoria, commit 398c4e4, 26-oct-2026): `data/processed/_eval/runs/20261026_115424_398c4e4_dev.json`
+(precision 33.1%, recall 24.7%, F1 28.3%). Igual corre tu propia base antes de editar: el codigo puede haber cambiado.
+La primera base (11-oct-2026, afccff2) daba F1 3.6%; la evolucion esta en `md_modulos_leeme/06_evaluador.md`.
 
 ## Lo que esta prohibido (lo bloquea la guardia de agentes)
 

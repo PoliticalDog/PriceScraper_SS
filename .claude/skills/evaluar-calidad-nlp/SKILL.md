@@ -1,6 +1,6 @@
 ---
 name: evaluar-calidad-nlp
-description: Corre evaluar_nlp.py (comparación OCR+NLP vs el dataset de etiquetado manual de tiendeo) e interpreta los resultados separando causa raíz -- fallo de OCR, fallo de clasificación NLP, o pérdida real de dígitos por tipografía. Usar cuando el usuario pida evaluar, medir, o revisar la calidad/recall del pipeline OCR+NLP de PriceScraper MX, o comparar contra el dataset manual.
+description: Corre probar_evaluar_nlp.py (antes evaluar_nlp.py; comparación OCR+NLP vs el dataset de etiquetado manual de tiendeo) e interpreta los resultados separando causa raíz -- fallo de OCR, fallo de clasificación NLP, o pérdida real de dígitos por tipografía. Usar cuando el usuario pida evaluar, medir, o revisar la calidad/recall del pipeline OCR+NLP de PriceScraper MX, o comparar contra el dataset manual.
 ---
 
 # Evaluación de calidad OCR+NLP (tiendeo)
@@ -8,8 +8,10 @@ description: Corre evaluar_nlp.py (comparación OCR+NLP vs el dataset de etiquet
 ## Correr
 
 ```
-venv/Scripts/python.exe evaluar_nlp.py
+venv/Scripts/python.exe probar_evaluar_nlp.py
 ```
+
+Se llamaba `evaluar_nlp.py` hasta el 3-oct-2026 (commit 842ccf5). Mide el recall por bloque (¿el OCR/NLP vio este producto o precio?), no el registro que muestra el dashboard. Para decidir si un cambio se queda, el juez es el evaluador de registros: `venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria` (skill `ciclo-experimento`, `md_modulos_leeme/06_evaluador.md`).
 
 Es idempotente y rápido (solo lee JSON ya generados en `data/processed/`, no reprocesa OCR/NLP). Guarda detalle completo (incluye cada caso fallido individual, no solo agregados) en `data/processed/_evaluacion_nlp/reporte.json`.
 

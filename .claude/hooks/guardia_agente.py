@@ -39,10 +39,12 @@ EDITABLE = {
 # Unica puerta a la BD para leer (BI y QA): valida que sea SELECT y usa el rol de solo lectura
 CONSULTA_RO = re.compile(r"\.claude[/\\]skills[/\\]consulta-analitica[/\\]consulta\.py\b")
 # Dentro de lo editable, igual protegido
+# nlp/evaluador_calidad.py (26-oct-2026): el evaluador importa de ahi TOLERANCIA_PRECIO y tokens_significativos, pero no
+# esta en el sello y el especialista de producto edita nlp/: sin esto podia cambiar al juez sin invalidar la corrida
 PROTEGIDO = ("evaluador/", "data/", ".claude/", "tests/test_evaluador.py", "tests/conftest.py",
-             "load/schema.sql", "load/vistas.sql")
+             "load/schema.sql", "load/vistas.sql", "nlp/evaluador_calidad.py")
 # Fragmentos que, mencionados en un comando de shell que escribe, delatan una ruta protegida
-FRAGMENTOS_PROTEGIDOS = ("evaluador/", "evaluador\\", "_revision_manual", ".claude", "splits.json", "manifest.json",
+FRAGMENTOS_PROTEGIDOS = ("evaluador/", "evaluador\\", "evaluador_calidad", "_revision_manual", ".claude", "splits.json", "manifest.json",
                          "test_evaluador", "conftest", "schema.sql", "vistas.sql", "data/processed", "data\\processed")
 MARCAS_ESCRITURA = re.compile(
     r"(>|\btee\b|\bsed\s+-i|\brm\b|\bmv\b|\bcp\b|\btruncate\b|\bunlink\b|\bmkdir\b|\btouch\b|\bchmod\b"
@@ -52,7 +54,8 @@ MARCAS_ESCRITURA = re.compile(
 PROHIBIDOS = [
     (r"\bgit\s+(commit|push|reset|checkout|restore|stash|clean|rebase|merge|add|rm|mv|tag|branch\s+-[dD]|switch|cherry-pick|revert|am|apply)\b",
      "Los agentes no cambian el arbol de git ni hacen commits/push: eso lo aprueba la persona."),
-    (r"\bload[/\\.]load\b|\bload\.py\b|probar_load|db_builder|\bpsql\b|pg_restore|pg_dump|createdb|dropdb"
+    # recargar_bd (26-oct-2026): respalda, reprocesa el NLP, recarga y limpia la BD; lo corre la persona
+    (r"\bload[/\\.]load\b|\bload\.py\b|probar_load|db_builder|recargar_bd|\bpsql\b|pg_restore|pg_dump|createdb|dropdb"
      r"|manage\.py\s+(migrate|flush|loaddata|sqlflush|dbshell)",
      "Los agentes no tocan la BD (ni recarga ni consultas directas): usa el evaluador, que construye los registros en memoria."),
     (r"\b(DROP|TRUNCATE|ALTER)\s+(TABLE|VIEW|SCHEMA|DATABASE)\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b",
