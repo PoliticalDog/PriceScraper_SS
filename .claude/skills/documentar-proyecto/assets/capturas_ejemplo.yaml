@@ -1,0 +1,34 @@
+# Ejemplo comentado del YAML de capturas (la lista real vive en docs/manual_usuario/capturas.yaml).
+
+ventana:              # tamano de la pantalla simulada
+  ancho: 1440
+  alto: 900
+  escala: 1.5         # 1.5 = texto nitido en el Word (las imagenes se insertan a 144 ppp)
+espera_graficas_ms: 1200   # pausa tras cargar, para las animaciones de Chart.js y DataTables
+
+capturas:
+  - archivo: resumen_kpis.png       # nombre del PNG; se cita en el .md como capturas/resumen_kpis.png
+    url: /                          # ruta del dashboard
+    esperar: "#kpis .card"          # selector que indica que la pagina ya cargo los datos
+    recorte: auto                   # auto (por defecto con anotaciones: encierra todas), "ventana", "pagina" o un selector
+    margen: 16                      # px alrededor del recorte
+    anotaciones:                    # se numeran en orden: 1, 2, 3...
+      - selector: "#kpis"
+        etiqueta: "Indicadores principales"
+      - selector: "#fFolleto"
+        etiqueta: "Filtro de folleto"
+        color: "#2a78d6"            # opcional; si no, se toma de una paleta fija
+
+  - archivo: origen_pestana_precios.png
+    url: /origen/pagina/64943
+    esperar: "#imgPagina"
+    acciones:                       # se ejecutan en orden antes de anotar
+      - clic: "[data-bs-target='#tabPrecios']"
+      - esperar: "#tablaPrecios tr"
+      - clic: "#tablaPrecios tr:nth-child(2)"
+      - esperar_ms: 800
+      # tambien: - escribir: {selector: "#fBusqueda", texto: "leche"}
+      #          - seleccionar: {selector: "#fConCategoria", valor: "si"}
+    anotaciones:
+      - selector: "#tabPrecios"
+        etiqueta: "Pares precio-producto de la pagina"

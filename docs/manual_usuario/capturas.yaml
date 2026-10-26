@@ -1,0 +1,47 @@
+# Capturas del manual de usuario (skill documentar-proyecto, scripts/capturas_dashboard.py).
+# Formato comentado en .claude/skills/documentar-proyecto/assets/capturas_ejemplo.yaml.
+# Los id de pagina cambian con cada recarga de la BD: si una captura del visor falla, busca otra pagina con precios.
+
+ventana:
+  ancho: 1440
+  alto: 900
+  escala: 1.5
+espera_graficas_ms: 1500
+
+capturas:
+  - archivo: resumen_general.png
+    url: /
+    esperar: "#kpis .kpi-card"
+    anotaciones:
+      - selector: ".filtros-card"
+        etiqueta: "Filtros"
+      - selector: "#kpis"
+        etiqueta: "Indicadores principales"
+      - selector: "#chartCategorias"
+        etiqueta: "Top 10 categorías"
+
+  - archivo: comparativa_tabla.png
+    url: /comparativa
+    esperar: "#tablaComparativa tbody tr"
+    anotaciones:
+      - selector: "#fMinTiendas"
+        etiqueta: "Mínimo de tiendas"
+      - selector: "#tablaComparativa"
+        etiqueta: "Productos con precio en varias tiendas"
+
+  - archivo: origen_pestana_precios.png
+    url: /origen/pagina/92831
+    esperar: "#imgPagina"
+    acciones:
+      - clic: "[data-bs-target='#tabPrecios']"
+      - esperar: "#tablaPrecios tr"
+      - clic: "#tablaPrecios tr:nth-child(2)"
+      - esperar: "#tarjetaRegistro:not(.d-none)"
+      - esperar_ms: 1000
+    anotaciones:
+      - selector: "#imgPagina"
+        etiqueta: "Página del folleto con las cajas"
+      - selector: "#tablaPrecios"
+        etiqueta: "Pares precio-producto"
+      - selector: "#tarjetaRegistro"
+        etiqueta: "Registro seleccionado"
