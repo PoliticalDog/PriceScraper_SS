@@ -1,18 +1,26 @@
-# Estructura del manual tecnico
+# Estructura de la documentacion tecnica
 
-Un archivo por modulo en `docs/manual_tecnico/`, numerado en el orden del pipeline. El lector quiere saber como esta hecho cada modulo, que entra y que sale, y por que se decidio asi, para cambiarlo sin romper lo que ya se valido.
+Un archivo por modulo en `md_modulos_leeme/`, numerado en el orden del pipeline, mas un `README.md` que sirve de indice para quien clona el repo. El lector quiere saber como esta hecho cada modulo, que entra y que sale, y por que se decidio asi, para cambiarlo sin romper lo que ya se valido.
 
-| Archivo | Capitulo |
-|---|---|
-| `00_arquitectura.md` | Vision general: el pipeline, el datalake (`data/raw` → `data/processed`), los modulos y como se conectan, el stack real (verificado en `requirements.txt`, que esta en UTF-16) |
-| `01_scraper.md` | Web scraping (Tiendeo, Ofertomat) |
-| `02_vision.md` | Preprocesamiento, OCR y deteccion de regiones |
-| `03_nlp.md` | Clasificacion de bloques, reglas de precio, normalizador y catalogo |
-| `04_load.md` | Asociacion producto-precio, carga a PostgreSQL, recargas |
-| `05_base_de_datos.md` | Esquema, vistas, cadenas, respaldos |
-| `06_evaluador.md` | Ground truth, splits, metricas, como medir un cambio |
-| `07_dashboard.md` | Django, paginas, APIs, consultas, metricas BI |
-| `08_flujo_con_agentes.md` | Skills, especialistas, QA, guardia de agentes, Engram |
+## Como encaja en el documento de la persona
+
+La documentacion tecnica es un entregable separado que parte de su `Propuesta_PriceScraper_SS.docx` (raiz del repo, fuera de git). Ese documento ya tiene: Capitulo 1 (introduccion, objetivos, justificacion, marco teorico, estado del arte), Capitulo 2 (productos esperados, metodologia, cronograma, stack propuesto, riesgos, metricas de exito), Capitulo 3 (arquitectura y modelo de BD) y Capitulo 4 (desarrollo: modulos web scraping y vision, NLP incompleto). Los capitulos 1 y 2 son redaccion suya: no se reescriben, solo se le avisa si algo quedo desactualizado (por ejemplo, el stack propuesto contra el real, o las metricas de exito contra los resultados).
+
+| Archivo | Borrador | Donde va en su documento |
+|---|---|---|
+| `00_arquitectura.md` | `borrador_00_arquitectura.docx` | Capitulo 3 · Arquitectura del sistema: el pipeline, el datalake (`data/raw` → `data/processed`), los modulos y el stack real (verificado en `requirements.txt`, que esta en UTF-16) |
+| `05_base_de_datos.md` | `borrador_05_base_de_datos.docx` | Capitulo 3 · Modelo de base de datos (reemplaza el modelo de 5 tablas de la propuesta) |
+| `01_scraper.md` | `borrador_01_scraper.docx` | Capitulo 4 · Modulo Web Scraping (actualiza lo que ya tiene) |
+| `02_vision.md` | `borrador_02_vision.docx` | Capitulo 4 · Modulo Vision (actualiza lo que ya tiene) |
+| `03_nlp.md` | `borrador_03_nlp.docx` | Capitulo 4 · Modulo NLP |
+| `04_load.md` | `borrador_04_load.docx` | Capitulo 4 · Modulo de carga (ETL) |
+| `06_evaluador.md` | `borrador_06_evaluador.docx` | Capitulo 4 · Evaluacion de calidad |
+| `07_dashboard.md` | `borrador_07_dashboard.docx` | Capitulo 4 · Dashboard y BI |
+| `08_flujo_con_agentes.md` | `borrador_08_flujo_con_agentes.docx` | Capitulo 4 · Desarrollo asistido por agentes |
+
+Tabla: archivo del repo, borrador y su lugar en el documento tecnico de la persona. Los borradores van en `docs/entregables/documentacion_tecnica/`.
+
+Para los modulos que su documento ya cubre (scraper, vision), el `.md` se escribe completo igual, y al entregar el borrador se le dice que secciones de su texto actual siguen vigentes y cuales cambiaron.
 
 ## Plantilla de cada modulo
 

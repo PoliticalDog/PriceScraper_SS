@@ -13,14 +13,23 @@ Mapeo (convenciones en SKILL.md):
     > cita              -> Normal en cursiva con sangria
     **negrita**, *cursiva*, `codigo`, [texto](url)
 
+Dos modos:
+  - Borrador de capitulo (--capitulo): sin portada ni indices; los titulos bajan un nivel para pegarse dentro de
+    un capitulo del documento de la persona (# -> Titulo_punteado nivel 1, ## -> nivel 2...). Arriba lleva una
+    nota con el .md y el commit de origen, y --registro anota que version se entrego (para saber despues que cambio).
+  - Documento completo (sin --capitulo): portada (--portada), indices y un capitulo por cada `#`.
+
 Uso (desde la raiz del repo):
-    venv/Scripts/python.exe .claude/skills/documentar-proyecto/scripts/md_a_docx.py \
-        --portada docs/manual_tecnico/portada.yaml --salida docs/entregables/manual_tecnico.docx docs/manual_tecnico/0*.md
+    venv/Scripts/python.exe .claude/skills/documentar-proyecto/scripts/md_a_docx.py --capitulo \
+        --registro docs/entregables/registro_borradores.yaml \
+        --salida docs/entregables/documentacion_tecnica/borrador_03_nlp.docx md_modulos_leeme/03_nlp.md
 """
 import argparse
 import re
+import subprocess
 import sys
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 import docx
@@ -162,6 +171,13 @@ class Escritor:
         self.primer_capitulo = True
         self.lista_numerada = None
         self.avisos = []
+        self.desplazar_titulos = False      # borrador de capitulo: "#" es una seccion, no un capitulo
+
+    def nota_origen(self, texto):
+        p = self.doc.add_paragraph(style="Normal")
+        r = p.add_run(texto)
+        r.italic = True
+        r.font.size = Pt(8)
 
     def texto_inline(self, parrafo, texto: str, tam=None):
         for trozo in RE_INLINE.split(texto):
@@ -350,7 +366,9 @@ def convertir(escritor: Escritor, ruta_md: Path):
             cerrar_parrafo()
             escritor.lista_numerada = None
             nivel = len(m_h.group(1))
-            if nivel == 1:
+            if escritor.desplazar_titulos:
+                escritor.titulo(m_h.group(2), min(nivel - 1, 2))
+            elif nivel == 1:
                 escritor.capitulo(m_h.group(2))
             else:
                 escritor.titulo(m_h.group(2), nivel - 2)
@@ -408,12 +426,37 @@ def convertir(escritor: Escritor, ruta_md: Path):
     cerrar_parrafo()
 
 
+def origen_git(ruta: Path) -> str:
+    """Commit corto de HEAD y si el .md tiene cambios sin commit (el borrador no corresponde a ningun commit)."""
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                                check=True).stdout.strip()
+        sucio = subprocess.run(["git", "status", "--porcelain", "--", str(ruta)], capture_output=True, text=True,
+                               check=True).stdout.strip()
+        return commit + (" + cambios sin commit" if sucio else "")
+    except Exception:
+        return "sin git"
+
+
+def registrar(registro: Path, salida: Path, fuentes: list[Path], commit: str):
+    datos = yaml.safe_load(registro.read_text(encoding="utf-8")) if registro.exists() else None
+    datos = datos or {}
+    datos[salida.as_posix()] = {"fuentes": [f.as_posix() for f in fuentes], "commit": commit,
+                               "fecha": date.today().isoformat()}
+    registro.parent.mkdir(parents=True, exist_ok=True)
+    registro.write_text("# Que version de cada .md se entrego como borrador (lo escribe md_a_docx.py --registro).\n"
+                        "# Para ver que cambio desde entonces: git diff <commit> -- <fuente>\n"
+                        + yaml.safe_dump(datos, allow_unicode=True, sort_keys=True), encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("md", nargs="+", help="archivos .md en orden")
     ap.add_argument("--salida", required=True)
     ap.add_argument("--portada", help="YAML con titulo, subtitulo, proyecto, tipo, presenta, tutor, fecha")
     ap.add_argument("--plantilla", default="Propuesta_PriceScraper_SS.docx")
+    ap.add_argument("--capitulo", action="store_true", help="borrador de capitulo: sin portada ni indices, titulos un nivel abajo")
+    ap.add_argument("--registro", help="YAML donde anotar fuente, commit y fecha del borrador entregado")
     a = ap.parse_args()
 
     plantilla = Path(a.plantilla)
@@ -427,10 +470,18 @@ def main():
         sys.exit(f"[docx] La plantilla no tiene los estilos {faltan}")
     vaciar_cuerpo(doc)
     esc = Escritor(doc)
-    if a.portada:
-        esc.portada(yaml.safe_load(Path(a.portada).read_text(encoding="utf-8")) or {})
-    esc.indices()
-    for ruta in sorted({Path(m) for m in a.md}, key=lambda p: p.name):
+    fuentes = sorted({Path(m) for m in a.md}, key=lambda p: p.name)
+    commit = origen_git(fuentes[0])
+    if a.capitulo:
+        esc.desplazar_titulos = True
+        esc.nota_origen(f"Borrador generado de {', '.join(f.as_posix() for f in fuentes)} (commit {commit}, "
+                        f"{date.today().isoformat()}). Intégralo a tu documento con tu redacción; la versión técnica "
+                        "de referencia es el .md del repositorio. Borra esta nota al integrarlo.")
+    else:
+        if a.portada:
+            esc.portada(yaml.safe_load(Path(a.portada).read_text(encoding="utf-8")) or {})
+        esc.indices()
+    for ruta in fuentes:
         convertir(esc, ruta)
     upd = OxmlElement("w:updateFields")
     upd.set(qn("w:val"), "true")
@@ -438,6 +489,8 @@ def main():
     salida = Path(a.salida)
     salida.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(salida))
+    if a.registro:
+        registrar(Path(a.registro), salida, fuentes, commit)
 
     estilos = Counter(p.style.name for p in doc.paragraphs)
     print(f"[docx] {salida}: {len(a.md)} archivo(s), {esc.n_tabla} tablas, {esc.n_figura} figuras")

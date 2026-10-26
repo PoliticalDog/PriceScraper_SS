@@ -1,6 +1,6 @@
 # Estructura del manual de usuario
 
-Archivos en `docs/manual_usuario/`. El lector quiere poner el proyecto a funcionar y usarlo: instalar, correr cada etapa, recargar, leer el dashboard y trabajar con los agentes. Va de lo general a lo concreto, con comandos que se puedan copiar.
+Archivos en `docs/manual_usuario/` (capitulos del manual de usuario, entregable separado para el siguiente desarrollador; los borradores por capitulo van en `docs/entregables/manual_usuario/`). El lector quiere poner el proyecto a funcionar y usarlo: instalar, correr cada etapa, recargar, leer el dashboard y trabajar con los agentes. Va de lo general a lo concreto, con comandos que se puedan copiar.
 
 | Archivo | Capitulo | Contenido |
 |---|---|---|
