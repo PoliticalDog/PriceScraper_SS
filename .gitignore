@@ -76,3 +76,6 @@ diagnostico_tarjetas.py
 # ------------------ Respaldos de la BD (solo locales) ------------------
 *.dump
 respaldo_*.tar.gz
+
+# ------------------ Copias base del extractor que usan QA y los especialistas ------------------
+tests/_herramienta_*.txt
