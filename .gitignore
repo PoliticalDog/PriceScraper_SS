@@ -79,3 +79,8 @@ respaldo_*.tar.gz
 
 # ------------------ Copias base del extractor que usan QA y los especialistas ------------------
 tests/_herramienta_*.txt
+
+# ------------------ Solo locales (decision de la persona 26-oct-2026) ------------------
+# docs/: BI, manual de usuario, borradores y registros; sources/: bitacoras e historial de modulos
+docs/
+sources/

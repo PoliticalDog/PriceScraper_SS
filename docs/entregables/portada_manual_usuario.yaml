@@ -1,8 +1,0 @@
-# Portada del .docx (md_a_docx.py --portada). Los campos vacios se omiten.
-proyecto: "“Prototipo PriceScraper”"
-titulo: "Manual de usuario"
-subtitulo: "Sistema de Extracción, Procesamiento e Inteligencia de Precios"
-tipo: "Proyecto de Servicio Social"
-presenta: "Garcia Ceron Diego - 2021630334 - ISC 2020"
-tutor: "Ortiz Castillo Marco Antonio"
-fecha: "Octubre de 2026"
