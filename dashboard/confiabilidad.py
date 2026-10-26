@@ -107,13 +107,17 @@ def _resumen_cacheado(ruta: Path) -> Optional[dict]:
 
 
 def es_corrida_valida(resumen: Optional[dict]) -> bool:
-    """dev + sin cambios sin commit + integridad valida + meta.fecha presente."""
+    """dev completo (todas las tiendas, OCR de produccion) + sin cambios sin commit + integridad valida + meta.fecha.
+    26-oct-2026: una corrida de una sola tienda (--tienda) o con OCR experimental (--ocr-exp) guardada con el arbol
+    limpio se volvia la vigente del panel; ahora no cuenta."""
     if not resumen:
         return False
     meta = resumen.get("meta") or {}
     codigo = meta.get("codigo") or {}
     return (
         meta.get("split") == "dev"
+        and not meta.get("tienda")
+        and not meta.get("ocr_exp")
         and codigo.get("cambios_sin_commit") is False
         and (resumen.get("integridad") or {}).get("valida") is True
         and bool(meta.get("fecha"))

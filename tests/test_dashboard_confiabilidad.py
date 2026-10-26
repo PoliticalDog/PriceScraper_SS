@@ -197,3 +197,16 @@ def test_descartable_por_nombre():
     assert not c._descartable_por_nombre("20261012_141917_e4184da_dev.json")
     assert not c._descartable_por_nombre("20261012_141917_sin-git_dev.json")
     assert not c._descartable_por_nombre("cualquier_cosa.json")
+
+
+def test_corridas_parciales_no_son_vigentes(tmp_path):
+    # 26-oct-2026: una corrida de una sola tienda o con OCR experimental no representa al pipeline completo
+    completa = _corrida(fecha="2026-10-12T08:00:00", commit="aaa1111")
+    una_tienda = _corrida(fecha="2026-10-12T09:00:00", commit="bbb2222")
+    una_tienda["meta"]["tienda"] = "heb"
+    ocr_exp = _corrida(fecha="2026-10-12T10:00:00", commit="ccc3333")
+    ocr_exp["meta"]["ocr_exp"] = "gpu_1800"
+    _escribir(tmp_path, "20261012_080000_aaa1111_dev.json", completa)
+    _escribir(tmp_path, "20261012_090000_bbb2222_dev.json", una_tienda)
+    _escribir(tmp_path, "20261012_100000_ccc3333_dev.json", ocr_exp)
+    assert c.corrida_vigente(tmp_path)["meta"]["codigo"]["commit"] == "aaa1111"

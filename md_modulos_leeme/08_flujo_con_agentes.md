@@ -149,12 +149,12 @@ Una skill es un procedimiento escrito en `.claude/skills/<nombre>/SKILL.md`. Cla
 
 Tabla: Skills del proyecto (.claude/skills/)
 
-**Pendiente: skills que citan un script que ya no existe.** `regex-precio-checklist` (pasos "Antes" 1 y "Después" 1) y `evaluar-calidad-nlp` mandan correr `venv/Scripts/python.exe evaluar_nlp.py`. Ese archivo se renombró a `probar_evaluar_nlp.py` el 3-oct-2026 (commit 842ccf5), y además ya no es el juez del proyecto: desde el 11-oct-2026 las reglas se miden con el evaluador de registros (`python -m evaluador correr --split dev --nlp memoria`), como dice `ciclo-experimento`. `preparar-traspaso-gpu` también menciona `evaluar_nlp.py` en su paso 4. Hay que actualizar las tres skills; mientras tanto, cuando haya contradicción, manda `ciclo-experimento`.
+**Resuelto el 26-oct-2026: skills que citaban un script que ya no existe.** `regex-precio-checklist`, `evaluar-calidad-nlp` y `preparar-traspaso-gpu` mandaban correr `evaluar_nlp.py`, renombrado a `probar_evaluar_nlp.py` el 3-oct-2026 (commit 842ccf5). Ahora citan el nombre nuevo y, para decidir un cambio, el evaluador de registros (`python -m evaluador correr --split dev --nlp memoria`), como `ciclo-experimento`.
 
-Otras partes de las skills y agentes que quedaron viejas (son contexto, no reglas, pero confunden):
+También se actualizaron el 26-oct-2026 las cifras de contexto que habían quedado viejas:
 
-- `ciclo-experimento` dice "Corrida base vigente (dev, nlp memoria, commit afccff2) ... precisión 3.8%". La corrida dev limpia más reciente es `20261026_115424_398c4e4_dev.json` (precisión 33.1%, recall 24.7%, F1 28.3%).
-- `especialista-producto` y `especialista-vision` dan como base "precisión ~3.8%", y `bi-specialist` cifras del diagnóstico del 12-oct-2026 (él mismo dice "verifícalo, puede haber cambiado").
+- `ciclo-experimento` cita como base de referencia la corrida limpia `20261026_115424_398c4e4_dev.json` (precisión 33.1%, recall 24.7%, F1 28.3%); antes citaba la del 11-oct (3.8%).
+- `especialista-producto` y `especialista-vision` traen la misma base; `bi-specialist` sigue con cifras del diagnóstico del 12-oct-2026 (él mismo dice "verifícalo, puede haber cambiado").
 
 ## La guardia de agentes
 
@@ -196,7 +196,7 @@ Las siguientes respuestas se obtuvieron pasando eventos de prueba al script:
 | `grep -n nombre_en_pila load/load.py` | **Bloqueado** | Cualquier mención de `load/load.py` en Bash se toma como acceso a la BD; para leerlo hay que usar las herramientas Grep o Read |
 | Write en el scratchpad de la sesión | **Bloqueado** | Está fuera del repo |
 | `python tests/_herramienta_a2_dev.py > /tmp/salida.txt` | Permitido | La redirección no menciona una ruta protegida |
-| `python recargar_bd.py todo` | **Permitido** | Ver el pendiente de abajo |
+| `python recargar_bd.py todo` | **Bloqueado** (desde el 26-oct-2026) | Recarga la BD; la corre la persona |
 | `git diff`, `git status --short`, `pytest tests -q` | Permitido | Solo lectura |
 
 Tabla: Respuesta de la guardia a comandos de ejemplo (rol producto, salvo consulta.py con rol bi)
@@ -205,7 +205,7 @@ Consecuencias prácticas:
 
 - Para leer corridas guardadas en `data/processed/_eval/runs/`, usa Read o Glob, no `ls ... 2>&1`. QA lo anotó el 24-oct-2026: "La guardia de agentes bloquea los comandos con '>' o '2>&1' si aparecen rutas de data/" (Engram #258).
 - Como no se puede escribir en el scratchpad, los agentes guardan sus scripts de medición en `tests/_herramienta_*.py` (Engram #257). Son de solo lectura, pytest no los recoge y van al repo (commits 8253daa y 32001ee).
-- **Pendiente: la guardia no bloquea `recargar_bd.py`.** El script se agregó el 26-oct-2026, después de la guardia, y su nombre no coincide con ningún patrón (`load.py`, `probar_nlp`, `pg_dump`...), aunque por dentro respalda, reprocesa el NLP y recarga la BD. Un agente que lo llamara no sería detenido por la guardia; solo lo frenarían las instrucciones del agente y el sistema de permisos de Claude Code. Conviene agregarlo a `PROHIBIDOS` con su prueba en `tests/test_guardia_agente.py` (cambio de `.claude/` que decide la persona).
+- **`recargar_bd.py` bloqueado desde el 26-oct-2026.** El script respalda, reprocesa el NLP, recarga y limpia la BD. Se agregó al patrón de BD de `PROHIBIDOS` (junto a `load.py` y `pg_dump`), con su prueba en `tests/test_guardia_agente.py`. Ese mismo día se protegió `nlp/evaluador_calidad.py` (de ahí toma el evaluador la tolerancia de precio y los tokens del nombre): el especialista de producto edita `nlp/`, y sin esa protección podía cambiar al juez sin invalidar la corrida.
 - La guardia no revisa `Read`, `Grep` ni `Glob`: un agente puede leer cualquier archivo del repo. La protección del holdout es que no se corra con `--split holdout`; el evaluador no guarda ejemplos del holdout.
 
 ### settings.json
@@ -331,7 +331,7 @@ La diferencia práctica: la memoria de archivos es un resumen corto de "dónde v
 - **Costo.** Cada experimento completo (base, iteraciones, dev completo, simulación en producción, QA con corrida propia) consume mucho uso del modelo, y QA duplica a propósito el trabajo del especialista. No hay una cifra registrada de tokens ni de costo por experimento.
 - **Agentes que se cortan.** Por límites de uso de la API o de contexto, un agente puede terminar sin entregar su reporte. Hay que revisar qué dejó en el árbol (`git status`, `git diff`) y en Engram antes de reanudarlo.
 - **El modelo se equivoca.** Subestimó un costo (A2-miles), propuso una regla que rompía precios reales (centavos, versión 1) y una guarda con un falso positivo (el brandy). Por eso QA verifica de forma independiente y la persona revisa el diff.
-- **La guardia es heurística.** Puede bloquear comandos legítimos (`2>/dev/null` junto a `data/processed`) y dejar pasar otros que no debería (`recargar_bd.py`). La sesión principal no pasa por ella: ahí protegen `settings.json`, el clasificador de permisos y la persona.
+- **La guardia es heurística.** Puede bloquear comandos legítimos (`2>/dev/null` junto a `data/processed`) y dejar pasar otros que no debería: un script nuevo que toque la BD no está bloqueado hasta que se agrega a sus patrones (pasó con `recargar_bd.py`, resuelto el 26-oct-2026). La sesión principal no pasa por ella: ahí protegen `settings.json`, el clasificador de permisos y la persona.
 - **Contexto viejo en las instrucciones.** Las cifras de "lo que ya se sabe" de los agentes y la "corrida base vigente" de `ciclo-experimento` son del 11 y 12-oct-2026.
 
 ## Pruebas
@@ -342,13 +342,10 @@ La diferencia práctica: la memoria de archivos es un resumen corto de "dónde v
 venv/Scripts/python.exe -m pytest tests/test_guardia_agente.py -q
 ```
 
-Si cambias la guardia (por ejemplo, para bloquear `recargar_bd.py`), agrega el caso a estas pruebas.
+Si cambias la guardia, agrega el caso a estas pruebas (como los de `recargar_bd.py` y `nlp/evaluador_calidad.py`, del 26-oct-2026).
 
 ## Pendientes
 
-- Bloquear `recargar_bd.py` en la guardia y probarlo.
-- Actualizar `regex-precio-checklist`, `evaluar-calidad-nlp` y `preparar-traspaso-gpu`: citan `evaluar_nlp.py`, que no existe desde el 3-oct-2026 (hoy `probar_evaluar_nlp.py`), y deberían medir con `python -m evaluador`.
-- Actualizar la "corrida base vigente" de `ciclo-experimento` y las cifras de contexto de los agentes.
 - No hay registro de un experimento cerrado por especialista-vision; queda por probar ese camino completo (OCR en CPU y batch GPU).
 
 ## Historial
