@@ -403,9 +403,9 @@ El menú tiene dos modos:
 
 El registro queda en `logs/nlp.log` (rota a los 5 MB, guarda 5 archivos).
 
-Los dos modos recorren todo `data/processed/`, incluidas las carpetas de experimentos (`_v2_C_tesseract_perfiles/`...) y los respaldos (`tiendeo_anterior_2026-10-06/`). Al 26-oct-2026 hay 1,463 `ocr_resultado.json` en `data/processed/`, pero producción son 821 folletos: 782 de `tiendeo/` y 39 de `ofertomat/`. Elige bien la carpeta.
+Los dos modos solo listan las carpetas de producción (`carpetas_con_ocr()`: `tiendeo/` y `ofertomat/`, 821 folletos al 26-oct-2026). Hasta el 26-oct-2026 recorrían todo `data/processed/`, que también guarda experimentos (`_v2_C_tesseract_perfiles/`...) y respaldos (`tiendeo_anterior_2026-10-06/`): 1,463 `ocr_resultado.json` en total.
 
-Para **reprocesar producción** después de un cambio aprobado se llama a `procesar_carpeta` con `forzar=True`, solo sobre `tiendeo/` y `ofertomat/`. Ojo: `procesar_carpeta` calcula `carpeta.relative_to(Path("data/processed"))`, así que necesita rutas **relativas** a la raíz del repo. Con una ruta absoluta falla con `ValueError` en todos los folletos sin escribir nada (Engram #227):
+Para **reprocesar producción** después de un cambio aprobado usa `python recargar_bd.py nlp` (o `todo`, que además respalda y recarga la BD; ver `05_load.md`). Por dentro llama a `procesar_carpeta` con `forzar=True` sobre `carpetas_con_ocr()`. Ojo: `procesar_carpeta` calcula `carpeta.relative_to(Path("data/processed"))`, así que necesita rutas **relativas** a la raíz del repo. Con una ruta absoluta falla con `ValueError` en todos los folletos sin escribir nada (Engram #227):
 
 ```
 from pathlib import Path

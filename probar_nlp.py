@@ -31,6 +31,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Path para los resultados de OCR y NLP
 DATA_PROCESSED = Path("data/processed")
+# Solo las carpetas de produccion (= load.load.FUENTES y su patron <fuente>/<tienda>/<folleto>): data/processed
+# tambien guarda experimentos y respaldos (_v*, _eval, tiendeo_anterior_*), 1,463 ocr_resultado.json contra 821
+FUENTES = ("tiendeo", "ofertomat")
+
+
+def carpetas_con_ocr() -> list[Path]:
+    return sorted(p.parent for fuente in FUENTES for p in (DATA_PROCESSED / fuente).glob("*/*/ocr_resultado.json"))
 
 # ------------------------- Menús -------------------------
 
@@ -52,9 +59,7 @@ def menu_principal() -> int:
 def menu_carpeta() -> Path | None:
     
     # Lista todas las carpetas que tienen ocr_resultado.json disponible
-    carpetas = sorted([
-        p.parent for p in DATA_PROCESSED.rglob("ocr_resultado.json")
-    ])
+    carpetas = carpetas_con_ocr()
 
     if not carpetas:
         logger.error("No se encontraron ocr_resultado.json en data/processed/")
@@ -154,9 +159,7 @@ def procesar_carpeta(
 # ------------- Batch y unitario -------------
 # revisa todo el liestdao y muetsra pendientes
 def modo_batch(extractor: RegexExtractor):
-    carpetas = sorted([
-        p.parent for p in DATA_PROCESSED.rglob("ocr_resultado.json")
-    ])
+    carpetas = carpetas_con_ocr()
 
     if not carpetas:
         logger.error("No se encontraron ocr_resultado.json en data/processed/")

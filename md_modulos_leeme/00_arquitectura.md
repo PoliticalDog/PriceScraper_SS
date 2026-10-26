@@ -82,7 +82,7 @@ Comparado con el stack propuesto al inicio del servicio social:
 - **spaCy** (3.8.11) está instalado, pero no se usa en el pipeline: el experimento de reconocimiento de entidades se documentó y se descartó a favor de reglas con geometría, que son más controlables y medibles (ver `03_nlp.md`).
 - **FastAPI, Django REST Framework, APScheduler y PySpark** no se usan; el dashboard sirve sus datos con vistas JSON de Django y el pipeline se corre a mano.
 - **Pandas** solo se usa en scripts de análisis (`probar_evaluar_nlp.py`), no en el pipeline.
-- `requirements.txt` lista `psycopg2-binary`, pero el código usa **psycopg 3** (`import psycopg`), que está instalado en el entorno y falta en ese archivo.
+- El código usa **psycopg 3** (`import psycopg`). `requirements.txt` lo lista desde el 26-oct-2026 (`psycopg` y `psycopg-binary` 3.3.4); antes solo traía `psycopg2-binary` y una instalación desde cero fallaba al conectar.
 
 ## Configuración y ejecución
 

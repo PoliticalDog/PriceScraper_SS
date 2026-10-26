@@ -47,7 +47,7 @@ _ES_PAGINA_CDN = re.compile(r"/(\d+)\.(?:jpg|webp|png)(?:\?|$)")
 # Discriminadores que indican que una tarjeta NO es un folleto real
 PALABRAS_BASURA = {
     "logo", "facebook", "youtube", "instagram", "twitter",
-    "offers", "←", "-->", "iniciar", "registrarse", "busca",
+    "offers", "←", "→", "iniciar", "registrarse", "busca",
     "confirmar", "ubicación", "guardado",
 }
 

@@ -411,7 +411,7 @@ pg_restore --list ../respaldo_antes_reproceso_nlp_AAAAMMDD_HHMM.dump > /dev/null
 pg_restore --clean --if-exists --dbname="<DATABASE_URL>" ../respaldo_antes_reproceso_nlp_AAAAMMDD_HHMM.dump
 ```
 
-El script que automatizó esos pasos (`recarga_20261025.py`, Engram #262) quedó en un directorio temporal de esa sesión y **no está en el repo**; los comandos de arriba son el formato general, no una copia de ese script. La restauración no se ha documentado como probada.
+Desde el 26-oct-2026 esos pasos están automatizados en `recargar_bd.py` (raíz del repo): `python recargar_bd.py todo` verifica, respalda, reprocesa el NLP, recarga y vuelve a verificar; cada paso también se puede correr por separado (`verificar`, `respaldo`, `nlp`, `load`). Busca `pg_dump` en el PATH, en `PG_BIN` o en `C:\Program Files\PostgreSQL\<versión>\bin`, y guarda las verificaciones en `data/recargas/`. La restauración con `pg_restore` no se ha documentado como probada.
 
 Conteos que se comparan antes y después (todos de solo lectura):
 

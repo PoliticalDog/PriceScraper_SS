@@ -37,7 +37,7 @@ def _cargar_url() -> str:
         raise ValueError(
             "DATABASE_URL no encontrada.\n"
             "Crea un archivo .env con:\n"
-            "  DATABASE_URL=postgresql://pricescraper_user:123@localhost:5432/pricescraper"
+            "  DATABASE_URL=postgresql://<usuario>:<clave>@localhost:5432/pricescraper"
         )
     return url
 
