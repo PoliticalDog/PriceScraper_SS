@@ -217,7 +217,7 @@ Tabla: Columnas de productos_canonicos
 
 Índices: `ix_prodcanon_categoria` e `ix_prodcanon_nombre_trgm` (GIN trigramas). `load.py` hace `INSERT ... ON CONFLICT (nombre_canonico) DO UPDATE`: llena `categoria` y `marca` solo si estaban vacías y agrega el alias si es nuevo.
 
-Al 26-oct-2026 hay 91,224 filas: 21,355 con categoría, 5,898 con marca y 104 con algún alias. **16,973 no las usa ninguna extracción**: la recarga forzada borra páginas y extracciones, pero nunca esta tabla, así que conserva los nombres de cargas anteriores (ver Limitaciones).
+La recarga forzada borra páginas y extracciones, pero no esta tabla: load solo hace upsert, así que conserva los nombres de cargas anteriores. El 26-oct-2026 había 91,224 filas y 16,973 no las usaba ninguna extracción; se borraron con `python recargar_bd.py limpiar` (con respaldo previo) y quedan 74,251. Desde entonces `recargar_bd.py todo` limpia los huérfanos después de cada recarga.
 
 ### eventos_promo
 
@@ -457,7 +457,7 @@ Todas terminaron con 821 folletos, 0 errores y 132 eventos. El 26-oct-2026 no hu
 | `folletos` | 821 (782 tiendeo, 39 ofertomat) |
 | `paginas` | 5,688 |
 | `extracciones` | 223,188 |
-| `productos_canonicos` | 91,224 |
+| `productos_canonicos` | 74,251 (tras borrar 16,973 huérfanos) |
 | `eventos_promo` | 132 |
 | `errores_carga` | 13 (0 abiertos) |
 | `alertas` | 0 |
@@ -473,7 +473,7 @@ Tabla: Conteos de la base al 26-oct-2026, 10:47 | Fuente: consulta de solo lectu
 ## Limitaciones conocidas y pendientes
 
 - **Diagrama desactualizado.** A `load/diagrama_ER_V3.svg` le faltan `errores_carga` y `tiendas.cadena`, y hay que exportarlo a PNG para el borrador de Word.
-- **`productos_canonicos` acumula filas.** La recarga no la limpia: 16,973 de las 91,224 filas no las usa ninguna extracción. No afecta a las vistas, pero infla el catálogo. La limpieza no se ha decidido.
+- **`productos_canonicos` acumula filas si la recarga se hace a mano.** `Loader().cargar_batch()` solo hace upsert; `recargar_bd.py todo` (o el paso `limpiar`) borra los que ya no usa ninguna extracción. Sus `aliases` no los lee nadie desde la BD: el normalizador usa su catálogo en código.
 - **Tiendas nuevas sin cadena.** El `UPDATE` de `cadena` solo corre con `schema.sql`; si load crea una tienda nueva de una cadena existente, hay que asignarle `cadena` a mano (Engram #277).
 - **`db_builder.py` no aplica columnas nuevas ni vistas** en una base existente; hay que hacerlo a mano (sección "Cambios al esquema").
 - **`v_precios_actuales` no filtra vigencia** aunque su nombre lo sugiera.

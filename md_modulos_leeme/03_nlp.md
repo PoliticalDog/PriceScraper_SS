@@ -336,7 +336,7 @@ texto del producto
 
 **`PATRONES_BASURA`** (10) descartan el texto antes de buscar: solo números, 1-3 letras, "del videojuego", "en tienda/línea", "visita tu tienda", "en mancuernas", "en línea de", "noincluye", "precio bajo/especial" y cantidades solas como "12 pzs".
 
-**Marca.** `_extraer_marca` busca cada una de las 84 `MARCAS_CONOCIDAS` como subcadena, de la más larga a la más corta, y la devuelve capitalizada ("Golden Hills"). Ese valor va a `productos_canonicos.marca`. Entre marcas del mismo largo, el desempate depende del orden de un `set`; por eso el evaluador se relanza solo con `PYTHONHASHSEED=0` para que dos corridas iguales den lo mismo.
+**Marca.** `_extraer_marca` busca cada una de las 84 `MARCAS_CONOCIDAS` con borde de palabra (`_patron_marca`), de la más larga a la más corta: las de 4 letras o menos y "modelo" como palabra completa (se acepta un número pegado), y las demás sin empezar a mitad de palabra salvo una letra basura del OCR ("CMaruchan") y con lo que sea pegado al final ("Pinols", "ARIEL1.8"). Hasta el 26-oct-2026 era subcadena y 4,711 PRODUCTO de producción tenían una marca falsa ("Ace" en "Aceite", "Sol" en "solo", "Lg" en "algodón", "Roma" en "aroma"). La devuelve capitalizada y la devuelve capitalizada ("Golden Hills"). Ese valor va a `productos_canonicos.marca`. Entre marcas del mismo largo, el desempate depende del orden de un `set`; por eso el evaluador se relanza solo con `PYTHONHASHSEED=0` para que dos corridas iguales den lo mismo.
 
 **Regla de cobertura del fuzzy (commit ecbaa5d, 11-oct-2026).** `token_set_ratio` da 100 si *un* token del texto está en el catálogo ("Salsa Chamoy" → Salsa, "Audífonos Vibe Beam 2 negro" → Audifonos) y premia parecidos de letras sin palabras en común ("MORENA" → Mayonesa, "res para asar" → Pasta para sopa, "Figura" → FIFA). Ahora el fuzzy solo se acepta si `_canonico_cubre_texto`: cada palabra significativa del texto (3+ letras, sin conectores ni unidades) aparece en el alias o en el canónico, igual o con un error OCR leve:
 
@@ -451,7 +451,7 @@ venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria   # calida
 
 Los archivos `tests/_herramienta_*.py` no son pruebas: son scripts de medición de los agentes y pytest no los recoge.
 
-Calidad en dev al 25-oct-2026 (corrida `20261025_224754`): precisión 33.1%, recall 24.7%, F1 28.3%, medida sobre registros completos producto + precio. En esa corrida el error más frecuente vuelve a ser la lectura del precio: entre los registros con error, `precio_mal_leido` suma 321 y `asociacion_producto` (módulo load) 287, seguidos de `precio_huerfano` con 133. Contados por artículo del ground truth, son 420 y 356, más 300 de `clasificacion` (archivo `data/processed/_eval/runs/20261025_224754_798a35f-sucio_dev.json`, NLP en memoria, commit 798a35f con cambios sin commit).
+Calidad en dev al 26-oct-2026 (corrida limpia `20261026_115424`, commit 398c4e4; la del 25-oct `20261025_224754` da lo mismo): precisión 33.1%, recall 24.7%, F1 28.3%, medida sobre registros completos producto + precio. En esa corrida el error más frecuente vuelve a ser la lectura del precio: entre los registros con error, `precio_mal_leido` suma 321 y `asociacion_producto` (módulo load) 287, seguidos de `precio_huerfano` con 133. Contados por artículo del ground truth, son 420 y 356, más 300 de `clasificacion` (archivo `data/processed/_eval/runs/20261026_115424_398c4e4_dev.json`, NLP en memoria, sin cambios sin commit).
 
 ## Limitaciones conocidas y pendientes
 
@@ -461,8 +461,8 @@ Calidad en dev al 25-oct-2026 (corrida `20261025_224754`): precisión 33.1%, rec
 - **Centavos sueltos restantes** (~390) junto a enteros de 3 dígitos o enteros que el OCR deformó.
 - **"AHORRA $25 por cada $100"** de heb se lee como un precio de $25.
 - **"30 Aniversario"** de peluches Pokémon en chedraui 431870 y 431871 sale como campaña `aniversario` (Engram #227).
-- **Marca por subcadena**: `_extraer_marca` no exige palabra completa, así que "Aceite vegetal" sale con marca "Ace" (verificado el 26-oct-2026). Las marcas cortas ("ace", "sol", "xx") pueden aparecer dentro de otras palabras.
-- **Letra basura al inicio en el catálogo**: la tolerancia que acepta "IQUESO" también hace que "Apollo" sea Alimentos y Bebidas por "pollo" (verificado el 26-oct-2026), aunque el comentario del código dice que lo evita.
+- **Marcas cortas con basura pegada**: con el borde de palabra del 26-oct-2026, unas 30 marcas reales de 4 letras o menos dejan de detectarse cuando el OCR les pega una letra ("Lalao", "Doveo"). Es el costo de no marcar "Aceite" como "Ace".
+- **Letra basura al inicio en el catálogo**: la tolerancia que acepta "IQUESO" atrapaba palabras reales ("Apollo" → pollo, "operativo" → pera, "toreo" → oreo, "soledad" → oled). Desde el 26-oct-2026 `_NO_SON_PRODUCTO` las excluye (68 categorías falsas menos en producción); la regla se mantiene porque acierta en la mayoría de sus 680 casos (`tests/_herramienta_doc_letra_inicial.py`). Otras palabras así pueden aparecer con folletos nuevos.
 - **Nombres ilegibles**: desde la regla de cobertura, el texto OCR sucio se conserva como heurístico en vez de forzar un canónico ("Papcl Hlgienko"). Se ataca al aceptar el bloque como producto o en el OCR.
 - **Rótulos**: unos 40 fragmentos de nombres reales se descartan como rótulo ("Super" de "Arroz Super Extra Ley"). Riesgos sin casos en el corpus, fijados en pruebas: un precio sin "$" pequeño junto a "puntos" sin cantidad legible, y una cuota de la casilla de abajo que cuadre por azar con `_precio_por_cuotas`.
 

@@ -92,13 +92,11 @@ Django describe las tablas para poder consultarlas con el ORM, pero no las crea 
 | `EventoPromo` | `eventos_promo` | Promociones y etiquetas de campaña |
 | `ErrorCarga` | `errores_carga` | Página Errores de carga (sin FK a propósito: un folleto que falló entero no tiene fila en `folletos`) |
 | `ProductoCanonico` | `productos_canonicos` | Solo a través de la FK de `Extraccion` (nombre canónico) |
-| `Alerta` | `alertas` | Nadie hoy (la tabla existe en el esquema) |
 | `VPreciosActuales` | `v_precios_actuales` | Resumen, Precios, filtros, avisos de folleto |
 | `VComparativaPrecios` | `v_comparativa_precios` | Comparativa |
 | `VHistoricoPrecios` | `v_historico_precios` | Histórico y sugerencias de producto |
 | `VCalidadPipeline` | `v_calidad_pipeline` | Tabla operativa de Calidad |
 | `VFolletosVigencia` | `v_folletos_vigencia` | Resumen, Cobertura, Promociones (única definición de vigencia) |
-| `VEventosActivos` | `v_eventos_activos` | Nadie desde el 15-oct-2026 (ver Promociones) |
 
 Tabla: Modelos del dashboard y su tabla o vista (dashboard/models.py)
 
@@ -141,7 +139,7 @@ Todas son GET y responden JSON. Los parámetros de lista se repiten (`?tienda=Wa
 | `/api/resumen` | `con_categoria`, `folleto` | `kpis`, `top_categorias`, `folletos_por_tienda` |
 | `/api/precios` | `tienda`, `categoria`, `desde`, `hasta`, `q`, `solo_descuento`, `con_categoria`, `folleto`, `promocion`, `nivel`, `campania` | Filas con `promos` y procedencia |
 | `/api/comparativa` | `categoria`, `q`, `min_tiendas`, `con_categoria`, `folleto`, `promocion`, `nivel`, `campania` | Grupos de la comparativa |
-| `/api/comparativa/<producto>/por-tienda` | `con_categoria` | Un registro por precio, con vigencia, origen y promos |
+| `/api/comparativa/<producto>/por-tienda` | `con_categoria`, `categoria` (la del grupo; `""` = sin categoría) | Un registro por precio del grupo (`qs_precios_del_grupo`), con vigencia, origen y promos. `<path:producto>` acepta nombres con "/" |
 | `/api/historico` | `producto`, `tienda`, `desde`, `hasta`, `con_categoria`, `folleto`, `promocion`, `nivel`, `campania` | Serie por fecha con procedencia |
 | `/api/productos/sugerencias` | `q` | Hasta 20 productos con histórico, los de más registros primero |
 | `/api/calidad` | `tienda`, `fuente`, `estado`, `tasa_util_min`, `folleto` | Filas de `v_calidad_pipeline` |
@@ -213,7 +211,7 @@ Tabla: Etiqueta de confiabilidad por tienda (dashboard/confiabilidad.py)
 
 Además, una tienda con menos de 20% de registros de catálogo lleva el distintivo "Base heurística" (`UMBRAL_PCT_CATALOGO_BASE_HEURISTICA`): sus nombres no sirven para comparar contra otras tiendas.
 
-**Corrida vigente.** `corrida_vigente` toma la más reciente por `meta.fecha` que cumpla tres condiciones: split `dev`, sin cambios sin commit e integridad válida. Descarta por nombre las `-sucio` y las que no son `_dev` sin abrirlas, y guarda cada archivo en caché por `mtime` y tamaño. Al 26-oct-2026 es `20261025_141934_ff7aaed_dev.json`: 158 páginas, 14 de 16 tiendas medidas, precisión global 30.8% y recall 23.3%. Las corridas `-sucio` posteriores, como la `20261025_224754` que cita el módulo NLP, no cuentan para el panel. Sin corrida válida, o sin la carpeta `data/` (que está en `.gitignore`), todas las tiendas salen "Sin medir" y la página sigue funcionando.
+**Corrida vigente.** `corrida_vigente` toma la más reciente por `meta.fecha` que cumpla tres condiciones: split `dev`, sin cambios sin commit e integridad válida. Descarta por nombre las `-sucio` y las que no son `_dev` sin abrirlas, y guarda cada archivo en caché por `mtime` y tamaño. Al 26-oct-2026 es `20261026_115424_398c4e4_dev.json`: 158 páginas, 14 de 16 tiendas medidas, precisión global 33.1%, recall 24.7% y F1 28.3%. Las corridas `-sucio` (con cambios sin commit) no cuentan para el panel; por eso, después de cada cambio aprobado y con commit, conviene repetir una corrida dev. Sin corrida válida, o sin la carpeta `data/` (que está en `.gitignore`), todas las tiendas salen "Sin medir" y la página sigue funcionando.
 
 El evaluador mide una muestra de dev, no producción completa, y el panel lo dice en un aviso. Los umbrales se aprobaron el 12-oct-2026; si los cambias, actualiza `docs/bi/metricas.md`.
 
@@ -369,7 +367,7 @@ No hay npm ni paso de compilación: todo se carga por CDN desde `base.html`, sal
 | DataTables, con su integración Bootstrap 5 | 1.13.11 | Tablas con orden, búsqueda y paginación en el navegador (`renderTabla`, 25 filas por página, textos en español) |
 | Chart.js | 4.4.4 | Barras (Resumen, Comparativa, Cobertura, Calidad, Errores) y línea (Histórico) |
 | chartjs-adapter-date-fns | 3.0.0 | Eje de tiempo semanal del Histórico |
-| Tabler Icons (webfont) | `@latest`, sin versión fija | Iconos de la barra y de las tarjetas KPI (`ti ti-...`) |
+| Tabler Icons (webfont) | 3.49.0 (fija desde el 26-oct-2026; antes `@latest`) | Iconos de la barra y de las tarjetas KPI (`ti ti-...`) |
 
 Tabla: Librerías de front (dashboard/templates/dashboard/base.html e historico.html)
 
@@ -469,11 +467,10 @@ Tabla: Constantes del dashboard
   - BI estimó que solo 27.5% de los grupos de 2 o más cadenas comparan de verdad lo mismo (IC95 16-43%).
 
   La v2 corrige la cadena, los genéricos y los atípicos, pero falta conectarla al panel (fase 3).
-- **El detalle por tienda de Comparativa** busca por `texto_norm` sin la categoría, así que, si un texto tiene dos categorías, mezcla los registros de ambos grupos. Además, `<str:producto>` de Django no acepta "/": los 4 grupos actuales con "/" en el nombre probablemente dan 404 en el detalle. Se dedujo del código y no se probó en el navegador.
 - **Base heurística.** Solo 7.4% de los registros tiene nombre de catálogo, así que casi todo el dashboard muestra el texto del folleto tal cual. La confiabilidad medida por el evaluador es baja (precisión global 30.8% en dev): el visor de origen existe justamente para revisar cada precio.
 - **Promociones de producto y bancarias**: pendientes de carga en load. Hoy solo hay campañas del folleto.
-- **Tabler Icons sin versión fija** (`@latest`): un cambio del CDN podría romper iconos. Conviene fijar la versión.
-- **`djangorestframework` está en `requirements.txt` pero no se usa**: las APIs son `JsonResponse` simples. Tampoco se usan los modelos `Alerta` ni `VEventosActivos`.
+- **`djangorestframework` está en `requirements.txt` pero no se usa**: las APIs son `JsonResponse` simples. (Los modelos `Alerta` y `VEventosActivos`, sin uso, se quitaron el 26-oct-2026; la tabla `alertas` y la vista `v_eventos_activos` siguen en la BD.)
+- **Arreglado el 26-oct-2026**: el detalle por tienda mezclaba dos grupos con el mismo nombre y distinta categoría ("Alimento Seco Para Perro": 5 registros en vez de 2) y daba 404 con nombres con "/"; ahora recibe la categoría del grupo y usa `<path:producto>`.
 - **Sin exportación a CSV**: la propuesta la mencionaba (cronograma, mes 5) y no se implementó (`sources/dashboard/01_modulo_dashboard.docx`).
 - **Si load agrega una tienda nueva de una cadena existente**, hay que asignarle `tiendas.cadena` a mano: el `UPDATE` de `schema.sql` solo corre al crear la BD (Engram #277).
 

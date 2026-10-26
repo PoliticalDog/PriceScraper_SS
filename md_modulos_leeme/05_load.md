@@ -327,7 +327,8 @@ El evaluador compara los registros que arma `construir_registros_pagina` contra 
 |---|---|---|---|---|---|---|
 | `20261024_161858` (antes de la pila) | 19.4% | 14.6% | 16.7% | 418 | 328 | 182 |
 | `20261025_121803` (con pila, caed57a) | 30.8% | 23.3% | 26.5% | 271 | 344 | 162 |
-| `20261025_224754` (última, 25-oct-2026) | 33.1% | 24.7% | 28.3% | 287 | 321 | 133 |
+| `20261025_224754` (25-oct-2026) | 33.1% | 24.7% | 28.3% | 287 | 321 | 133 |
+| `20261026_115424` (limpia, 26-oct-2026; la que usa el panel) | 33.1% | 24.7% | 28.3% | 287 | 321 | 133 |
 
 Tabla: Errores por registro en dev (data/processed/_eval/runs/)
 
