@@ -1,6 +1,6 @@
 # Catalogo de metricas BI - PriceScraper MX
 
-Autor: agente BI. Ultima actualizacion: 14-oct-2026.
+Autor: agente BI. Ultima actualizacion: 25-oct-2026 (seccion 8).
 
 Estado de cada metrica: **propuesta** (definida y validada contra la BD, no construida en el dashboard),
 **aprobada** (la persona la acepto) o **publicada** (visible en el dashboard).
@@ -448,3 +448,51 @@ esos folletos, 3 folletos vigentes hoy. Eventos por clase (92): campaña 37, lem
 
 Por campaña suman 2,140 > 1,731 porque un folleto lleva dos campañas: por eso los KPIs cuentan cada folleto una vez.
 Sin datos todavia: Buen Fin, Halloween/Dia de Muertos, Aniversario, Ofertones (los detectara el pipeline nuevo).
+
+---
+
+## 8. Comparativa: clave de agrupacion flexible (propuesta)
+
+| Campo | Valor |
+|---|---|
+| Estado | **fase 1 aplicada** 26-oct-2026, aprobada por la persona: `tiendas.cadena` (soriana = hiper + mercado; walmart = walmart + express; Bodega Aurrera y Sam's propias), `clave_comparativa()` y `v_comparativa_precios_v2` en `load/schema.sql` y `load/vistas.sql`. Tras la recarga del 25-oct con los centavos corregidos: **131 grupos, 1,293 registros, 21 con precio sospechoso, 43 con 3+ cadenas**. El panel `/comparativa` sigue sobre `v_comparativa_precios` (fase 3, cambiar el panel, por aprobar). |
+| Pregunta | Que productos se pueden comparar de verdad entre cadenas distintas, y a que precio esta cada uno en cada cadena? |
+| Comparacion valida | Mismo producto (tipo + variedad/corte), misma presentacion cuando aplica (cantidad y unidad; en granel, precio por kg o por pieza) y misma marca si el producto es de marca, en **>= 2 cadenas distintas**. Juicio por grupo: **V** = cumple; **D** = mismo tipo pero marca, tamano o variedad no verificables o distintos; **I** = genericos que juntan productos distintos ("Refresco", "Galletas", "Smart TV"), marcas o rotulos sueltos ("Great Value", "Colores Disponibles", "Variedad de Quesos"), fragmentos ("A Elegir", "Para Asar") o presentaciones distintas (docepack contra lata). Validez **estricta** = V; **laxa** = V + D. La identidad se juzga aparte del precio: un precio mal leido no invalida el grupo, se marca con la dispersion |
+| Cadena | `tiendas` no tiene cadena. Propuesta: Soriana Hiper + Soriana Mercado = `soriana` (comparten precio identico en 49.6% de sus 230 grupos; los demas pares, 0-9%: `comparativa_pares_tiendas.sql`); Walmart + Walmart Express = `walmart`; el resto, su propia cadena. Bodega Aurrera y Sam's Club quedan aparte (otro formato y precio); juntarlas a Walmart solo quita 4 grupos de 140 (`comparativa_claves/walmex.sql`). **Decide la persona** |
+| Grano | Grupo = valor de la clave con registros en >= 2 cadenas. Registros = filas del dashboard (incluye duplicados exactos) |
+| Base y exclusiones | Registros del dashboard (PRECIO, `valor` y `texto_norm` no nulos): 28,735. Se excluyen 43 atipicos (9 < $1, 34 > $100,000) -> 28,692. La vista actual no excluye nada |
+| Dispersion (alerta) | `ratio_medianas` = mediana mas alta entre cadenas / mas baja. > 10 = precio sospechoso (casi siempre centavos pegados: "$2189" = $21.89) |
+| Muestra de validez | 40 grupos por clave, orden `md5(clave_nombre \|\| '\|' \|\| clave \|\| '\|bi-comparativa-20261025')` (reproducible); censo cuando la clave tiene menos de 40 grupos. IC95 de Wilson |
+| Consultas | `docs/bi/consultas/comparativa_linea_base.sql`, `comparativa_pares_tiendas.sql`, `comparativa_clave_a_ejemplos.sql`; `docs/bi/consultas/comparativa_claves/` (`candidatas.sql`, `muestra_<clave>.sql`, `diferencias_ka_khr.sql`, `dispersion_khr.sql`, `similares_resumen.sql`, `similares_muestra.sql`, `walmex.sql`, `validacion.sql`, `propuesta_inline.sql`), generadas por `tests/_herramienta_bi_claves_comparativa.py` desde el catalogo (no editar a mano) |
+| Validacion | (1) Linea base desde la vista: grupos cuyo `tiendas` no es solo Soriana Hiper + Soriana Mercado ni solo Walmart + Walmart Express = 293 grupos / 3,955 registros = `comparativa_linea_base.sql` desde la tabla base. (2) `validacion.sql` (EXISTS de otro registro de otra cadena, en lugar de GROUP BY/HAVING) = `candidatas.sql` en k0, ka, kar, kbr y khr. (3) `propuesta_inline.sql` (funcion por fila, otro camino) = kar de `candidatas.sql`: 132 grupos / 1,343 registros |
+| Fecha / autor | 25-oct-2026, especialista BI |
+
+Claves medidas (grupos y registros con >= 2 cadenas, base de 28,692):
+
+| Clave | Definicion | Grupos | Registros | Nuevos vs k0 | Pares de cadenas | Ratio > 2 | Validez estricta (IC95) | Validez laxa (IC95) | Costo |
+|---|---|---|---|---|---|---|---|---|---|
+| k0 (actual) | `texto_norm` + `categoria_nlp` | 292 | 3,947 | - | 84 | 77.7% | 27.5% (16.1-42.8), n=40 | 52.5% (37.5-67.1) | - |
+| (a) ka | texto normalizado: minusculas, sin acentos ni puntuacion, unidades unificadas, sin relleno, palabras ordenadas; >= 2 palabras de contenido o una fruta/verdura | 156 | 2,075 | 188 | 66 | 76.9% | 57.5% (42.2-71.5), n=40 | 82.5% (68.1-91.3) | SQL puro |
+| (a') kar | ka + "medio kilo" = 500 g, sin "cada uno/ejemplo/precio/oferta", sin los 84 genericos de catalogo no granel | 132 | 1,343 | 194 | 63 | 73.5% | ~53% (parte A de la muestra khr: 19/36) | ~86% (31/36) | SQL puro (funcion + vista) |
+| (b) kb / kbr | tipo de catalogo + marca + presentacion (las tres) | 10 / 11 | 46 / 49 | 38 / 41 | 10 | 50% | 5/10 (censo) | 8/10 | listas del catalogo: columna en load o tabla de equivalencias |
+| (b sin marca) kb2 | tipo + presentacion | 123 | 999 | 991 | 46 | 68.3% | 20.0% (10.5-34.8), n=40 | 47.5% (32.9-62.5) | igual que (b) |
+| (c) kc | canonico de catalogo (PRECIO o su PRODUCTO) + presentacion | 17 | 127 | 127 | 9 | 47.1% | 2/17 (censo) | 10/17 | SQL puro (join a la fila PRODUCTO) |
+| (c sin presentacion) kc0 | canonico de catalogo solo (como antes de la union de lineas) | 91 | 4,336 | 2,227 | 113 | 97.8% | no muestreada: genericos, ya juzgados invalidos (#261) | - | - |
+| **khr (recomendada)** | kbr si existe; si no, kar | **140** | **1,378** | 229 | 63 | 71.4% | **52.5% (37.5-67.1)**, n=40 | **85.0% (70.9-92.9)** | fase 1 SQL (kar); fase 2 columna en load |
+| (d) equivalencias | pares de claves kar de cadenas distintas, mismo tipo y presentacion, similitud de trigramas >= 0.6 | 809 pares (460 nuevos) | - | - | - | - | 40.0% (26.3-55.4) de pares, n=40 | 77.5% (62.5-87.7) | tabla curada a mano |
+
+Lectura: (c) "re-normalizar con el normalizador" es la clave actual, porque `texto_norm` del PRECIO ya es la salida
+del normalizador sobre el nombre unido (`texto_norm = productos_canonicos.nombre_canonico` en 28,735 de 28,735); por eso
+se midio como canonico del catalogo + presentacion. Los grupos validos esperados (estricta) son ~80 con k0
+(292 x 27.5%; IC 47-125) y ~74-93 con khr (140 x 52.5% directo; ~93 si se parte de la muestra de ka y se descuentan,
+por censo, los 25 genericos que khr quita y los 3 validos que agrega). **La clave flexible casi no recupera
+comparaciones validas: quita ~85% de las invalidas** (de ~410 grupos invalidos en la vista, contando los 197
+solo-Soriana, a ~66). La recuperacion real requiere (d) una tabla de equivalencias revisada y arreglar la lectura de
+precios (dispersion: en khr, 48 grupos con ratio > 10; Soriana pone la mediana alta en 33).
+
+Propuesta (opcion 1, sin recarga): `docs/bi/consultas/comparativa_clave_flexible_propuesta.sql` (columna
+`tiendas.cadena`, funcion `clave_comparativa(texto)` IMMUTABLE y vista nueva `v_comparativa_precios_v2` con
+`num_cadenas`, `num_textos`, mediana, `ratio_medianas_cadena` y `precio_sospechoso`). Validacion tras crearla:
+`SELECT COUNT(*), SUM(num_registros) FROM v_comparativa_precios_v2` = 132 | 1,343 (datos del 25-oct-2026).
+Confiabilidad del panel: base 92.4% heuristica (2,173 de 28,735 registros con nombre de catalogo); validez estricta
+~50% de los grupos; 34% de los grupos (45 de 132) con precio sospechoso. Debe decirse en el panel.

@@ -70,6 +70,13 @@ COMMENT ON TABLE  tiendas             IS 'Cadenas comerciales scrapeadas';
 COMMENT ON COLUMN tiendas.slug        IS 'Identificador canónico normalizado (post-corrección ETL)';
 COMMENT ON COLUMN tiendas.fuente_slug IS 'Slug original del scraper (antes de CORRECCION_TIENDAS en load.py)';
 
+-- Cadena comercial (Comparativa v2, aprobada por la persona 26-oct-2026; docs/bi/metricas.md seccion 8).
+-- NULL = la tienda es su propia cadena. Bodega Aurrera y Sam's Club quedan como cadena propia por decision.
+ALTER TABLE tiendas ADD COLUMN IF NOT EXISTS cadena VARCHAR(50);
+COMMENT ON COLUMN tiendas.cadena IS 'Cadena comercial para la Comparativa (NULL = la tienda es su propia cadena)';
+UPDATE tiendas SET cadena = 'soriana' WHERE slug IN ('soriana_hiper', 'soriana_mercado') AND cadena IS NULL;
+UPDATE tiendas SET cadena = 'walmart' WHERE slug IN ('walmart', 'walmart_express') AND cadena IS NULL;
+
 
 -- folletos
 -- Folletos digitales con metadata de vigencia y origen
