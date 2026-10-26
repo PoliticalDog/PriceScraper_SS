@@ -407,6 +407,18 @@ class RegexExtractor:
         re.IGNORECASE
     )
 
+    # "$" suelto: el OCR leyo el signo como bloque aparte, pegado a la izquierda del numero. Es el
+    # diseno de bodega_aurrera ("$" chico a media altura antes de "35", "20", "50": 417119 p1, 429796
+    # p1) y aparece en calimax ("$" + "49", 136384 p2). Con ese bloque el numero es un precio aunque
+    # no tenga producto cerca (B-2/B-4/B-5) ni sea mas alto que el texto de la pagina
+    # (_alto_como_texto), y no continua un nombre (_continua_nombre). Geometria medida el
+    # 25-oct-2026 en esas paginas: el "$" mide 0.36-0.52x el alto del numero, empieza a su
+    # izquierda, termina entre 2 y 30 px DENTRO del numero, y su centro cae dentro de su altura.
+    # No cubre a proposito el "$" leido como "5"/"6"/"s" en bloque aparte (un digito suelto tambien
+    # es otra cosa) ni B-3 ("$" + "129": $129 o $1.29 queda ambiguo).
+    PATRON_SIGNO_SUELTO = re.compile(r"^[\W_]*\$[\W_]*$")
+    RANGO_ALTO_SIGNO_SUELTO = (0.25, 1.0)
+
     # Evita interpretar un año de vigencia ("2026") como precio
     PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
 
@@ -1323,8 +1335,11 @@ class RegexExtractor:
         # precio (ver ALTO_MIN_PRECIO_SIN_SIMBOLO). Cubre B-2..B-5 y la Regla A sin sufijo, por
         # eso va antes de ellas; las reglas de arriba traen su propia senal de precio. Excepto
         # bajo un rotulo de precio de su casilla (ver PATRON_ROTULO_PRECIO).
+        # Tampoco si el OCR leyo el "$" como bloque aparte pegado a su izquierda (ver
+        # PATRON_SIGNO_SUELTO): esa senal tambien vale como contexto fuerte en B-2/B-4/B-5.
+        signo_suelto = self._tiene_signo_suelto(bbox, bloques_pagina)
         if (self.PATRON_DIGITOS_PUROS.match(texto) and self._alto_como_texto(bbox, bloques_pagina)
-                and not self._bajo_rotulo_precio(bbox, bloques_pagina)):
+                and not self._bajo_rotulo_precio(bbox, bloques_pagina) and not signo_suelto):
             return None
 
         # Regla B-4 vs Regla A: ambigueedad real y documentada para texto de 4
@@ -1345,7 +1360,8 @@ class RegexExtractor:
         m_b4 = self.PATRON_BARE_DIGITOS_4.match(texto)
         if m_b4:
             if (
-                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                signo_suelto
+                or self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
                 or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
             ):
                 return self._parsear_numero(f"{m_b4.group(1)}.{m_b4.group(2)}")
@@ -1376,7 +1392,8 @@ class RegexExtractor:
         m = self.PATRON_BARE_DIGITOS_5.match(texto)
         if m:
             if not (
-                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                signo_suelto
+                or self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
                 or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
             ):
                 return None
@@ -1407,10 +1424,11 @@ class RegexExtractor:
         # el corpus (encontrado 19-ago-2026 al revisar valores extremos).
         m = self.PATRON_BARE_DIGITOS_2.match(texto)
         if m and m.group(1) != "00":
-            if self._continua_nombre(bbox, bloques_pagina, factor_escala):
+            if not signo_suelto and self._continua_nombre(bbox, bloques_pagina, factor_escala):
                 return None
             if not (
-                self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
+                signo_suelto
+                or self._hay_contexto_precio(bbox, bloques_pagina, requerir_fuerte=True, factor_escala=factor_escala)
                 or self._hay_producto_cerca(bbox, bloques_pagina, factor_escala=factor_escala)
             ):
                 return None
@@ -1435,6 +1453,27 @@ class RegexExtractor:
             cache = self._cache_alto_texto = (bloques_pagina, mediana)
         mediana = cache[1]
         return bool(mediana) and bbox.get("alto", 0) < self.ALTO_MIN_PRECIO_SIN_SIMBOLO * mediana
+
+    def _tiene_signo_suelto(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+        """
+        True si un bloque que es solo "$" (PATRON_SIGNO_SUELTO), con alto entre
+        RANGO_ALTO_SIGNO_SUELTO x el del numero, empieza a la izquierda del numero y termina dentro
+        de el o a no mas de 0.3x el alto del numero antes, con el centro dentro de la altura del
+        numero.
+        """
+        alto = bbox.get("alto", 0)
+        bajo, alto_max = self.RANGO_ALTO_SIGNO_SUELTO
+        for otro in bloques_pagina:
+            ob = otro.get("bbox")
+            if not ob or ob is bbox or not (bajo * alto <= ob["alto"] <= alto_max * alto):
+                continue
+            if ob["x"] >= bbox["x"] or bbox["x"] - (ob["x"] + ob["ancho"]) > 0.3 * alto:
+                continue
+            if not (bbox["y"] <= ob["y"] + ob["alto"] / 2 <= bbox["y"] + alto):
+                continue
+            if self.PATRON_SIGNO_SUELTO.match(otro.get("texto", "").strip()):
+                return True
+        return False
 
     def _bajo_rotulo_precio(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
         """
