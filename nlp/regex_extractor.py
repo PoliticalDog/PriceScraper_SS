@@ -419,6 +419,35 @@ class RegexExtractor:
     PATRON_SIGNO_SUELTO = re.compile(r"^[\W_]*\$[\W_]*$")
     RANGO_ALTO_SIGNO_SUELTO = (0.25, 1.0)
 
+    # Regla A-escala (25-oct-2026): el "$" leido como 5/6/8/s pegado a un entero de 2 digitos ("835" = $35,
+    # "s19" = $19, "529" = $29; con centavos en superindice "839"+"99" = $39.99). El bloque solo es ambiguo:
+    # el mismo texto es un entero real de 3 digitos (casa_ley mayoreo "544"+"90" = $544.90, 427141 p1; dev
+    # 424410 p1 "549"+"90"), un precio sin "$" truncado (alsuper "699" = $69⁹⁰, calimax "829" = $82⁹⁰,
+    # s-mart "679" = $6⁷⁹) o un porcentaje ("509" = 50%). Se resuelve con la escala de la pagina: se lee
+    # $dd solo si el bloque tiene letra de precio (>= ALTO_MIN_DIGITO_SIGNO x la mediana del texto) y TODOS
+    # los bloques de 3 caracteres "[0-9sS]dd" de alto parecido (RANGO_ALTO_ESCALA_DIGITO_SIGNO), el mismo
+    # incluido, empiezan con 5/6/8/s, y son al menos 2: los enteros reales de 3 digitos empiezan con
+    # cualquier digito (casa_ley 1/5, 2/8, 2/11), y el "$" mal leido es el mismo en todas las casillas
+    # (merco 3/3, 7/8; bodega_aurrera 3/3, 4/4; tiendas_3b 8/8; walmart 5/5). Con un solo bloque no hay
+    # escala y no se crea el precio (la_comer "844" en un empaque, waldos "509" = 50%).
+    # Medido en produccion con una muestra estratificada de 90 de los 1,797 bloques que la base descartaba
+    # (random.Random(20261025), vista contra la imagen): 55 eran "$"+2 digitos; con la regla pasan 32, de los
+    # que 30 son precios reales (29 con el valor exacto) y 2 no (alsuper "699" = $69⁹⁰, merco "559" = 25%).
+    # Produccion con la regla completa (821 folletos): +504 precios (merco 159, soriana_hiper 117, chedraui 85,
+    # bodega_aurrera 61, walmart 47...), 0 perdidos, 35 que B-3 leia X.YY pasan a $dd. Muestra de 38 creados
+    # vista: 33 con el valor exacto, 1 con centavos perdidos (heb "s11" = $11⁹⁵), 4 errores, ninguno x10.
+    # Los precios con "$" legible de la pagina NO sirven de escala: casi nunca hay de 3 digitos, ni en
+    # casa_ley 424410 p1, donde "549"+"90" es real.
+    # Los centavos en superindice se suman si hay uno con la geometria de la fusion ("839"+"99" = $39.99).
+    # Si no hay pero la pagina los usa, el OCR los perdio y no se crea el precio (_centavos_perdidos).
+    # No cubre a proposito: 4 digitos tras el espurio (Regla A / B-4), un primer digito 0 ("S08" = 50%) ni
+    # un bloque con leyenda de porcentaje justo debajo ("DE DESCUENTO", "OFF": merco "25%" leido "559").
+    PATRON_DIGITO_SIGNO = re.compile(r"^[568sS]([1-9]\d)$")
+    PATRON_TRES_CARACTERES = re.compile(r"^[0-9sS]\d{2}$")
+    ALTO_MIN_DIGITO_SIGNO = 2.0
+    RANGO_ALTO_ESCALA_DIGITO_SIGNO = (0.6, 1.6)
+    PATRON_LEYENDA_PORCENTAJE = re.compile(r"descuento|\boff\b|%", re.IGNORECASE)
+
     # Evita interpretar un año de vigencia ("2026") como precio
     PATRON_ANIO_PLAUSIBLE = re.compile(r"^20[12]\d$")
 
@@ -1342,6 +1371,16 @@ class RegexExtractor:
                 and not self._bajo_rotulo_precio(bbox, bloques_pagina) and not signo_suelto):
             return None
 
+        # Regla A-escala: "$" leido 5/6/8/s + entero de 2 digitos, con la escala de la pagina (ver
+        # PATRON_DIGITO_SIGNO). Va antes de B-3, que leeria "835" como $8.35 con contexto fuerte.
+        m = self.PATRON_DIGITO_SIGNO.match(texto)
+        if m and self._escala_digito_signo(bbox, bloques_pagina):
+            centavos = self._centavos_superindice(bbox, bloques_pagina, factor_escala)
+            if centavos:
+                return self._parsear_numero(f"{m.group(1)}.{centavos}")
+            if not self._centavos_perdidos(bbox, bloques_pagina, factor_escala):
+                return self._parsear_numero(m.group(1))
+
         # Regla B-4 vs Regla A: ambigueedad real y documentada para texto de 4
         # digitos puros SIN sufijo -- "6990" puede ser un precio real con
         # centavos (69.90, Regla B-4, validada con 92/93 casos del dataset
@@ -1442,6 +1481,11 @@ class RegexExtractor:
         los bloques con letras de la pagina (False si la pagina no tiene bloques con letras).
         La mediana se calcula una vez por pagina.
         """
+        mediana = self._mediana_alto_texto(bloques_pagina)
+        return bool(mediana) and bbox.get("alto", 0) < self.ALTO_MIN_PRECIO_SIN_SIMBOLO * mediana
+
+    def _mediana_alto_texto(self, bloques_pagina: list[dict]) -> Optional[float]:
+        """Mediana del alto de los bloques con letras de la pagina (None si no hay), con cache por pagina."""
         cache = self._cache_alto_texto
         if cache is None or cache[0] is not bloques_pagina:
             altos = sorted(b["bbox"]["alto"] for b in bloques_pagina
@@ -1451,8 +1495,73 @@ class RegexExtractor:
                 mitad = len(altos) // 2
                 mediana = altos[mitad] if len(altos) % 2 else (altos[mitad - 1] + altos[mitad]) / 2
             cache = self._cache_alto_texto = (bloques_pagina, mediana)
-        mediana = cache[1]
-        return bool(mediana) and bbox.get("alto", 0) < self.ALTO_MIN_PRECIO_SIN_SIMBOLO * mediana
+        return cache[1]
+
+    def _escala_digito_signo(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
+        """
+        Regla A-escala (ver PATRON_DIGITO_SIGNO): True si el bloque tiene letra de precio
+        (>= ALTO_MIN_DIGITO_SIGNO x la mediana del texto), no lleva una leyenda de porcentaje justo debajo, y
+        todos los bloques de 3 caracteres "[0-9sS]dd" de la pagina con alto parecido (el mismo incluido)
+        empiezan con 5/6/8/s y son al menos 2.
+        """
+        alto = bbox.get("alto", 0)
+        mediana = self._mediana_alto_texto(bloques_pagina)
+        if not mediana or alto < self.ALTO_MIN_DIGITO_SIGNO * mediana:
+            return False
+        bajo, alto_max = self.RANGO_ALTO_ESCALA_DIGITO_SIGNO
+        n = 0
+        for otro in bloques_pagina:
+            ob = otro.get("bbox")
+            if not ob:
+                continue
+            texto_otro = otro.get("texto", "").strip()
+            if (ob is not bbox and self.PATRON_LEYENDA_PORCENTAJE.search(texto_otro)
+                    and min(bbox["x"] + bbox["ancho"], ob["x"] + ob["ancho"]) > max(bbox["x"], ob["x"])
+                    and -0.5 * alto <= ob["y"] - (bbox["y"] + alto) <= alto):
+                return False
+            if not (bajo * alto <= ob["alto"] <= alto_max * alto) or not self.PATRON_TRES_CARACTERES.match(texto_otro):
+                continue
+            if texto_otro[0] not in "568sS":
+                return False
+            n += 1
+        return n >= 2
+
+    def _centavos_superindice(self, bbox: dict, bloques_pagina: list[dict],
+                              factor_escala: float = 1.0) -> Optional[str]:
+        """
+        Los 2 digitos del unico bloque de centavos en superindice pegado a la derecha del entero, con la
+        geometria de _detectar_precios_fusionados para el entero con el "$" pegado (_es_superindice_de con
+        ALTO_MAX_CENTAVOS_VS_ENTERO). None si no hay ninguno o hay mas de uno.
+        """
+        emparejados = [b["texto"] for b in bloques_pagina
+                       if b.get("bbox") and b["bbox"] is not bbox and re.match(r"^\d{2}$", b.get("texto", ""))
+                       and self._es_superindice_de(bbox, b["bbox"], factor_escala, forma_nueva=True)]
+        return emparejados[0] if len(emparejados) == 1 else None
+
+    def _centavos_perdidos(self, bbox: dict, bloques_pagina: list[dict], factor_escala: float = 1.0) -> bool:
+        """
+        Regla A-escala sin centavos legibles: True si el bloque mismo tiene un superindice que no pasa la
+        geometria estricta, o si al menos la mitad de los bloques de su escala (3 caracteres, alto parecido) lo
+        tienen. El diseno de la pagina lleva centavos y el OCR perdio los de este bloque: heb 424850 p1 "s27"
+        es $27⁹⁰ y "s17" es $17⁹⁵ junto a "s39"+"90" y "s59"+"90" (dev, 25-oct-2026). El valor no se sabe y la
+        regla no aplica. Con pocos superindices en la pagina el entero si va solo (merco 423338 p16: "$24",
+        "$59" y un solo "$29⁹⁹").
+        """
+        alto = bbox.get("alto", 0)
+        bajo, alto_max = self.RANGO_ALTO_ESCALA_DIGITO_SIGNO
+        centavos = [b["bbox"] for b in bloques_pagina if b.get("bbox") and re.match(r"^\d{2}$", b.get("texto", ""))]
+        con = total = 0
+        for otro in bloques_pagina:
+            ob = otro.get("bbox")
+            if (not ob or not (bajo * alto <= ob["alto"] <= alto_max * alto)
+                    or not self.PATRON_TRES_CARACTERES.match(otro.get("texto", "").strip())):
+                continue
+            total += 1
+            lleva = any(c is not ob and self._es_superindice_de(ob, c, factor_escala) for c in centavos)
+            if lleva and ob is bbox:
+                return True
+            con += lleva
+        return 2 * con >= total > 0
 
     def _tiene_signo_suelto(self, bbox: dict, bloques_pagina: list[dict]) -> bool:
         """
@@ -1998,11 +2107,8 @@ class RegexExtractor:
         arriesgar un emparejamiento incorrecto en paginas densas.
 
         Retorna una lista de (bloque_entero, bloque_centavos, valor_fusionado).
+        La geometria del par esta en _es_superindice_de.
         """
-        # Calibrados a ANCHO_REFERENCIA_UMBRALES, igual que DISTANCIA_MAX_CONTEXTO_PRECIO.
-        GAP_HORIZONTAL_MIN = -30 * factor_escala
-        GAP_HORIZONTAL_MAX = 60 * factor_escala
-
         # (bloque, digitos del entero, forma_nueva): 1-2 digitos (regla original) o, desde el
         # 24-oct-2026, el entero con el "$" diminuto pegado (PATRON_ENTERO_FUSION)
         candidatos_enteros = []
@@ -2024,30 +2130,8 @@ class RegexExtractor:
         fusionados = []
         for entero, digitos_entero, forma_nueva in candidatos_enteros:
             bbox_e = entero["bbox"]
-            emparejados = []
-            for centavos in candidatos_centavos:
-                if centavos is entero:
-                    continue
-                bbox_c = centavos["bbox"]
-                gap = bbox_c["x"] - (bbox_e["x"] + bbox_e["ancho"])
-                if not (GAP_HORIZONTAL_MIN <= gap <= GAP_HORIZONTAL_MAX):
-                    continue
-                if bbox_c["alto"] >= bbox_e["alto"]:
-                    continue  # el centavo debe ser visualmente mas chico (superindice)
-                if forma_nueva and bbox_c["alto"] > bbox_e["alto"] * self.ALTO_MAX_CENTAVOS_VS_ENTERO:
-                    continue
-                if bbox_c["y"] > bbox_e["y"] + bbox_e["alto"] * 0.5:
-                    continue  # alineado hacia la mitad superior del entero
-                # ...y tampoco mas de medio entero por ENCIMA de su borde superior: el superindice
-                # va alineado arriba con el entero (en dev, los pares del GT miden
-                # (y_c - y_e) / alto_e entre -0.12 y 0.14). Sin este tope contaban los centavos
-                # de otra fila de la misma columna, cientos de px mas arriba: fusiones falsas
-                # (merco 426175 p1 "51" + el "99" de "78⁹⁹" -> 51.99; calimax 135706 p1
-                # "90" + "90" -> 90.9) y pares reales ambiguos que no se fusionaban (calimax
-                # "34"+"90" de $34⁹⁰, alsuper 416306 p2 "99"+"90" de $99⁹⁰). Medido 24-oct-2026.
-                if bbox_c["y"] < bbox_e["y"] - bbox_e["alto"] * 0.5:
-                    continue
-                emparejados.append(centavos)
+            emparejados = [c for c in candidatos_centavos
+                           if c is not entero and self._es_superindice_de(bbox_e, c["bbox"], factor_escala, forma_nueva)]
 
             if len(emparejados) == 1:
                 centavos = emparejados[0]
@@ -2056,6 +2140,36 @@ class RegexExtractor:
                     fusionados.append((entero, centavos, valor))
 
         return fusionados
+
+    def _es_superindice_de(self, bbox_e: dict, bbox_c: dict, factor_escala: float = 1.0,
+                           forma_nueva: bool = False) -> bool:
+        """
+        True si bbox_c tiene la geometria de los centavos en superindice del entero bbox_e (ver
+        _detectar_precios_fusionados). forma_nueva: el entero trae el "$" pegado y el superindice mide hasta
+        ALTO_MAX_CENTAVOS_VS_ENTERO del entero.
+        """
+        # Calibrados a ANCHO_REFERENCIA_UMBRALES, igual que DISTANCIA_MAX_CONTEXTO_PRECIO.
+        GAP_HORIZONTAL_MIN = -30 * factor_escala
+        GAP_HORIZONTAL_MAX = 60 * factor_escala
+        gap = bbox_c["x"] - (bbox_e["x"] + bbox_e["ancho"])
+        if not (GAP_HORIZONTAL_MIN <= gap <= GAP_HORIZONTAL_MAX):
+            return False
+        if bbox_c["alto"] >= bbox_e["alto"]:
+            return False  # el centavo debe ser visualmente mas chico (superindice)
+        if forma_nueva and bbox_c["alto"] > bbox_e["alto"] * self.ALTO_MAX_CENTAVOS_VS_ENTERO:
+            return False
+        if bbox_c["y"] > bbox_e["y"] + bbox_e["alto"] * 0.5:
+            return False  # alineado hacia la mitad superior del entero
+        # ...y tampoco mas de medio entero por ENCIMA de su borde superior: el superindice
+        # va alineado arriba con el entero (en dev, los pares del GT miden
+        # (y_c - y_e) / alto_e entre -0.12 y 0.14). Sin este tope contaban los centavos
+        # de otra fila de la misma columna, cientos de px mas arriba: fusiones falsas
+        # (merco 426175 p1 "51" + el "99" de "78⁹⁹" -> 51.99; calimax 135706 p1
+        # "90" + "90" -> 90.9) y pares reales ambiguos que no se fusionaban (calimax
+        # "34"+"90" de $34⁹⁰, alsuper 416306 p2 "99"+"90" de $99⁹⁰). Medido 24-oct-2026.
+        if bbox_c["y"] < bbox_e["y"] - bbox_e["alto"] * 0.5:
+            return False
+        return True
 
     @staticmethod
     def _distancia_bbox(bbox_a: dict, bbox_b: dict) -> float:
