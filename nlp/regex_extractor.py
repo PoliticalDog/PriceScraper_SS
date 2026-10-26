@@ -256,6 +256,19 @@ class RegexExtractor:
         re.VERBOSE | re.IGNORECASE
     )
 
+    # Centavos pegados (25-oct-2026): "$" literal + 4-5 digitos sin separador es entero + centavos en
+    # superindice que el OCR junto en el mismo bloque: "$2189" = $21⁸⁰ (el "80" subrayado se lee "89"),
+    # "$1990" = $19⁹⁰, "$10399" = $103⁹⁰. Antes se leia $2,189 (x100). Diseno de soriana_hiper y
+    # soriana_mercado (casi todas sus casillas), y aparece en chedraui, la_comer, merco, calimax, arteli,
+    # heb, bodega_aurrera y sam's_club. Los precios reales >= $1,000 llevan coma ("$1,299", "511,99000" de
+    # A2-miles) y no entran. Dev: los 47 bloques "$dddd"/"$ddddd" con monto en el GT son x100, ninguno real.
+    # Produccion (821 folletos): muestras vistas contra la imagen, random.Random(20261027) 58 de "$dddd" y
+    # random.Random(20261028) 36 de "$ddddd": 92 con centavos pegados y 2 con un digito mal leido por el OCR
+    # ("$199c/u" -> "$1995", "$139⁰⁰" -> "$1392"), mal antes y despues; ningun entero real.
+    # No cubre a proposito: "$" + 3 digitos ("$780" = $7⁸⁰ en soriana, pero "$379" es real en la misma
+    # tienda), 6 digitos, ni un numero seguido de punto o coma decimal ("$12990.00").
+    PATRON_CENTAVOS_PEGADOS = re.compile(r"\d{4,5}")
+
     # Precio con $ OCR corrupto (fresko): s/8/S + 4-6 dígitos (últimos 2 = centavos)
     # s9989 --> $99.89 | 82990 --> $29.90 | s15790 --> $157.90
     PATRON_PRECIO_OCR_CORRUPTO = re.compile(
@@ -1005,6 +1018,9 @@ class RegexExtractor:
         self.confianza_minima = confianza_minima or self.CONFIANZA_MINIMA
         # (bloques de la pagina, mediana del alto de sus bloques con letras): ver _alto_como_texto
         self._cache_alto_texto: Optional[tuple[list, Optional[float]]] = None
+        # id() del bbox de los bloques de centavos que la Regla A-escala ya sumo a un precio en la
+        # pagina en curso (ver _centavos_superindice y procesar_pagina)
+        self._centavos_consumidos: set[int] = set()
 
 # -------------------------------------- Método principal --------------------------------------
 
@@ -1018,6 +1034,8 @@ class RegexExtractor:
         factor_escala = ancho_pagina / self.ANCHO_REFERENCIA_UMBRALES
 
         hay_precio_en_pagina = self._pagina_tiene_precio(bloques_pagina, factor_escala)
+        # Despues de la pasada previa: solo cuentan los centavos que usa la clasificacion de abajo
+        self._centavos_consumidos = set()
 
         # Pre-paso: anticipo de apartado en su propio bloque, a la derecha del rotulo
         # "Apartalo con" (ver _detectar_anticipos_apartado). Se descarta entero.
@@ -1044,6 +1062,10 @@ class RegexExtractor:
                 bbox=bloque_entero["bbox"],
             ))
             bloques_consumidos.add(id(bloque_entero))
+            # Centavos consumidos (25-oct-2026): antes el bloque de centavos seguia al loop y la Regla
+            # B-2 lo leia como un precio propio ("99"+"90" = $99.90 y ademas $90). En produccion eran
+            # 373 de los 903 PRECIO "90"/"99" (alsuper 185, merco 83, arteli 44, calimax 27, heb 16).
+            bloques_consumidos.add(id(bloque_centavos))
 
         for bloque in bloques_pagina:
             if id(bloque) in bloques_consumidos:
@@ -1085,6 +1107,18 @@ class RegexExtractor:
                 resultado.atributos.append(entidad)
             else:
                 resultado.descartes.append(entidad)
+
+        # Los centavos que la Regla A-escala sumo a otro bloque ("839"+"99" = $39.99) no son ademas un
+        # precio propio; el bloque de centavos puede clasificarse antes que su entero, por eso va al final
+        if self._centavos_consumidos:
+            precios = []
+            for e in resultado.precios:
+                if id(e.bbox) in self._centavos_consumidos:
+                    resultado.descartes.append(EntidadExtraida("DESCARTE", e.texto_raw, e.texto_norm,
+                                                               confianza=e.confianza, bbox=e.bbox))
+                else:
+                    precios.append(e)
+            resultado.precios = precios
 
         return resultado
 
@@ -1158,7 +1192,7 @@ class RegexExtractor:
                                    valor=precio_cuotas, confianza=confianza, bbox=bbox)
 
         # 5. Precio actual
-        precio_valor = self._extraer_precio(texto)
+        precio_valor = self._extraer_precio(texto, bbox, bloques_pagina, factor_escala)
         if precio_valor is not None:
             return EntidadExtraida("PRECIO", texto_raw, texto,
                                    valor=precio_valor, confianza=confianza, bbox=bbox)
@@ -1269,7 +1303,9 @@ class RegexExtractor:
             return None
         return self._parsear_numero(match.group(1))
 
-    def _extraer_precio(self, texto: str) -> Optional[float]:
+    def _extraer_precio(self, texto: str, bbox: Optional[dict] = None,
+                        bloques_pagina: Optional[list[dict]] = None,
+                        factor_escala: float = 1.0) -> Optional[float]:
         # Ignorar si el texto empieza con prefijo de ahorro o precio anterior
         if re.match(r"^\s*(?:ahorr[ao]s?|antes|antos|precio\s+anterior)", texto,
                     re.IGNORECASE):
@@ -1297,7 +1333,91 @@ class RegexExtractor:
         match = self.PATRON_PRECIO.search(texto)
         if not match:
             return None
-        return self._parsear_numero(match.group(1))
+        numero = match.group(1)
+        # Centavos pegados al entero (ver PATRON_CENTAVOS_PEGADOS)
+        if (self.PATRON_CENTAVOS_PEGADOS.fullmatch(numero)
+                and not re.match(r"[.,]\d", texto[match.end(1):])):
+            dividido = self._parsear_numero(f"{numero[:-2]}.{numero[-2:]}")
+            entero = float(int(numero))
+            otro_texto = texto[:match.start(1)] + " " + texto[match.end(1):]
+            if not self._entero_confirmado(entero, dividido, otro_texto, bbox, bloques_pagina, factor_escala):
+                return dividido
+        return self._parsear_numero(numero)
+
+    # Guarda de los centavos pegados (QA 25-oct-2026, Engram #275): chedraui y soriana imprimen los precios
+    # >= $1,000 con coma ("$2,595", "$65,999") y el OCR a veces la pierde, asi que "$dddd"/"$ddddd" tambien
+    # puede ser un entero real. Se deja entero si la casilla lo confirma y no confirma el valor /100:
+    #  - otro monto con coma de miles en el mismo bloque (chedraui 413467 p15 "S1,990 $2590", colchones
+    #    individual y matrimonial en un solo bloque);
+    #  - una mensualidad: N x cuota = entero, con las cuotas de _cuotas_de_pagina (chedraui "9MSI | $28833" =
+    #    $2,595) o un monto junto a un rotulo "Meses sin intereses" con N en MESES_MSI (soriana pone N, el
+    #    rotulo y el monto en un recuadro aparte: "18" / "Meses sin Intereses" / "899944" = 18 x $999.44 =
+    #    $17,990). Radio: RADIO_CUOTA_ENTERO x la distancia de casilla, porque el recuadro de soriana va al lado;
+    #  - un precio anterior ("DE $6,1900 A", "Antes $X") del que el entero es un descuento creible
+    #    (anterior / 3 <= precio < anterior) y el valor /100 no. Si _extraer_precio_anterior no lo lee
+    #    ("DE$77,.49900 a"), se usan los digitos de un "DE ... A" con y sin centavos.
+    # Produccion (821 folletos): protege 9 de los 2,685 "$dddd"/"$ddddd", los 9 de QA, todos enteros reales vistos
+    # contra la imagen. No cubre: el entero sin mensualidad, anterior ni otro monto con coma legibles.
+    # Los "DE $36⁹⁰ A" de soriana ("DE $3690 A" + "$2990") confirman las dos lecturas y siguen dividiendo.
+    PATRON_ROTULO_MESES = re.compile(r"m[eéc]s[eéc]s|[il1]nt[eéc]r[eéc]s|\bms[il1]\b", re.IGNORECASE)
+    PATRON_MILES_EN_BLOQUE = re.compile(r"(?<![\d,.])\d{1,3},\d{3}(?!\d)")
+    RADIO_CUOTA_ENTERO = 2.0
+    DESCUENTO_MAXIMO_ANTERIOR = 3.0
+
+    def _entero_confirmado(self, entero: float, dividido: float, otro_texto: str, bbox: Optional[dict],
+                           bloques_pagina: Optional[list[dict]], factor_escala: float = 1.0) -> bool:
+        """True si la casilla confirma la lectura entera de "$dddd" y no la /100 (ver PATRON_ROTULO_MESES)."""
+        if self.PATRON_MILES_EN_BLOQUE.search(otro_texto):
+            return True
+        if not bbox or not bloques_pagina:
+            return False
+        distancia = self.DISTANCIA_MAX_CONTEXTO_PRECIO * factor_escala
+        radio = self.RADIO_CUOTA_ENTERO * distancia
+
+        # Mensualidades: (N, N x cuota)
+        implicitos = []
+        for rotulo, n, texto_monto in self._cuotas_de_pagina(bloques_pagina, factor_escala):
+            if self._distancia_bbox(bbox, rotulo["bbox"]) <= radio:
+                implicitos += [(n, n * v) for v in self._lecturas_monto_cuota(texto_monto)
+                               if not (n == 10 and v == self.ANTICIPO_MINIMO)]
+        meses = [b["bbox"] for b in bloques_pagina
+                 if b.get("bbox") and self.PATRON_ROTULO_MESES.search(b.get("texto", ""))]
+        if meses:
+            for b in bloques_pagina:
+                ob = b.get("bbox")
+                if not ob or ob is bbox or self._distancia_bbox(bbox, ob) > radio:
+                    continue
+                if not any(self._distancia_bbox(ob, mb) <= distancia for mb in meses):
+                    continue
+                for v in self._lecturas_monto_cuota(b.get("texto", "")):
+                    implicitos += [(n, n * v) for n in self.MESES_MSI]
+
+        def cuadra(valor):
+            return any(abs(valor - p) <= n * 0.01 for n, p in implicitos)
+
+        if cuadra(entero) and not cuadra(dividido):
+            return True
+
+        # Precio anterior de la casilla
+        anteriores = set()
+        for b in bloques_pagina:
+            ob = b.get("bbox")
+            if not ob or ob is bbox or self._distancia_bbox(bbox, ob) > distancia:
+                continue
+            t = self._limpiar_texto(b.get("texto", ""))
+            candidatos = self._extraer_precio_anterior(t)
+            anteriores |= set(candidatos)
+            # Solo con la forma completa "DE ... A": "DE: 54141.00" (soriana_mercado 422726 p6, "$444⁰⁰" mal
+            # leido y sin la "A") daria $54,141 y protegeria $319⁰⁰ leido "$31900|"
+            if re.match(r"^\W*de\b.*\ba\b", t, re.IGNORECASE):
+                digitos = re.sub(r"\D", "", t)
+                if len(digitos) >= 3:
+                    anteriores |= {float(int(digitos)), int(digitos) / 100}
+
+        def descuento(valor):
+            return any(a / self.DESCUENTO_MAXIMO_ANTERIOR <= valor < a for a in anteriores)
+
+        return descuento(entero) and not descuento(dividido)
 
     def _extraer_precio_sin_simbolo(
         self, texto: str, bbox: dict, bloques_pagina: Optional[list[dict]],
@@ -1533,10 +1653,14 @@ class RegexExtractor:
         geometria de _detectar_precios_fusionados para el entero con el "$" pegado (_es_superindice_de con
         ALTO_MAX_CENTAVOS_VS_ENTERO). None si no hay ninguno o hay mas de uno.
         """
-        emparejados = [b["texto"] for b in bloques_pagina
+        emparejados = [b for b in bloques_pagina
                        if b.get("bbox") and b["bbox"] is not bbox and re.match(r"^\d{2}$", b.get("texto", ""))
                        and self._es_superindice_de(bbox, b["bbox"], factor_escala, forma_nueva=True)]
-        return emparejados[0] if len(emparejados) == 1 else None
+        if len(emparejados) != 1:
+            return None
+        # El bloque queda consumido: procesar_pagina no lo deja como precio propio
+        self._centavos_consumidos.add(id(emparejados[0]["bbox"]))
+        return emparejados[0]["texto"]
 
     def _centavos_perdidos(self, bbox: dict, bloques_pagina: list[dict], factor_escala: float = 1.0) -> bool:
         """
