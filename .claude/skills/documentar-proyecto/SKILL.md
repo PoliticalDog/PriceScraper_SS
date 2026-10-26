@@ -17,11 +17,13 @@ Los cambios viajan asi: codigo → `.md` → borrador nuevo o aviso de cambios �
 | Producto | Ruta | Va a git |
 |---|---|---|
 | Un `.md` por modulo (referencia tecnica) | `md_modulos_leeme/NN_modulo.md` + `md_modulos_leeme/README.md` (indice) | Si |
-| Manual de usuario (capitulos) | `docs/manual_usuario/NN_tema.md` | Si |
-| Capturas del dashboard | `docs/manual_usuario/capturas/*.png`, definidas en `docs/manual_usuario/capturas.yaml` | Si |
+| Manual de usuario (capitulos) | `docs/manual_usuario/NN_tema.md` | No: `docs/` es solo local |
+| Capturas del dashboard | `docs/manual_usuario/capturas/*.png`, definidas en `docs/manual_usuario/capturas.yaml` | No (local) |
 | Borradores por capitulo | `docs/entregables/documentacion_tecnica/borrador_NN_x.docx` y `docs/entregables/manual_usuario/borrador_NN_x.docx` | No (`*.docx` en `.gitignore`) |
-| Registro de borradores entregados | `docs/entregables/registro_borradores.yaml` (que `.md` y que commit se entrego) | Si |
-| Portadas (para un documento completo) | `docs/entregables/portada_*.yaml` | Si |
+| Registro de borradores entregados | `docs/entregables/registro_borradores.yaml` (que `.md` y que commit se entrego) | No (local) |
+| Portadas (para un documento completo) | `docs/entregables/portada_*.yaml` | No (local) |
+
+Solo `md_modulos_leeme/` (y la skill) van a git: `docs/` y `sources/` son locales por decision de la persona (26-oct-2026); no los agregues al repo. Los documentos originales de la persona estan en la raiz del repo, fuera de git.
 
 Las estructuras estan en `references/manual_tecnico.md` (como encaja cada modulo en el documento tecnico de la persona, que parte de su `Propuesta_PriceScraper_SS.docx`) y `references/manual_usuario.md`.
 
@@ -66,7 +68,7 @@ venv/Scripts/python.exe .claude/skills/documentar-proyecto/scripts/md_a_docx.py 
 Cuando la persona pregunte que cambio, o al terminar un cambio de codigo que afecta un modulo ya entregado:
 
 1. Lee `docs/entregables/registro_borradores.yaml` para saber que commit se le entrego de cada capitulo.
-2. `git diff <commit> -- <fuente.md>` muestra el cambio exacto.
+2. `git diff --no-index <copia_entregada> <fuente.md>` muestra el cambio exacto (la copia de lo entregado queda junto al borrador como `borrador_x.entregado.md`; para `md_modulos_leeme/` tambien sirve `git diff <commit> -- <fuente.md>`).
 3. Resume para ella, por seccion: que se agrego, que cambio (dato viejo → dato nuevo) y que se quito, con el texto nuevo listo para pegar. Si el cambio es grande, genera el borrador completo de nuevo y dile que secciones cambiaron.
 
 ## Capturas del dashboard

@@ -9,11 +9,11 @@ La documentacion tecnica es un entregable separado que parte de su `Propuesta_Pr
 | Archivo | Borrador | Donde va en su documento |
 |---|---|---|
 | `00_arquitectura.md` | `borrador_00_arquitectura.docx` | Capitulo 3 · Arquitectura del sistema: el pipeline, el datalake (`data/raw` → `data/processed`), los modulos y el stack real (verificado en `requirements.txt`, que esta en UTF-16) |
-| `05_base_de_datos.md` | `borrador_05_base_de_datos.docx` | Capitulo 3 · Modelo de base de datos (reemplaza el modelo de 5 tablas de la propuesta) |
+| `04_base_de_datos.md` | `borrador_04_base_de_datos.docx` | Capitulo 3 · Modelo de base de datos (reemplaza el modelo de 5 tablas de la propuesta) |
 | `01_scraper.md` | `borrador_01_scraper.docx` | Capitulo 4 · Modulo Web Scraping (actualiza lo que ya tiene) |
 | `02_vision.md` | `borrador_02_vision.docx` | Capitulo 4 · Modulo Vision (actualiza lo que ya tiene) |
 | `03_nlp.md` | `borrador_03_nlp.docx` | Capitulo 4 · Modulo NLP |
-| `04_load.md` | `borrador_04_load.docx` | Capitulo 4 · Modulo de carga (ETL) |
+| `05_load.md` | `borrador_05_load.docx` | Capitulo 4 · Modulo de carga (ETL) |
 | `06_evaluador.md` | `borrador_06_evaluador.docx` | Capitulo 4 · Evaluacion de calidad |
 | `07_dashboard.md` | `borrador_07_dashboard.docx` | Capitulo 4 · Dashboard y BI |
 | `08_flujo_con_agentes.md` | `borrador_08_flujo_con_agentes.docx` | Capitulo 4 · Desarrollo asistido por agentes |

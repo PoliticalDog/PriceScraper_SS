@@ -441,8 +441,15 @@ def origen_git(ruta: Path) -> str:
 def registrar(registro: Path, salida: Path, fuentes: list[Path], commit: str):
     datos = yaml.safe_load(registro.read_text(encoding="utf-8")) if registro.exists() else None
     datos = datos or {}
+    # Copia de lo entregado junto al borrador: docs/ no esta en git, asi que el diff contra un commit no
+    # sirve para el manual de usuario; con la copia: git diff --no-index <copia> <md actual>
+    copias = []
+    for i, f in enumerate(fuentes):
+        copia = salida.with_name(f"{salida.stem}.entregado{'' if len(fuentes) == 1 else i}.md")
+        copia.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        copias.append(copia.as_posix())
     datos[salida.as_posix()] = {"fuentes": [f.as_posix() for f in fuentes], "commit": commit,
-                               "fecha": date.today().isoformat()}
+                               "fecha": date.today().isoformat(), "copias_entregadas": copias}
     registro.parent.mkdir(parents=True, exist_ok=True)
     registro.write_text("# Que version de cada .md se entrego como borrador (lo escribe md_a_docx.py --registro).\n"
                         "# Para ver que cambio desde entonces: git diff <commit> -- <fuente>\n"
