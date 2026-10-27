@@ -358,6 +358,7 @@ Con eso: `vigente` = sin etiqueta y hoy dentro del rango; `vigente_dudoso` = con
 ```sql
 CREATE USER pricescraper_user WITH PASSWORD '<clave>';
 CREATE DATABASE pricescraper OWNER pricescraper_user;
+\c pricescraper
 -- PostgreSQL 15+: el esquema public ya no da permisos por defecto (README del repo)
 GRANT ALL ON SCHEMA public TO pricescraper_user;
 ```
@@ -431,7 +432,7 @@ SELECT
 
 Los respaldos son **solo locales** y no van a git:
 
-- Desde el 16-oct-2026, en la carpeta padre del repo (`PRICE_SCRAPER_SS/`): `respaldo_antes_reproceso_nlp_AAAAMMDD_HHMM.dump` y `respaldo_nlp_resultado_AAAAMMDD_HHMM.tar.gz`. Hay 6 pares, del 16 al 25-oct-2026; el más reciente es `..._20261025_2258`.
+- Desde el 16-oct-2026, en la carpeta padre del repo (`PRICE_SCRAPER_SS/`): `respaldo_antes_reproceso_nlp_AAAAMMDD_HHMM.dump` y `respaldo_nlp_resultado_AAAAMMDD_HHMM.tar.gz`. Al 26-oct-2026 hay 7 pares, del 16 al 26-oct-2026; el más reciente es `..._20261026_1121` (antes de borrar los productos canónicos huérfanos). Un respaldo más viejo, `respaldo_antes_recarga_20261014.dump`, quedó en la raíz del repo: git lo ignora, pero conviene moverlo a la carpeta padre.
 - Antes, en `data/backups_bd/` (`data/` está en `.gitignore`): `pricescraper_pre_recarga_<commit>_<fecha>.dump`, `pricescraper_pre_v3_20260822_150301.dump` y los zip del NLP.
 
 No hay copia fuera de esta computadora; si se pierde el disco, se pierden los respaldos.

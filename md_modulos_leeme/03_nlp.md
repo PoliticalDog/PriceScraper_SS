@@ -445,7 +445,7 @@ Las reglas tienen pruebas unitarias con cajas reales de folletos en `tests/`:
 `test_eventos_campania.py` fija las campañas que sí y las que no (con textos reales de producción); `test_catalogo_productos.py`, la prioridad del tipo sobre la marca y los bordes de palabra; y `test_normalizador_cobertura.py`, los falsos amigos que la regla de cobertura debe seguir rechazando ("MORENA", "Milanesa", "Refritos", "Jabón").
 
 ```
-venv/Scripts/python.exe -m pytest tests -q                      # suite completa (1,324 pruebas al 26-oct-2026)
+venv/Scripts/python.exe -m pytest tests -q                      # suite completa (1,349 pruebas al 26-oct-2026)
 venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria   # calidad del pipeline contra el ground truth
 ```
 

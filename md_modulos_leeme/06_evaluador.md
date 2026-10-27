@@ -337,7 +337,7 @@ El resultado está en `evaluador/splits.json` (versionado en git): 56 folletos e
 - una corrida de holdout guarda solo agregados, sin `detalle` ni `ejemplos_error`;
 - `catalogo`, `ocr` y `validacion` trabajan solo con dev.
 
-Según los archivos de `runs/`, hay 8 corridas de holdout y la última es del 12-oct-2026 (`20261012_135834_5823d76-sucio_holdout.json`, con la que se aprobó e4184da: holdout F1 7.3 → 8.4, según su mensaje de commit). Los cambios posteriores, incluida la pila de load que subió el F1 de dev de 16.7 a 26.5, no se han confirmado en holdout.
+La penúltima corrida de holdout es del 12-oct-2026 (`20261012_135834_5823d76-sucio_holdout.json`, con la que se aprobó e4184da: F1 8.3). La última es del 26-oct-2026 (`20261026_175246_ed30481-sucio_holdout.json`, Engram #281): precisión 8.5 → 27.9%, recall 8.2 → 22.1% y F1 8.3 → 24.7%, una ganancia de +16.4 puntos casi igual a la de dev en el mismo periodo (+16.2). La mejora de octubre se sostiene; solo s-mart y walmart no trasladan su mejora de dev, probablemente por diseños de folleto que no aparecen en dev. El detalle por caso del holdout no se guarda, así que solo se comparan cifras agregadas.
 
 ### Sellado e integridad
 
@@ -550,7 +550,7 @@ Las primeras cuatro pasan al 26-oct-2026 (70 casos). Las pruebas del evaluador u
 
 ## Limitaciones conocidas y pendientes
 
-- **El holdout no se corre desde el 12-oct-2026.** La mejora de dev desde entonces (F1 12.1 → 28.3) no está confirmada en folletos que nadie miró. Vale la pena que QA lo corra antes de citar el resultado final.
+- **El holdout se ha corrido unas 6 veces en octubre de 2026.** La del 26-oct confirmó la mejora (ver "Splits"). Cada vez que se mira, deja un poco de ser "no visto": conviene espaciarlo y correrlo solo para confirmar un conjunto de cambios, no cada regla.
 - **El GT es chico y desigual.** 1,556 artículos con precio en dev; costco y oxxo no se pueden medir en dev, y sam's_club y waldos tienen menos de 20 artículos. Solo hay folletos de tiendeo: ofertomat no tiene GT.
 - **`asociacion_producto` mezcla dos causas.** Un nombre correcto pero mal leído por el OCR ("Crejitas Gaei G5c 9" por "Gabi Orejitas", similitud 0.18) cuenta igual que el nombre de otra casilla. Lo mismo un nombre genérico pero cierto ("Laptop" por "Acer Laptop 15.6" ..."). Para separarlos hay que mirar los casos (`tests/_herramienta_asoc_diag.py` lo hace por subtipo, `05_load.md`).
 - **Un solo umbral de nombre para todo.** Nombres largos del GT con descripciones entre paréntesis ("(azúcar y stevia)") bajan la similitud de un registro correcto.

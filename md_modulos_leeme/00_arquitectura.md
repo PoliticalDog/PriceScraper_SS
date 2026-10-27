@@ -36,7 +36,7 @@ En paralelo, el **evaluador** (`evaluador/`) mide la calidad del pipeline contra
 | NLP | `nlp/` | `ocr_resultado.json` | `nlp_resultado.json` (bloques clasificados: precio, producto, promoción...) | `03_nlp.md` |
 | Base de datos | `load/schema.sql`, `load/vistas.sql` | — | Tablas y vistas | `04_base_de_datos.md` |
 | Carga (ETL) | `load/` | `nlp_resultado.json` + `ocr_resultado.json` | Filas en PostgreSQL | `05_load.md` |
-| Evaluador | `evaluador/` | Ground truth + el pipeline en memoria | Precisión, recall y F1 por tienda | pendiente |
+| Evaluador | `evaluador/` | Ground truth + el pipeline en memoria | Precisión, recall y F1 por tienda | `06_evaluador.md` |
 | Dashboard | `dashboard/`, `priceScraper_web/` | Vistas de PostgreSQL | Páginas web y APIs JSON | `07_dashboard.md` |
 
 Tabla: Módulos del sistema
@@ -72,7 +72,7 @@ Versiones según `requirements.txt` (archivo en UTF-16) y el entorno `venv/` al 
 | NLP | `re` (regex) + RapidFuzz 3.14.5 | Clasificación por reglas con geometría; coincidencia aproximada contra el catálogo |
 | Base de datos | PostgreSQL + psycopg 3.3.4 | `load/db_builder.py` usa psycopg 3; Django usa su backend de PostgreSQL |
 | Web | Django 6.0.3 | Dashboard; Bootstrap, Chart.js y DataTables en el navegador |
-| Pruebas | pytest 9.0.2 | 1,324 pruebas al 26-oct-2026, sin tocar la base de datos |
+| Pruebas | pytest 9.0.2 | 1,349 pruebas al 26-oct-2026, sin tocar la base de datos |
 | Configuración | python-dotenv 1.2.2 | `DATABASE_URL` en `.env` |
 
 Tabla: Stack tecnológico en uso
