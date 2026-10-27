@@ -1,6 +1,6 @@
 # PriceScraper
 
-Sistema de extracción, procesamiento e inteligencia de precios de folletos digitales de supermercados mexicanos (proyecto de servicio social). Descarga los folletos de Tiendeo y Ofertomat, lee su texto con OCR, clasifica precios y productos, los carga a PostgreSQL y los muestra en un dashboard web.
+Sistema de extracción, procesamiento e inteligencia de precios de folletos digitales de supermercados mexicanos (proyecto de servicio social). Descarga los folletos de Tiendeo (Ofertomat está deshabilitado desde octubre de 2026; su módulo se conserva), lee su texto con OCR, clasifica precios y productos, los carga a PostgreSQL y los muestra en un dashboard web.
 
 ```
 Tiendeo / Ofertomat → scraper/ → data/raw → vision/ (OCR) → nlp/ → load/ → PostgreSQL → dashboard/
@@ -52,6 +52,8 @@ La carpeta `data/` (imágenes y JSON del pipeline, varios GB), el `.env`, `docs/
 
 | Paso | Comando |
 |---|---|
+| **Corrida completa de lo nuevo** (descarga → OCR → NLP → carga) | `venv/Scripts/python.exe orquestador.py` (`--gpu`, `--respaldo`, `--etapas`, `--tiendas`) |
+| Programarla cada semana en Windows | `orquestador_semanal.bat` (instrucciones de `schtasks` en su encabezado) |
 | Descargar folletos | `venv/Scripts/python.exe probar_scraper.py` |
 | OCR + NLP de lo pendiente | `venv/Scripts/python.exe catchup_tiendeo.py` (`--gpu` si hay CUDA) |
 | Cargar a la BD lo nuevo | `venv/Scripts/python.exe probar_load.py` |
@@ -61,7 +63,7 @@ La carpeta `data/` (imágenes y JSON del pipeline, varios GB), el `.env`, `docs/
 
 Tabla: Comandos principales
 
-Cada script de la raíz (`probar_*.py`) tiene un menú interactivo con modo prueba (un folleto) y modo batch. El detalle de cada etapa, sus archivos de entrada y salida, y por qué funciona así está en `md_modulos_leeme/`.
+`orquestador.py` encadena las cuatro etapas sin preguntas y solo procesa lo nuevo; si una etapa falla en algunos folletos, las siguientes siguen y el resumen final lo reporta (`logs/orquestador.log` y `logs/orquestador_ultima_corrida.json`, código de salida 1 si hubo errores). Los pasos sueltos siguen disponibles: cada script `probar_*.py` tiene un menú interactivo con modo prueba (un folleto) y modo batch. El detalle de cada etapa, sus archivos de entrada y salida, y por qué funciona así está en `md_modulos_leeme/`.
 
 ## Estructura
 
@@ -77,6 +79,7 @@ PriceScraper_SS/
 ├── tests/              pruebas (pytest); tests/_herramienta_*.py son scripts de medición
 ├── md_modulos_leeme/   documentación técnica por módulo
 ├── .claude/            agentes, skills y guardia para trabajar con Claude Code
+├── orquestador.py      pipeline completo de lo nuevo (corrida semanal)
 ├── recargar_bd.py      recarga completa con respaldo y verificación
 └── data/, logs/        locales (fuera de git)
 ```

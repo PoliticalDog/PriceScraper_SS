@@ -172,7 +172,7 @@ Se usó un hook y no `disallowedTools` porque un `disallowedTools` con especific
 | `git commit`, `push`, `add`, `checkout`, `reset`, `restore`, `stash`... | Todos | El árbol de git lo cambia la persona (vía el orquestador) |
 | `load.py`, `load.load`, `probar_load`, `db_builder`, `psql`, `pg_dump`, `pg_restore`, `createdb`, `dropdb`, `manage.py migrate/flush/...` | Todos | Los agentes no tocan la BD: el evaluador construye los registros en memoria |
 | SQL de escritura (`DROP`, `TRUNCATE`, `ALTER`, `DELETE FROM`, `INSERT INTO`, `UPDATE ... SET`) | Todos | Igual |
-| `probar_nlp`, `probar_vision`, `probar_scraper`, `catchup_tiendeo`, `scraper/` | Todos | Reescriben datos de producción (JSON de OCR/NLP o descargas) |
+| `probar_nlp`, `probar_vision`, `probar_scraper`, `catchup_tiendeo`, `orquestador`, `scraper/` | Todos | Reescriben datos de producción (JSON de OCR/NLP o descargas) |
 | `evaluador sellar`, `evaluador splits`, `evaluador validacion` | Todos | Sellar el GT, regenerar splits o la validación humana son decisiones de la persona |
 | `--split holdout` o `--split todo` | Todos menos QA | El holdout solo confirma; si los especialistas lo vieran, terminarían ajustando reglas a él |
 | `evaluador ocr` | Todos menos visión y QA | El OCR experimental es de visión |
@@ -206,6 +206,7 @@ Consecuencias prácticas:
 - Para leer corridas guardadas en `data/processed/_eval/runs/`, usa Read o Glob, no `ls ... 2>&1`. QA lo anotó el 24-oct-2026: "La guardia de agentes bloquea los comandos con '>' o '2>&1' si aparecen rutas de data/" (Engram #258).
 - Como no se puede escribir en el scratchpad, los agentes guardan sus scripts de medición en `tests/_herramienta_*.py` (Engram #257). Son de solo lectura, pytest no los recoge y van al repo (commits 8253daa y 32001ee).
 - **`recargar_bd.py` bloqueado desde el 26-oct-2026.** El script respalda, reprocesa el NLP, recarga y limpia la BD. Se agregó al patrón de BD de `PROHIBIDOS` (junto a `load.py` y `pg_dump`), con su prueba en `tests/test_guardia_agente.py`. Ese mismo día se protegió `nlp/evaluador_calidad.py` (de ahí toma el evaluador la tolerancia de precio y los tokens del nombre): el especialista de producto edita `nlp/`, y sin esa protección podía cambiar al juez sin invalidar la corrida.
+- **`orquestador.py` bloqueado desde el 27-oct-2026.** Descarga, hace OCR y NLP de producción y carga a la BD; lo corre la persona (o su tarea programada). Se agregó al patrón de scripts de producción, con `test_orquestador_prohibido`.
 - La guardia no revisa `Read`, `Grep` ni `Glob`: un agente puede leer cualquier archivo del repo. La protección del holdout es que no se corra con `--split holdout`; el evaluador no guarda ejemplos del holdout.
 
 ### settings.json

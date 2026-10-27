@@ -43,6 +43,10 @@ Tabla: Módulos del sistema
 
 Cada módulo tiene un script orquestador en la raíz con menú interactivo: `probar_scraper.py`, `probar_vision.py`, `probar_nlp.py`, `probar_load.py` y `probar_dashboard.py`. `catchup_tiendeo.py` corre OCR y NLP de lo que falte en una sola pasada.
 
+Desde el 27-oct-2026, `orquestador.py` corre el pipeline completo sin menú: scraper → OCR → NLP → carga, cada etapa solo sobre lo nuevo. Reutiliza las funciones de los scripts anteriores (`scrapear_tiendeo_todas_tiendas`, `catchup_vision`, `catchup_nlp`, `Loader.cargar_batch(forzar=False)` y `recargar_bd.verificar`). Si una etapa truena o tiene errores, las siguientes siguen con lo que ya está en disco y el resumen lo reporta (decisión de la persona); sale con código 1 para que la tarea programada (`orquestador_semanal.bat`) lo note. `--respaldo` hace un `pg_dump` antes de cargar. No sustituye a `recargar_bd.py`: no reprocesa ni recarga lo que ya estaba.
+
+**Ofertomat está deshabilitado** desde el 26-oct-2026 por lo complejo de su scrapeo (última descarga: 4-ago-2026). El adaptador `scraper/sources/ofertomat.py` se conserva para arreglarlo en el futuro. El orquestador solo scrapea Tiendeo; el OCR, el NLP y la carga recorren las dos fuentes porque los 39 folletos de Ofertomat ya descargados siguen en `data/` y en la BD.
+
 ## El datalake local
 
 Todo el material intermedio vive en `data/`, que no está en git porque pesa varios GB:

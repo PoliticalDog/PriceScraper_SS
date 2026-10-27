@@ -164,3 +164,11 @@ def test_evaluador_calidad_protegido(rol):
 def test_producto_sigue_editando_el_resto_de_nlp():
     assert edita("producto", "nlp/regex_extractor.py") is None
     assert corre("producto", 'venv/Scripts/python.exe -c "from nlp.evaluador_calidad import TOLERANCIA_PRECIO"') is None
+
+
+@pytest.mark.parametrize("rol", ["producto", "vision", "qa", "bi"])
+def test_orquestador_prohibido(rol):
+    # 27-oct-2026: el orquestador descarga, reescribe OCR/NLP de produccion y carga a la BD
+    for comando in ("venv/Scripts/python.exe orquestador.py", "orquestador_semanal.bat",
+                    "python orquestador.py --etapas nlp load"):
+        assert corre(rol, comando)

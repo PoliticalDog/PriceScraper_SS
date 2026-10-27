@@ -60,7 +60,8 @@ PROHIBIDOS = [
      "Los agentes no tocan la BD (ni recarga ni consultas directas): usa el evaluador, que construye los registros en memoria."),
     (r"\b(DROP|TRUNCATE|ALTER)\s+(TABLE|VIEW|SCHEMA|DATABASE)\b|\bDELETE\s+FROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b",
      "SQL de escritura prohibido para los agentes."),
-    (r"probar_nlp|probar_vision|probar_scraper|catchup_tiendeo|scraper[/\\.]",
+    # orquestador (27-oct-2026): descarga, hace OCR/NLP de produccion y carga a la BD; lo corre la persona
+    (r"probar_nlp|probar_vision|probar_scraper|catchup_tiendeo|orquestador|scraper[/\\.]",
      "Esos scripts reescriben datos de produccion (JSON de OCR/NLP o descargas). Evalua con: python -m evaluador correr --nlp memoria"),
     (r"\bevaluador\s+(sellar|splits|validacion)\b",
      "Sellar el evaluador, regenerar splits o la validacion humana son decisiones de la persona."),

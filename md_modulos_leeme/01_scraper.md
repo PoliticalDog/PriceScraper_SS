@@ -2,6 +2,8 @@
 
 El módulo de web scraping es el primer eslabón del pipeline. Navega Tiendeo.com.mx y Ofertomat.mx con un navegador Chromium controlado por Playwright, encuentra los folletos vigentes de cada tienda, captura las URLs de sus páginas en el CDN de cada plataforma y las descarga como imágenes en el datalake local (`data/raw/`). Lleva además un registro de lo ya descargado para que cada corrida solo baje lo nuevo.
 
+> **Ofertomat está deshabilitado** desde el 26-oct-2026, por decisión de la persona responsable, por lo complejo de su scrapeo (última descarga: 4-ago-2026). El adaptador y sus rutas se conservan para un arreglo futuro; lo que se documenta de Ofertomat aquí describe ese código. La corrida semanal (`orquestador.py`) solo descarga Tiendeo.
+
 ## Propósito y alcance
 
 Las dos plataformas muestran los folletos en un visor que se arma con JavaScript: el HTML inicial no trae las imágenes de las páginas, y estas solo se piden al CDN cuando el visor las muestra. Por eso el scraper usa un navegador real y escucha las peticiones de red en lugar de leer el HTML.
@@ -91,6 +93,7 @@ Tabla: Consumidores de las salidas del scraper
 | `scraper/downloader.py` | Descarga asíncrona de las imágenes y rutas del datalake | `Downloader` (`descargar_paginas`, `_descargar_una`, `HEADERS`, `REFERERS`), `ruta_folleto`, `normalizar_nombre`, `DATA_RAW` |
 | `scraper/registro.py` | Registro persistente de folletos descargados | `Registro` (`ya_procesado`, `marcar_procesado`, `total_procesados`, `listar`), `RUTA_REGISTRO` |
 | `probar_scraper.py` | Orquestador de consola: menú, rastreo por tienda o completo, vigencia de respaldo y log | `scrapear_tiendeo`, `scrapear_tiendeo_todas_tiendas`, `scrapear_ofertomat`, `scrapear_ofertomat_todas_tiendas`, `main` |
+| `orquestador.py` | Corrida completa sin menú: llama a `scrapear_tiendeo_todas_tiendas` (o a `scrapear_tiendeo` por cada `--tiendas`) y luego a OCR, NLP y carga | `etapa_scraper`, `correr_etapas`, `main` |
 | `catchup_tiendeo.py` | No hace scraping: corre OCR y NLP sobre lo que el scraper dejó pendiente (paso siguiente del pipeline) | `catchup_vision`, `catchup_nlp`, `FUENTES` |
 
 Tabla: Archivos del módulo Web Scraping

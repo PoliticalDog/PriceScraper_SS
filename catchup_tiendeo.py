@@ -32,7 +32,8 @@ FUENTES        = ["tiendeo", "ofertomat"]
 
 # El perfil y la resolucion por tienda viven en vision/preprocessor.py (PERFIL_POR_TIENDA, RESOLUCION_POR_TIENDA)
 
-def catchup_vision(fuente: str, usar_gpu: bool = False):
+def catchup_vision(fuente: str, usar_gpu: bool = False) -> dict:
+    """OCR de los folletos de data/raw/<fuente> sin ocr_resultado.json. Devuelve {pendientes, procesados, errores}."""
     carpetas = sorted([
         p for p in (DATA_RAW / fuente).rglob("*")
         if p.is_dir() and list(p.glob("pagina_*.webp"))
@@ -45,7 +46,7 @@ def catchup_vision(fuente: str, usar_gpu: bool = False):
     logger.info(f"[Vision/{fuente}] {len(carpetas)} folletos totales, {len(pendientes)} pendientes")
     if not pendientes:
         logger.info(f"[Vision/{fuente}] Nada pendiente.")
-        return
+        return {"pendientes": 0, "procesados": 0, "errores": 0}
 
     ocr           = OCREngine(idiomas=["es", "en"], usar_gpu=usar_gpu)
     # Un preprocesador por (perfil, ancho_objetivo) distinto (cache), en vez de uno solo
@@ -77,6 +78,8 @@ def catchup_vision(fuente: str, usar_gpu: bool = False):
             if r:
                 procesados    += 1
                 total_bloques += r["total_bloques"]
+            else:
+                errores += 1            # sin paginas, Tesseract ausente u OCR vacio (ver procesar_carpeta)
         except Exception as e:
             logger.error(f"[Vision/{fuente}] Error en {carpeta}: {e}")
             errores += 1
@@ -85,9 +88,11 @@ def catchup_vision(fuente: str, usar_gpu: bool = False):
         f"[Vision/{fuente}] Completado — {procesados} folletos, "
         f"{total_bloques} bloques, {errores} errores"
     )
+    return {"pendientes": len(pendientes), "procesados": procesados, "errores": errores}
 
 
-def catchup_nlp(fuente: str):
+def catchup_nlp(fuente: str) -> dict:
+    """NLP de los folletos con OCR y sin nlp_resultado.json. Devuelve {pendientes, procesados, errores}."""
     carpetas = sorted([
         p.parent for p in (DATA_PROCESSED / fuente).rglob("ocr_resultado.json")
     ])
@@ -96,7 +101,7 @@ def catchup_nlp(fuente: str):
     logger.info(f"[NLP/{fuente}] {len(carpetas)} folletos con OCR, {len(pendientes)} pendientes de NLP")
     if not pendientes:
         logger.info(f"[NLP/{fuente}] Nada pendiente.")
-        return
+        return {"pendientes": 0, "procesados": 0, "errores": 0}
 
     extractor = RegexExtractor(confianza_minima=0.15)
 
@@ -112,6 +117,7 @@ def catchup_nlp(fuente: str):
             errores += 1
 
     logger.info(f"[NLP/{fuente}] Completado — {procesados} folletos, {errores} errores")
+    return {"pendientes": len(pendientes), "procesados": procesados, "errores": errores}
 
 
 def main():
