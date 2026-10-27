@@ -1,146 +1,86 @@
 # PriceScraper
 
-Sistema de extracción, procesamiento e inteligencia de precios de folletos digitales de supermercados mexicanos.
+Sistema de extracción, procesamiento e inteligencia de precios de folletos digitales de supermercados mexicanos (proyecto de servicio social). Descarga los folletos de Tiendeo y Ofertomat, lee su texto con OCR, clasifica precios y productos, los carga a PostgreSQL y los muestra en un dashboard web.
 
-**Fuentes:** Tiendeo.com.mx · Ofertomat.mx  
-**Stack:** Python · Playwright · OpenCV · EasyOCR (+ Tesseract como fallback/investigación) · spaCy (planeado) · PostgreSQL (psycopg v3) · FastAPI (planeado) · PySpark (planeado)
-
----
-
-## Requisitos previos
-
-- Python 3.10 o superior
-- Git
-
----
-
-## Configuracion en maquina nueva
-
-### 1. Clonar el repositorio
-
-```bash
-git clone https://github.com/tu-usuario/PriceScraper_SS.git
-cd PriceScraper_SS
+```
+Tiendeo / Ofertomat → scraper/ → data/raw → vision/ (OCR) → nlp/ → load/ → PostgreSQL → dashboard/
 ```
 
-### 2. Crear y activar entorno virtual
+**Stack en uso:** Python 3.12 · Playwright · OpenCV · EasyOCR · reglas regex con geometría + RapidFuzz · PostgreSQL 18 (psycopg 3) · Django 6 · pytest.
 
-**Windows:**
-```bash
-python -m venv venv
-venv\Scripts\activate
+**Documentación técnica:** [`md_modulos_leeme/`](md_modulos_leeme/README.md), un archivo por módulo (arquitectura, scraper, visión, NLP, base de datos, carga, evaluador, dashboard y desarrollo con agentes). Empieza por `00_arquitectura.md`.
+
+## Instalación rápida (Windows)
+
+Requisitos: Python 3.12 (con el lanzador `py`), Git y PostgreSQL 18. Es la única combinación probada.
+
+```
+py -3.12 -m venv venv
+venv/Scripts/python.exe -m pip install -r requirements.txt
+venv/Scripts/python.exe -m playwright install chromium
 ```
 
-**Linux / macOS:**
-```bash
-python -m venv venv
-source venv/bin/activate
+`requirements.txt` está en UTF-16; pip lo lee bien. Trae paquetes que el pipeline ya no usa (spaCy, FastAPI, Django REST Framework, APScheduler, PySpark): se instalan pero no hay que configurarlos.
+
+Base de datos, como superusuario de PostgreSQL:
+
+```sql
+CREATE USER pricescraper_user WITH PASSWORD '<clave>';
+CREATE DATABASE pricescraper OWNER pricescraper_user;
+\c pricescraper
+GRANT ALL ON SCHEMA public TO pricescraper_user;
 ```
 
-### 3. Instalar dependencias Python
+Archivo `.env` en la raíz (no se sube a git):
 
-```bash
-pip install -r requirements.txt
+```
+DATABASE_URL=postgresql://usuario:clave@localhost:5432/pricescraper
 ```
 
-### 4. Instalar Chromium para Playwright
+Si la clave lleva símbolos, escríbelos codificados en la URL (`@` → `%40`).
 
-> Playwright no incluye el navegador en pip — hay que instalarlo por separado.
+Después:
 
-```bash
-playwright install chromium
-```
+1. La primera conexión crea las tablas desde `load/schema.sql` (por ejemplo, `venv/Scripts/python.exe probar_load.py`, opción 4).
+2. Aplica `load/vistas.sql` a mano (pgAdmin o `psql -f load/vistas.sql`): `db_builder.py` no crea las vistas y el dashboard las necesita.
+3. `venv/Scripts/python.exe manage.py migrate` crea las tablas internas de Django.
+4. Verifica con `venv/Scripts/python.exe -m pytest tests -q` (no necesita la base de datos).
 
-### 5. Descargar modelo de español para spaCy
+La carpeta `data/` (imágenes y JSON del pipeline, varios GB), el `.env`, `docs/`, `sources/` y los respaldos de la BD son locales: no están en git y se copian aparte.
 
-```bash
-python -m spacy download es_core_news_sm
-```
+## Uso
 
-### 6. Crear carpetas necesarias
-
-```bash
-mkdir -p data/raw data/processed logs
-```
-
-### 7. Restaurar datos desde USB
-
-Las siguientes carpetas y archivos NO están en el repositorio (ver `.gitignore`) y deben copiarse manualmente desde USB o disco externo:
-
-| Elemento | Descripcion |
+| Paso | Comando |
 |---|---|
-| `data/` | Datalake completo: imagenes descargadas, JSONs procesados. Puede pesar varios GB. |
-| `.env` | Variables de entorno: credenciales, rutas, configuracion local. |
-| `logs/` | Opcional. Historial de ejecuciones anteriores. Se regenera al correr el pipeline. |
+| Descargar folletos | `venv/Scripts/python.exe probar_scraper.py` |
+| OCR + NLP de lo pendiente | `venv/Scripts/python.exe catchup_tiendeo.py` (`--gpu` si hay CUDA) |
+| Cargar a la BD lo nuevo | `venv/Scripts/python.exe probar_load.py` |
+| Recarga completa con respaldo (tras cambiar `nlp/` o `load/`) | `venv/Scripts/python.exe recargar_bd.py todo` |
+| Dashboard | `venv/Scripts/python.exe manage.py runserver` → `http://127.0.0.1:8000` |
+| Medir la calidad del pipeline | `venv/Scripts/python.exe -m evaluador correr --split dev --nlp memoria` |
 
-> Los archivos `.docx` de propuesta/documentacion tambien conviene respaldarlos en USB ya que estan ignorados por git.
+Tabla: Comandos principales
 
----
+Cada script de la raíz (`probar_*.py`) tiene un menú interactivo con modo prueba (un folleto) y modo batch. El detalle de cada etapa, sus archivos de entrada y salida, y por qué funciona así está en `md_modulos_leeme/`.
 
-## Ejecucion del pipeline
-
-Cada modulo tiene su propio script de prueba con menu interactivo. Por ahora se corre modulo por modulo; el orquestador final que encadene todas las etapas (`etl.py`) se construira cuando `load/` este terminado.
-
-```bash
-# 1. Scraping — descargar folletos de Tiendeo/Ofertomat
-python probar_scraper.py
-
-# 2. Vision — preprocesar imagenes y extraer texto (OCR)
-python probar_vision.py
-
-# 3. NLP — clasificar bloques de texto en producto/precio/promo
-python probar_nlp.py
-
-# 4. Load/ETL — cargar datos estructurados a PostgreSQL (EN CONSTRUCCION)
-python probar_load.py
-```
-
-Para inspeccionar la base de datos PostgreSQL generada se usa **pgAdmin 4** (conexion manual a la BD `pricescraper`).
-
----
-
-## 📁 Estructura del proyecto
+## Estructura
 
 ```
 PriceScraper_SS/
-├-- scraper/
-│   ├-- metodos_scraper.py   # Clase base BaseScraper (Playwright)
-│   ├-- downloader.py        # Descarga de imagenes
-│   ├-- registro.py          # Control de folletos procesados (idempotencia)
-│   └-- sources/
-│       ├-- tiendeo.py       # Adaptador Tiendeo.com.mx
-│       └-- ofertomat.py     # Adaptador Ofertomat.mx
-├-- vision/
-│   ├-- preprocessor.py      # Pipeline OpenCV (perfiles color_normal / color_suave)
-│   └-- ocr_engine.py        # EasyOCR (principal) + Tesseract (fallback/investigacion)
-├-- nlp/
-│   ├-- regex_extractor.py   # Extractor de entidades via regex
-│   ├-- catalogo_productos.py
-│   └-- normalizador.py      # API planeada para el ETL (aun no integrada, no es codigo muerto)
-├-- load/                    # ETL — EN CONSTRUCCION (frente de trabajo actual)
-│   ├-- db_builder.py        # Conexion PostgreSQL (psycopg v3), ejecuta schema.sql
-│   ├-- load.py               # Carga: asociacion producto-precio por bounding boxes
-│   ├-- schema.sql
-│   └-- vistas.sql            # Vistas para BI, aplicadas manualmente via pgAdmin
-├-- sources/                  # Comparaciones manuales de perfiles OCR (antecedentes de cambios)
-│   └-- analisis_perfiles_v3/
-├-- data/                    # <- NO incluido en git (ver .gitignore)
-│   ├-- raw/                 # Imagenes descargadas
-│   └-- processed/           # Imagenes procesadas + JSONs OCR/NLP
-├-- logs/                    # <- NO incluido en git
-├-- probar_scraper.py
-├-- probar_vision.py
-├-- probar_nlp.py
-├-- probar_load.py
-├-- requirements.txt
-└-- Propuesta_PriceScraper_SS.docx   # Documento de servicio social (objetivos, alcance, metricas)
+├── scraper/            Playwright: adaptadores de Tiendeo y Ofertomat, descarga y registro
+├── vision/             preprocesamiento por tienda, OCR (EasyOCR) y detección de regiones
+├── nlp/                clasificación de bloques, reglas de precio, catálogo y normalizador
+├── load/               asociación producto-precio, carga a PostgreSQL, schema.sql y vistas.sql
+├── evaluador/          juez de calidad contra el ground truth (dev y holdout)
+├── dashboard/          app Django: páginas, APIs y consultas
+├── priceScraper_web/   proyecto Django (settings, urls)
+├── tests/              pruebas (pytest); tests/_herramienta_*.py son scripts de medición
+├── md_modulos_leeme/   documentación técnica por módulo
+├── .claude/            agentes, skills y guardia para trabajar con Claude Code
+├── recargar_bd.py      recarga completa con respaldo y verificación
+└── data/, logs/        locales (fuera de git)
 ```
 
----
+## Desarrollo
 
-## Notas
-
-- La primera ejecucion de `probar_vision.py` descarga los modelos de EasyOCR automaticamente (~500 MB). Las siguientes ejecuciones son instantaneas.
-- El scraper corre en modo `headless=True` por defecto (sin ventana visible). Cambia a `headless=False` en `probar_scraper.py` para ver el navegador durante el scraping.
-- EasyOCR es el motor OCR principal (mejor desempeno en folletos de retail coloridos). Tesseract se conserva en `vision/ocr_engine.py` como motor independiente, para investigacion y documentacion futura — no se usa en produccion.
-- En PostgreSQL 15+ es necesario ejecutar manualmente `GRANT ALL ON SCHEMA public` para el usuario de la app (no viene por defecto).
+Los cambios al pipeline se miden con el evaluador antes y después, y se aceptan solo si mejoran precisión y recall sin regresiones por tienda (`md_modulos_leeme/06_evaluador.md`). En octubre de 2026 el desarrollo se hizo con Claude Code y agentes especializados con revisión de QA; cómo trabajar así está en `md_modulos_leeme/08_flujo_con_agentes.md`.

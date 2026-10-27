@@ -12,6 +12,7 @@ capturas:
     esperar: "#kpis .card"          # selector que indica que la pagina ya cargo los datos
     recorte: auto                   # auto (por defecto con anotaciones: encierra todas), "ventana", "pagina" o un selector
     margen: 16                      # px alrededor del recorte
+    alto_max: 1100                  # opcional: corta abajo las capturas con tablas largas (px de la pagina)
     anotaciones:                    # se numeran en orden: 1, 2, 3...
       - selector: "#kpis"
         etiqueta: "Indicadores principales"

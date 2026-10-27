@@ -141,8 +141,11 @@ def capturar(page, base: str, cap: dict, salida: Path, espera_graficas: int) -> 
             raise SystemExit(f"[capturas] {cap['archivo']}: el selector de recorte {recorte!r} no existe")
         m = int(cap.get("margen", 16))
         x0, y0 = max(caja[0] - m, 0), max(caja[1] - m, 0)
+        alto = caja[3] + m - y0
+        if cap.get("alto_max"):            # tablas largas: se corta abajo (las anotaciones de abajo se pierden)
+            alto = min(alto, int(cap["alto_max"]))
         page.screenshot(path=str(destino), full_page=True,
-                        clip={"x": x0, "y": y0, "width": caja[2] + m - x0, "height": caja[3] + m - y0})
+                        clip={"x": x0, "y": y0, "width": caja[2] + m - x0, "height": alto})
     return str(destino)
 
 

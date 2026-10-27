@@ -81,7 +81,7 @@ venv/Scripts/python.exe .claude/skills/documentar-proyecto/scripts/capturas_dash
 ```
 
 - Si el dashboard no responde en `--base` (por defecto `http://127.0.0.1:8000`), el script levanta `manage.py runserver` y lo apaga al final. Necesita PostgreSQL arriba.
-- Formato del YAML y ejemplo comentado en `assets/capturas_ejemplo.yaml`. Cada captura tiene `archivo`, `url`, `esperar` (selector que indica que la pagina ya cargo), `acciones` opcionales (`clic`, `escribir`, `seleccionar`, `esperar`, `esperar_ms`), `recorte` opcional (`auto`, un selector, `pagina` o `ventana`) y `anotaciones` (`selector`, `etiqueta`, `color` opcional). Sin `recorte`, la imagen encierra todas las anotaciones con un margen.
+- Formato del YAML y ejemplo comentado en `assets/capturas_ejemplo.yaml`. Cada captura tiene `archivo`, `url`, `esperar` (selector que indica que la pagina ya cargo), `acciones` opcionales (`clic`, `escribir`, `seleccionar`, `esperar`, `esperar_ms`), `recorte` opcional (`auto`, un selector, `pagina` o `ventana`), `alto_max` opcional para cortar tablas largas y `anotaciones` (`selector`, `etiqueta`, `color` opcional). Sin `recorte`, la imagen encierra todas las anotaciones con un margen.
 - Usa selectores estables (los `id` de `dashboard/templates/dashboard/`). Confirma con grep que el selector existe antes de anotarlo.
 - Los `id` de pagina del visor de origen cambian con cada recarga de la BD: si una captura del visor falla, busca otra pagina con precios.
 - Para imagenes que no son del panel (por ejemplo, una pagina de folleto con sus cajas OCR), dibuja con PIL sobre el PNG a partir de las coordenadas `bbox`.

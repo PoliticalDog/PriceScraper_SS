@@ -475,7 +475,7 @@ Tabla: Conteos de la base al 26-oct-2026, 10:47 | Fuente: consulta de solo lectu
 
 - **Diagrama desactualizado.** A `load/diagrama_ER_V3.svg` le faltan `errores_carga` y `tiendas.cadena`, y hay que exportarlo a PNG para el borrador de Word.
 - **`productos_canonicos` acumula filas si la recarga se hace a mano.** `Loader().cargar_batch()` solo hace upsert; `recargar_bd.py todo` (o el paso `limpiar`) borra los que ya no usa ninguna extracción. Sus `aliases` no los lee nadie desde la BD: el normalizador usa su catálogo en código.
-- **Tiendas nuevas sin cadena.** El `UPDATE` de `cadena` solo corre con `schema.sql`; si load crea una tienda nueva de una cadena existente, hay que asignarle `cadena` a mano (Engram #277).
+- **Cadena de las tiendas nuevas.** Desde el 26-oct-2026 `load._upsert_tienda` asigna `cadena` con el diccionario `CADENAS` de `load/load.py` al crear la tienda, y la completa si estaba vacía (el `UPDATE` de `schema.sql` no sirve en una BD nueva: corre con la tabla vacía). Un slug nuevo de una cadena existente hay que agregarlo a `CADENAS`.
 - **`db_builder.py` no aplica columnas nuevas ni vistas** en una base existente; hay que hacerlo a mano (sección "Cambios al esquema").
 - **`v_precios_actuales` no filtra vigencia** aunque su nombre lo sugiera.
 - **Comparativa v2 fuera del panel.** Faltan la fase 2 (calcular la clave en load con el catálogo de Python) y la fase 3 (panel `/comparativa` sobre la v2); ambas por aprobar. Dentro de los grupos aún hay máximos atípicos (Chile serrano $12,495, Lechuga $990), probablemente precios "$ddd" mal leídos (Engram #277).
