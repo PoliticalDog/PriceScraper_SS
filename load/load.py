@@ -39,6 +39,13 @@ def rutas_nlp(data_processed: Path = DATA_PROCESSED) -> list[Path]:
 # se quito el 08-oct-2026: los folletos de tiendeo/walmart si son de Walmart.
 CORRECCION_TIENDAS: dict[tuple[str, str], tuple[str, str]] = {}
 
+# Cadena comercial de cada tienda para la Comparativa v2 (tiendas.cadena; decision de la persona 26-oct-2026).
+# Las que no aparecen son su propia cadena (NULL). Bodega Aurrera y Sam's Club quedan como cadena propia.
+CADENAS: dict[str, str] = {
+    "soriana_hiper": "soriana", "soriana_mercado": "soriana",
+    "walmart": "walmart", "walmart_express": "walmart",
+}
+
 # tiendas que se benefician de ROI
 TIENDAS_ROI_HIBRIDO = {"walmart", "chedraui", "soriana_hiper", "soriana_mercado"}
 
@@ -1230,20 +1237,19 @@ class Loader:
     # ----------------- Upserts SQL -----------------
 
     def _upsert_tienda(self, cur, slug: str, nombre: str, fuente_slug: str) -> int:
+        # cadena (26-oct-2026): en una BD nueva el UPDATE de schema.sql corre con tiendas vacia, asi que la cadena
+        # se asigna aqui; en una tienda existente solo se llena si estaba vacia (no pisa un cambio hecho a mano)
         cur.execute("""
-            INSERT INTO tiendas (nombre, slug, fuente_slug, activa)
-            VALUES (%s, %s, %s, TRUE)
-            ON CONFLICT (slug) DO NOTHING
-            RETURNING id
-        """, (nombre, slug, fuente_slug))
+            INSERT INTO tiendas (nombre, slug, fuente_slug, activa, cadena)
+            VALUES (%s, %s, %s, TRUE, %s)
+            ON CONFLICT (slug) DO UPDATE SET cadena = COALESCE(tiendas.cadena, EXCLUDED.cadena)
+            RETURNING id, (xmax = 0) AS nueva
+        """, (nombre, slug, fuente_slug, CADENAS.get(slug)))
 
         row = cur.fetchone()
-        if row:
+        if row.get("nueva"):
             logger.info(f"[Load] Nueva tienda: {nombre} (slug={slug})")
-            return row["id"]
-
-        cur.execute("SELECT id FROM tiendas WHERE slug = %s", (slug,))
-        return cur.fetchone()["id"]
+        return row["id"]
 
     def _upsert_folleto(self, cur, tienda_id: int, folleto_id_fuente: str,
                         fuente: str, meta: dict, reemplazar: bool = False) -> int:

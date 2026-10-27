@@ -1,7 +1,7 @@
 # web settings
 
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 import os
@@ -65,9 +65,11 @@ _db_url = urlparse(os.getenv("DATABASE_URL", ""))
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": _db_url.path.lstrip("/"),
-        "USER": _db_url.username,
-        "PASSWORD": _db_url.password,
+        # unquote (26-oct-2026): una clave con simbolos va codificada en la URL ("%40" = "@"); psycopg la decodifica
+        # al conectar desde load, y sin esto Django recibia el texto codificado y no conectaba
+        "NAME": unquote(_db_url.path.lstrip("/")),
+        "USER": unquote(_db_url.username) if _db_url.username else _db_url.username,
+        "PASSWORD": unquote(_db_url.password) if _db_url.password else _db_url.password,
         "HOST": _db_url.hostname,
         "PORT": _db_url.port or 5432,
     }

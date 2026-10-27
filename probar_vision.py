@@ -195,6 +195,13 @@ def procesar_carpeta(
         logger.info(f"[Vision] ⏭️  Ya procesado: {ruta_rel}")
         return None
 
+    # Tesseract sin instalar (26-oct-2026): cada pagina salia con 0 bloques y, en modo prueba (forzar), ese resultado
+    # vacio sobrescribia el ocr_resultado.json de produccion. Se detiene antes de tocar nada.
+    if motor == "tesseract" and not ocr._verificar_tesseract():
+        logger.error("[Vision] Tesseract no esta instalado o no esta en el PATH: no se procesa. Usa EasyOCR "
+                     "(opcion por defecto) o instala Tesseract (ver el manual de usuario, capitulo de instalacion).")
+        return None
+
     # Buscar todas las páginas (imagenes) en la carpeta
     paginas = sorted(carpeta_raw.glob("pagina_*.webp"))
     if not paginas:
@@ -280,6 +287,11 @@ def procesar_carpeta(
     )
     resultado_folleto["confianza_global"] = round(conf_global, 3)
     resultado_folleto["total_bloques"]    = total_bloques
+
+    # Un OCR que no leyo nada no reemplaza un resultado existente (motor que fallo, imagenes corruptas...)
+    if total_bloques == 0 and ruta_json.exists():
+        logger.error(f"[Vision] {ruta_rel}: 0 bloques en todas las paginas; se conserva el ocr_resultado.json anterior")
+        return None
 
     with open(ruta_json, "w", encoding="utf-8") as f:
         json.dump(resultado_folleto, f, ensure_ascii=False, indent=2)

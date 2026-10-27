@@ -18,6 +18,14 @@ import probar_nlp
 
 logger = logging.getLogger("catchup_tiendeo")
 
+# Logs (26-oct-2026): al importar probar_vision, su basicConfig se queda con el root (logs/vision.log) y el de
+# probar_nlp ya no aplica, asi que todo el NLP terminaba en vision.log. El logger "nlp" (y sus hijos nlp.*, como
+# nlp.regex_extractor) escribe en logs/nlp.log y en consola, sin pasar por el root.
+_log_nlp = logging.getLogger("nlp")
+_log_nlp.addHandler(probar_nlp.file_handler)
+_log_nlp.addHandler(probar_nlp.console_handler)
+_log_nlp.propagate = False
+
 DATA_RAW       = Path("data/raw")
 DATA_PROCESSED = Path("data/processed")
 FUENTES        = ["tiendeo", "ofertomat"]

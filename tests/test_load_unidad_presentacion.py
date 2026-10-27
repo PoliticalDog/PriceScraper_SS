@@ -295,3 +295,21 @@ def test_precio_guarda_el_metodo_del_nombre_unido():
     sql, params = next(s for s in cur.sentencias if "INSERT INTO extracciones" in s[0] and "PRECIO" in s[1])
     assert "metodo_norm" in sql
     assert params[-2] == NORM.normalizar("MARGARINA IBERIA CON SAL GRAMOS").metodo
+
+
+def test_tienda_nueva_lleva_su_cadena():
+    # 26-oct-2026: en una BD nueva el UPDATE de schema.sql no encuentra tiendas; la cadena se asigna al crearla
+    from load.load import CADENAS, Loader
+    loader = Loader.__new__(Loader)
+    for slug, esperada in (("soriana_mercado", "soriana"), ("walmart_express", "walmart"), ("heb", None)):
+        cur = _CursorFalso()
+        loader._upsert_tienda(cur, slug, slug.title(), slug)
+        sql, params = cur.sentencias[0]
+        assert "cadena" in sql and "COALESCE(tiendas.cadena" in sql
+        assert params[-1] == esperada == CADENAS.get(slug)
+
+
+def test_settings_decodifica_la_clave_de_la_url():
+    from urllib.parse import quote, unquote, urlparse
+    url = urlparse(f"postgresql://usuario:{quote('cl@ve:#1', safe='')}@localhost:5432/pricescraper")
+    assert unquote(url.password) == "cl@ve:#1" and url.hostname == "localhost"

@@ -80,13 +80,7 @@ def menu_tiendas_ofertomat() -> str:
         print(f"   {i:>2}. {t}")
     print(f"    0. Las {len(tiendas)} juntas de un jalón")
     print("-" * 55)
-    try:
-        opc = int(input("   Tienda específica (0 = todas): ").strip())
-        if opc == 0:
-            return "todas"
-        return tiendas[opc - 1] if 1 <= opc <= len(tiendas) else "todas"  # Si el número no es válido, se asume "todas"
-    except (ValueError, IndexError):
-        return "todas"
+    return elegir_tienda(tiendas)
 
 # ---------------------- Menú Tiendeo ----------------------
 def menu_tiendas_tiendeo() -> str:
@@ -96,15 +90,26 @@ def menu_tiendas_tiendeo() -> str:
     for i, t in enumerate(tiendas, 1):
         nombre = t.replace("-", " ").title()
         print(f"   {i:>2}. {nombre}")
-    print(f"    0. Todas las tiendas (categoría supermercados)")
+    print(f"    0. Las {len(tiendas)} tiendas de la lista")
     print("-" * 55)
+    return elegir_tienda(tiendas)
+
+
+def elegir_tienda(tiendas: list[str], respuesta: str | None = None) -> str | None:
+    """0 = "todas"; 1..N = esa tienda; cualquier otra cosa = None (no se scrapea nada).
+    Antes (hasta 26-oct-2026) un numero fuera de rango o un texto se tomaba como "todas" y lanzaba el rastreo completo."""
+    if respuesta is None:
+        respuesta = input("   Tienda específica (0 = todas): ")
     try:
-        opc = int(input("   Tienda específica (0 = todas): ").strip())
-        if opc == 0:
-            return "todas"
-        return tiendas[opc - 1] if 1 <= opc <= len(tiendas) else "todas" # Si el número no es válido, se asume "todas"
-    except (ValueError, IndexError):
+        opc = int(respuesta.strip())
+    except ValueError:
+        opc = -1
+    if opc == 0:
         return "todas"
+    if 1 <= opc <= len(tiendas):
+        return tiendas[opc - 1]
+    print("   Opción no válida: no se scrapea nada.")
+    return None
 
 # ---------------------- orquestador Tiendeo ----------------------
 # Funcion principal tiendeo -- una tienda específica (para "todas" ver scrapear_tiendeo_todas_tiendas)
@@ -458,14 +463,18 @@ async def main():
 
         elif opcion == 1:
             slug = menu_tiendas_tiendeo()
-            if slug == "todas":
+            if slug is None:
+                pass
+            elif slug == "todas":
                 await scrapear_tiendeo_todas_tiendas(registro)
             else:
                 await scrapear_tiendeo(registro, slug_tienda=slug)
 
         elif opcion == 2:
             slug = menu_tiendas_ofertomat()
-            if slug == "todas":
+            if slug is None:
+                pass
+            elif slug == "todas":
                 await scrapear_ofertomat_todas_tiendas(registro)
             else:
                 await scrapear_ofertomat(registro, slug_tienda=slug)
